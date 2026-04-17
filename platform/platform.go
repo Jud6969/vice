@@ -65,6 +65,12 @@ type Platform interface {
 	// SetMainWindowSquare enables or disables a square aspect ratio for the main window.
 	SetMainWindowSquare(square bool)
 
+	// SetSquareWindowAtSize locks the window to a 1:1 aspect ratio and
+	// resizes it to the given target square pixel size, clamped to fit on
+	// the primary monitor. Used by the STARS/ERAM scaling modes to provide
+	// uniform scope sizing across different displays.
+	SetSquareWindowAtSize(target int)
+
 	// IsAppFocused returns true if the application has OS focus.
 	IsAppFocused() bool
 

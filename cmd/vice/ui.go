@@ -296,8 +296,10 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 		displaySize := imgui.CurrentIO().DisplaySize()
 		// Window controls flush against the right edge.
 		windowCtrlX := displaySize.X - 3*buttonWidth - 2*itemSpacingX - itemSpacingX
-		// App icons sit just to the left, with a small visual gap.
-		appButtonsX := windowCtrlX - 3*buttonWidth - 3*itemSpacingX
+		// App icons sit just to the left, with a small visual gap. Only two
+		// app icons remain (info, discord); the fullscreen toggle was
+		// removed in favor of the title-bar maximize button.
+		appButtonsX := windowCtrlX - 2*buttonWidth - 2*itemSpacingX
 
 		// Show microphone icon while recording (red) or garbling (yellow),
 		// positioned to the left of the app icon cluster.
@@ -320,13 +322,6 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 		}
 		if imgui.Button(renderer.FontAwesomeIconDiscord) {
 			browser.OpenURL("https://discord.gg/y993vgQxhY")
-		}
-
-		if imgui.Button(util.Select(p.IsFullScreen(), renderer.FontAwesomeIconCompressAlt, renderer.FontAwesomeIconExpandAlt)) {
-			p.EnableFullScreen(!p.IsFullScreen())
-		}
-		if imgui.IsItemHovered() {
-			imgui.SetTooltip(util.Select(p.IsFullScreen(), "Exit", "Enter") + " full-screen mode")
 		}
 
 		// Window controls (minimize, maximize/restore, close) — these are
@@ -912,8 +907,28 @@ func uiDrawSettingsWindow(c *client.ControlClient, config *Config, activeRadarPa
 				}, p), true)
 		}
 
-		if imgui.Checkbox("Maintain square main window", &config.MainWindowSquare) {
-			p.SetMainWindowSquare(config.MainWindowSquare)
+		// Mutually-exclusive scope-scaling checkboxes. STARS targets a
+		// 2075x2075 square window, ERAM 2160x2160. Both also lock the
+		// window to a 1:1 aspect ratio. Selecting one clears the other.
+		starsOn := config.WindowScaleMode == "stars"
+		eramOn := config.WindowScaleMode == "eram"
+		if imgui.Checkbox("Force STARS window scaling (2075x2075)", &starsOn) {
+			if starsOn {
+				config.WindowScaleMode = "stars"
+				p.SetSquareWindowAtSize(platform.WindowScaleTargets["stars"])
+			} else {
+				config.WindowScaleMode = ""
+				p.SetMainWindowSquare(false)
+			}
+		}
+		if imgui.Checkbox("Force ERAM window scaling (2160x2160)", &eramOn) {
+			if eramOn {
+				config.WindowScaleMode = "eram"
+				p.SetSquareWindowAtSize(platform.WindowScaleTargets["eram"])
+			} else {
+				config.WindowScaleMode = ""
+				p.SetMainWindowSquare(false)
+			}
 		}
 
 		imgui.Checkbox("Start in full-screen", &config.StartInFullScreen)

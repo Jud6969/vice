@@ -65,10 +65,24 @@ type Config struct {
 
 	MainWindowSquare bool
 
+	// WindowScaleMode locks the window to a 1:1 aspect with a target
+	// pixel size matching a real-world ATC display. Empty = off; "stars"
+	// targets STARS (2075x2075); "eram" targets ERAM (2160x2160). The
+	// target is clamped to the monitor's smaller dimension so the window
+	// always fits on screen.
+	WindowScaleMode string
+
 	EnableMSAA bool
 
 	StartInFullScreen bool
 	FullScreenMonitor int
+}
+
+// WindowScaleTargets maps WindowScaleMode values to their target square
+// pixel size. Exposed so callers can label UI controls consistently.
+var WindowScaleTargets = map[string]int{
+	"stars": 2075,
+	"eram":  2160,
 }
 
 // New returns a new instance of a Platform implemented with a window
@@ -110,7 +124,16 @@ func New(config *Config, lg *log.Logger) (Platform, error) {
 			config.InitialWindowSize[1] = vm.Height - 150
 		}
 	}
-	if config.MainWindowSquare {
+	// Migrate legacy MainWindowSquare to the new WindowScaleMode field.
+	// Default former square users into "stars" mode.
+	if config.WindowScaleMode == "" && config.MainWindowSquare {
+		config.WindowScaleMode = "stars"
+	}
+	if target, ok := WindowScaleTargets[config.WindowScaleMode]; ok {
+		config.MainWindowSquare = true
+		s := min(target, min(vm.Width, vm.Height))
+		config.InitialWindowSize = [2]int{s, s}
+	} else if config.MainWindowSquare {
 		config.InitialWindowSize = squareWindowSize(config.InitialWindowSize)
 	}
 
@@ -183,6 +206,13 @@ func squareWindowSize(size [2]int) [2]int {
 	return [2]int{s, s}
 }
 
+// monitorMaxSquare returns the largest square (in pixels) that fits within
+// the work area of the primary monitor.
+func monitorMaxSquare() int {
+	vm := glfw.GetPrimaryMonitor().GetVideoMode()
+	return min(vm.Width, vm.Height)
+}
+
 func (g *glfwPlatform) SetMainWindowSquare(square bool) {
 	g.config.MainWindowSquare = square
 	if square {
@@ -194,6 +224,24 @@ func (g *glfwPlatform) SetMainWindowSquare(square bool) {
 	} else {
 		g.window.SetAspectRatio(glfw.DontCare, glfw.DontCare)
 	}
+}
+
+// SetSquareWindowAtSize locks the window to a 1:1 aspect ratio and sizes
+// it to a target square (clamped to the primary monitor's smaller
+// dimension so the window always fits on screen). Used by the STARS/ERAM
+// scale-mode toggles to give a uniform-looking scope across systems.
+func (g *glfwPlatform) SetSquareWindowAtSize(target int) {
+	g.config.MainWindowSquare = true
+	g.window.SetAspectRatio(1, 1)
+	if g.IsFullScreen() {
+		return
+	}
+	if target <= 0 {
+		target = monitorMaxSquare()
+	} else {
+		target = min(target, monitorMaxSquare())
+	}
+	g.window.SetSize(target, target)
 }
 
 func (g *glfwPlatform) DPIScale() float32 {
