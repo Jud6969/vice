@@ -396,7 +396,7 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 		}
 		if ui.showFlightStrips {
 			applyPinWindowClass("Flight Strips", config, p)
-			config.FlightStripPane.DrawWindow(&ui.showFlightStrips, controlClient, p, config.UnpinnedWindows, lg)
+			config.FlightStripPane.DrawWindow(&ui.showFlightStrips, controlClient, p, config.UnpinnedWindows, 0, lg)
 		}
 	}
 
