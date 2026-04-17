@@ -31,10 +31,9 @@ func (g *glfwPlatform) EnableFullScreen(fullscreen bool) {
 			windowSize[1] = vm.Height - 150
 
 		}
-		if g.config.MainWindowSquare {
-			windowSize = squareWindowSize(windowSize)
-		}
-
+		// Note: scope-square mode no longer forces a square window, only
+		// installs a SetSizeLimits floor; GLFW will clamp the size below
+		// to satisfy that floor automatically.
 		g.window.SetMonitor(nil, g.config.InitialWindowPosition[0], g.config.InitialWindowPosition[1],
 			windowSize[0], windowSize[1], glfw.DontCare)
 	}

@@ -79,11 +79,19 @@ type Config struct {
 }
 
 // WindowScaleTargets maps WindowScaleMode values to their target square
-// pixel size. Exposed so callers can label UI controls consistently.
+// pixel size. Reserved for the Phase 2 logical-resolution rendering work;
+// in the current Phase 1 scope-square mode, both modes behave identically
+// (square the scope pane, install the same window-size floor).
 var WindowScaleTargets = map[string]int{
 	"stars": 2075,
 	"eram":  2160,
 }
+
+// SquareScopePaneMinWindow is the minimum window dimension (in pixels)
+// enforced when scope-square mode is on. It establishes a floor so the
+// user cannot shrink the application window so small that the centered
+// square scope pane becomes unusable.
+const SquareScopePaneMinWindow = 1000
 
 // New returns a new instance of a Platform implemented with a window
 // of the specified size open at the specified position on the screen.
@@ -129,12 +137,19 @@ func New(config *Config, lg *log.Logger) (Platform, error) {
 	if config.WindowScaleMode == "" && config.MainWindowSquare {
 		config.WindowScaleMode = "stars"
 	}
-	if target, ok := WindowScaleTargets[config.WindowScaleMode]; ok {
+	if config.WindowScaleMode != "" {
 		config.MainWindowSquare = true
-		s := min(target, min(vm.Width, vm.Height))
-		config.InitialWindowSize = [2]int{s, s}
-	} else if config.MainWindowSquare {
-		config.InitialWindowSize = squareWindowSize(config.InitialWindowSize)
+	}
+	// If scope-square mode is active, ensure the initial window is at
+	// least the minimum so the floor we install below doesn't immediately
+	// resize the user's window.
+	if config.MainWindowSquare {
+		if config.InitialWindowSize[0] < SquareScopePaneMinWindow {
+			config.InitialWindowSize[0] = SquareScopePaneMinWindow
+		}
+		if config.InitialWindowSize[1] < SquareScopePaneMinWindow {
+			config.InitialWindowSize[1] = SquareScopePaneMinWindow
+		}
 	}
 
 	// If window position is out of bounds, create the window at (100, 100)
@@ -170,7 +185,11 @@ func New(config *Config, lg *log.Logger) (Platform, error) {
 		return nil, fmt.Errorf("failed to create window: %w", err)
 	}
 	if config.MainWindowSquare {
-		window.SetAspectRatio(1, 1)
+		// Floor the window dimensions so the user cannot shrink below the
+		// scope. We deliberately do NOT lock aspect ratio: the application
+		// window stays free, only the scope pane is squared at draw time.
+		window.SetSizeLimits(SquareScopePaneMinWindow, SquareScopePaneMinWindow,
+			glfw.DontCare, glfw.DontCare)
 	}
 	window.SetPos(config.InitialWindowPosition[0], config.InitialWindowPosition[1])
 	window.Show()
@@ -198,50 +217,32 @@ func New(config *Config, lg *log.Logger) (Platform, error) {
 	return platform, nil
 }
 
-func squareWindowSize(size [2]int) [2]int {
-	if size[0] <= 0 || size[1] <= 0 {
-		return size
-	}
-	s := min(size[0], size[1])
-	return [2]int{s, s}
-}
-
-// monitorMaxSquare returns the largest square (in pixels) that fits within
-// the work area of the primary monitor.
-func monitorMaxSquare() int {
-	vm := glfw.GetPrimaryMonitor().GetVideoMode()
-	return min(vm.Width, vm.Height)
-}
-
+// SetMainWindowSquare toggles "square scope pane" mode. When enabled, the
+// application window gets a minimum-size floor (so it cannot shrink below
+// the scope pane) but is otherwise free to be any aspect ratio. The
+// squaring of the scope itself is performed at draw time by clamping
+// the pane's allocated extent to a centered square — see
+// panes.DrawPanes and Platform.SquareScopePane.
 func (g *glfwPlatform) SetMainWindowSquare(square bool) {
 	g.config.MainWindowSquare = square
+	if !square {
+		g.config.WindowScaleMode = ""
+	}
 	if square {
-		g.window.SetAspectRatio(1, 1)
-		if !g.IsFullScreen() {
-			size := squareWindowSize(g.WindowSize())
-			g.window.SetSize(size[0], size[1])
-		}
+		g.window.SetSizeLimits(SquareScopePaneMinWindow, SquareScopePaneMinWindow,
+			glfw.DontCare, glfw.DontCare)
+		// If the current window is below the new floor, GLFW will resize
+		// it to satisfy the limits. No explicit resize needed here.
 	} else {
-		g.window.SetAspectRatio(glfw.DontCare, glfw.DontCare)
+		g.window.SetSizeLimits(glfw.DontCare, glfw.DontCare, glfw.DontCare, glfw.DontCare)
 	}
 }
 
-// SetSquareWindowAtSize locks the window to a 1:1 aspect ratio and sizes
-// it to a target square (clamped to the primary monitor's smaller
-// dimension so the window always fits on screen). Used by the STARS/ERAM
-// scale-mode toggles to give a uniform-looking scope across systems.
-func (g *glfwPlatform) SetSquareWindowAtSize(target int) {
-	g.config.MainWindowSquare = true
-	g.window.SetAspectRatio(1, 1)
-	if g.IsFullScreen() {
-		return
-	}
-	if target <= 0 {
-		target = monitorMaxSquare()
-	} else {
-		target = min(target, monitorMaxSquare())
-	}
-	g.window.SetSize(target, target)
+// SquareScopePane reports whether the scope pane should be rendered into
+// a centered square sub-region of its allocated extent. Mirrors the
+// platform-config flag so panes can stay UI-agnostic.
+func (g *glfwPlatform) SquareScopePane() bool {
+	return g.config.MainWindowSquare
 }
 
 func (g *glfwPlatform) DPIScale() float32 {

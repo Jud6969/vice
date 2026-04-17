@@ -62,14 +62,18 @@ type Platform interface {
 	// IsFullScreen() returns true if the application is in full-screen mode.
 	IsFullScreen() bool
 
-	// SetMainWindowSquare enables or disables a square aspect ratio for the main window.
+	// SetMainWindowSquare toggles "square scope pane" mode. When enabled,
+	// the application window is given a minimum size floor (so the user
+	// cannot shrink it below the scope) and the active scope pane is
+	// rendered into a centered square sub-region of its allocated extent.
+	// The application window itself is NOT forced to a square aspect; only
+	// the scope pane is. Letterbox/pillarbox bars outside the square pane
+	// are left at the framebuffer clear color (black).
 	SetMainWindowSquare(square bool)
 
-	// SetSquareWindowAtSize locks the window to a 1:1 aspect ratio and
-	// resizes it to the given target square pixel size, clamped to fit on
-	// the primary monitor. Used by the STARS/ERAM scaling modes to provide
-	// uniform scope sizing across different displays.
-	SetSquareWindowAtSize(target int)
+	// SquareScopePane reports whether the active scope pane should be
+	// rendered into a centered square sub-region of its allocated extent.
+	SquareScopePane() bool
 
 	// IsAppFocused returns true if the application has OS focus.
 	IsAppFocused() bool

@@ -76,6 +76,25 @@ func DrawPanes(pane Pane, p platform.Platform, r renderer.Renderer,
 		P1: [2]float32{displaySize[0], displaySize[1] - menuBarHeight},
 	}
 
+	// Scope-square mode: shrink the pane's allocated extent to a centered
+	// square. The application window is otherwise free to be any aspect;
+	// the area outside the square stays at the framebuffer clear color
+	// (black), giving natural letterbox / pillarbox bars.
+	if p.SquareScopePane() {
+		w := paneDisplayExtent.Width()
+		h := paneDisplayExtent.Height()
+		side := w
+		if h < side {
+			side = h
+		}
+		ox := (w - side) / 2
+		oy := (h - side) / 2
+		paneDisplayExtent = math.Extent2D{
+			P0: [2]float32{ox, oy},
+			P1: [2]float32{ox + side, oy + side},
+		}
+	}
+
 	// Get the mouse position from imgui; convert from screen coordinates
 	// to main-window-relative coordinates (with multi-viewport, MousePos
 	// returns OS screen coords), then flip y to match our window coords.

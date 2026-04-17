@@ -907,26 +907,30 @@ func uiDrawSettingsWindow(c *client.ControlClient, config *Config, activeRadarPa
 				}, p), true)
 		}
 
-		// Mutually-exclusive scope-scaling checkboxes. STARS targets a
-		// 2075x2075 square window, ERAM 2160x2160. Both also lock the
-		// window to a 1:1 aspect ratio. Selecting one clears the other.
+		// Mutually-exclusive scope-square toggles. For now both behave
+		// identically: render the active scope pane into a centered
+		// square sub-region of its allocated extent and install a
+		// minimum-size floor on the application window. The application
+		// window itself is NOT forced square — only the scope pane is, so
+		// fullscreen and other free aspect ratios still work. The
+		// selected mode is recorded in WindowScaleMode for the upcoming
+		// logical-resolution work (STARS 2075, ERAM 2160) which will
+		// distinguish them. Selecting one clears the other.
 		starsOn := config.WindowScaleMode == "stars"
 		eramOn := config.WindowScaleMode == "eram"
-		if imgui.Checkbox("Force STARS window scaling (2075x2075)", &starsOn) {
+		if imgui.Checkbox("Force STARS scope square", &starsOn) {
 			if starsOn {
 				config.WindowScaleMode = "stars"
-				p.SetSquareWindowAtSize(platform.WindowScaleTargets["stars"])
+				p.SetMainWindowSquare(true)
 			} else {
-				config.WindowScaleMode = ""
 				p.SetMainWindowSquare(false)
 			}
 		}
-		if imgui.Checkbox("Force ERAM window scaling (2160x2160)", &eramOn) {
+		if imgui.Checkbox("Force ERAM scope square", &eramOn) {
 			if eramOn {
 				config.WindowScaleMode = "eram"
-				p.SetSquareWindowAtSize(platform.WindowScaleTargets["eram"])
+				p.SetMainWindowSquare(true)
 			} else {
-				config.WindowScaleMode = ""
 				p.SetMainWindowSquare(false)
 			}
 		}
