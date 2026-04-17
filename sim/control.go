@@ -2738,7 +2738,6 @@ const (
 	PendingTransmissionFieldNegativeContact                                    // "Negative contact" after looking timer expires
 	PendingTransmissionRequestVisual                                           // Spontaneous "field in sight, requesting visual"
 	PendingTransmissionRequestVectors                                          // Pilot requesting vectors (overshot localizer)
-	PendingTransmissionAltimeterReadback                                       // After controller issues "altimeter X.XX"
 )
 
 // PendingFrequencyChange represents a pilot switching to a new frequency.
@@ -2760,7 +2759,6 @@ type PendingContact struct {
 	HasQueuedEmergency     bool                    // For departures: trigger emergency after contact
 	PrebuiltTransmission   *av.RadioTransmission   // For emergency transmissions: pre-built message
 	FirstInFacility        bool                    // For arrivals: first contact in this TRACON facility
-	AltimeterHundredths    int                     // For PendingTransmissionAltimeterReadback: e.g., 3002 for 30.02
 }
 
 // hasPendingCheckIn reports whether the aircraft has a pending arrival or
@@ -3015,22 +3013,16 @@ func (s *Sim) enqueueEmergencyTransmission(callsign av.ADSBCallsign, tcp TCP, rt
 }
 
 // handleAltimeterSetting processes an "altimeter X.XX" command issued by a
-// controller. If the feature toggle is off, silently accepts the command and
-// no-ops. Otherwise enqueues a pilot readback that will mutate PilotAltim
-// when rendered.
-func (s *Sim) handleAltimeterSetting(ac *Aircraft, settingHundredths int) {
+// controller. Mutates the pilot's altimeter setting and returns a readback
+// intent so the acknowledgment joins any other readbacks from the same
+// transmission. Returns nil when the feature toggle is off.
+func (s *Sim) handleAltimeterSetting(ac *Aircraft, settingHundredths int) av.CommandIntent {
 	if !s.State.FacilityAdaptation.SimulatePilotAltimeter {
-		return
+		return nil
 	}
-	if ac.ControllerFrequency == "" {
-		return
-	}
-	s.addPendingContact(PendingContact{
-		ADSBCallsign:        ac.ADSBCallsign,
-		TCP:                 TCP(ac.ControllerFrequency),
-		Type:                PendingTransmissionAltimeterReadback,
-		AltimeterHundredths: settingHundredths,
-	})
+	ac.PilotAltim = float32(settingHundredths) / 100
+	ac.PilotAltimSetAt = s.State.SimTime
+	return av.AltimeterReadbackIntent{SettingHundredths: settingHundredths}
 }
 
 // cancelPendingInitialContact removes any pending Departure or Arrival contact
@@ -3123,15 +3115,6 @@ func (s *Sim) GenerateContactTransmission(pc *PendingContact) (spokenText, writt
 			ac.EmergencyState.CurrentStage = 0
 			s.runEmergencyStage(ac)
 		}
-
-	case PendingTransmissionAltimeterReadback:
-		setting := pc.AltimeterHundredths
-		ac.PilotAltim = float32(setting) / 100
-		ac.PilotAltimSetAt = s.State.SimTime
-		whole := setting / 100
-		hundredths := setting % 100
-		rt = av.MakeContactTransmission("[{num} {num}|altimeter {num} {num}|roger {num} {num}]",
-			whole, hundredths)
 
 	case PendingTransmissionTrafficInSight:
 		rt = av.MakeContactTransmission("[we've got the traffic|we have the traffic in sight|traffic in sight now]")
@@ -3758,10 +3741,10 @@ func (s *Sim) runOneControlCommand(tcw TCW, callsign av.ADSBCallsign, command st
 			if err != nil {
 				return nil, nil // silently ignore malformed
 			}
-			if ac, ok := s.Aircraft[callsign]; ok {
-				s.handleAltimeterSetting(ac, setting)
-			}
-			return nil, nil
+			return s.dispatchControlledAircraftCommand(tcw, callsign,
+				func(tcw TCW, ac *Aircraft) av.CommandIntent {
+					return s.handleAltimeterSetting(ac, setting)
+				})
 		} else {
 			components := strings.Split(command, "/")
 			if len(components) != 2 || len(components[1]) == 0 {
