@@ -1012,6 +1012,24 @@ func uiDrawSettingsWindow(c *client.ControlClient, config *Config, activeRadarPa
 			}
 		}
 
+		// Integrated-pane settings. Only meaningful while scope-square
+		// mode is active, but we leave them enabled regardless so the
+		// user can configure them ahead of toggling scope-square on.
+		imgui.Separator()
+		imgui.TextUnformatted("Integrated panes (STARS/ERAM scaling):")
+		imgui.Checkbox("Pop out Messages", &config.PopOutMessages)
+		imgui.Checkbox("Pop out Flight Strips", &config.PopOutFlightStrips)
+
+		messagesLeft := !config.MessagesOnRight
+		if imgui.RadioButtonBool("Messages left / Flight Strips right", messagesLeft) {
+			config.MessagesOnRight = false
+		}
+		imgui.SameLine()
+		if imgui.RadioButtonBool("Messages right / Flight Strips left", !messagesLeft) {
+			config.MessagesOnRight = true
+		}
+		imgui.Separator()
+
 		imgui.Checkbox("Start in full-screen", &config.StartInFullScreen)
 
 		monitorNames := p.GetAllMonitorNames()
