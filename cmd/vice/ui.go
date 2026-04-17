@@ -390,13 +390,61 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 			ui.launchControlWindow.Draw(eventStream, p, config)
 		}
 
+		// Layout math for docked (integrated) panes. Each pane's target
+		// letterbox bar is computed from the main window's current size
+		// and the scope-square side length. If scope-square mode is off,
+		// or the user has popped the pane out, or there is no usable
+		// letterbox (barWidth <= 0), fall through to today's floating
+		// OS-window behavior.
+		displaySize := p.DisplaySize()
+		squareActive := p.SquareScopePane()
+		side := displaySize[0]
+		if displaySize[1] < side {
+			side = displaySize[1]
+		}
+		barWidth := (displaySize[0] - side) / 2
+		barTop := ui.menuBarHeight
+		barHeight := displaySize[1] - ui.menuBarHeight
+
+		dockPane := func(onRight bool) (imgui.WindowFlags, bool) {
+			if !squareActive || barWidth <= 0 {
+				return 0, false
+			}
+			x := float32(0)
+			if onRight {
+				x = displaySize[0] - barWidth
+			}
+			imgui.SetNextWindowPos(imgui.Vec2{X: x, Y: barTop})
+			imgui.SetNextWindowSize(imgui.Vec2{X: barWidth, Y: barHeight})
+			applyDockedWindowClass()
+			return imgui.WindowFlagsNoMove | imgui.WindowFlagsNoResize |
+				imgui.WindowFlagsNoCollapse | imgui.WindowFlagsNoTitleBar, true
+		}
+
 		if ui.showMessages {
-			applyPinWindowClass("Messages", config, p)
-			config.MessagesPane.DrawWindow(&ui.showMessages, controlClient, p, config.UnpinnedWindows, 0, lg)
+			messagesOnRight := config.MessagesOnRight
+			var flags imgui.WindowFlags
+			var docked bool
+			if !config.PopOutMessages {
+				flags, docked = dockPane(messagesOnRight)
+			}
+			if !docked {
+				applyPinWindowClass("Messages", config, p)
+			}
+			config.MessagesPane.DrawWindow(&ui.showMessages, controlClient, p, config.UnpinnedWindows, flags, lg)
 		}
 		if ui.showFlightStrips {
-			applyPinWindowClass("Flight Strips", config, p)
-			config.FlightStripPane.DrawWindow(&ui.showFlightStrips, controlClient, p, config.UnpinnedWindows, 0, lg)
+			// Flight strips sit on the opposite side of Messages.
+			stripsOnRight := !config.MessagesOnRight
+			var flags imgui.WindowFlags
+			var docked bool
+			if !config.PopOutFlightStrips {
+				flags, docked = dockPane(stripsOnRight)
+			}
+			if !docked {
+				applyPinWindowClass("Flight Strips", config, p)
+			}
+			config.FlightStripPane.DrawWindow(&ui.showFlightStrips, controlClient, p, config.UnpinnedWindows, flags, lg)
 		}
 	}
 
