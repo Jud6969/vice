@@ -41,6 +41,20 @@ var (
 
 		menuBarHeight float32
 
+		// Custom title bar window-drag state. The OS title bar is disabled
+		// (glfw.Decorated=false); we drag the window ourselves when the user
+		// presses on empty space in the main menu bar.
+		windowDragActive        bool
+		windowDragStartWinPos   [2]int
+		windowDragStartMouseScr [2]int
+
+		// Edge-resize state for the borderless main window. resizeEdgeActive
+		// is the edge being dragged; 0 means no resize in progress.
+		resizeEdgeActive    resizeEdge
+		resizeStartWinPos   [2]int
+		resizeStartWinSize  [2]int
+		resizeStartMouseScr [2]int
+
 		showAboutDialog bool
 
 		iconTextureID uint32
@@ -269,30 +283,34 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 		// Handle PTT key for STT recording
 		uiHandlePTTKey(p, controlClient, config, lg)
 
-		// Position for right-side icons: info, discord, full screen toggle,
-		// and optionally a microphone icon during PTT recording/garbling.
-		// The 3 buttons are always at the same fixed position so they don't
-		// shift when the microphone icon appears/disappears.
+		// Position for right-side icons. There are two clusters, both flush
+		// right: app icons (info / discord / fullscreen) on the left, then
+		// the custom title-bar window controls (minimize / maximize / close)
+		// flush against the right edge. Both groups are at fixed positions
+		// so they don't shift when the microphone icon appears/disappears.
 		iconWidth, _ := ui.font.BoundText(renderer.FontAwesomeIconInfoCircle, 0)
 		style := imgui.CurrentStyle()
 		framePaddingX := style.FramePadding().X
 		itemSpacingX := style.ItemSpacing().X
 		buttonWidth := float32(iconWidth) + 2*framePaddingX
 		displaySize := imgui.CurrentIO().DisplaySize()
-		buttonsX := displaySize.X - 3*buttonWidth - 2*itemSpacingX - itemSpacingX
+		// Window controls flush against the right edge.
+		windowCtrlX := displaySize.X - 3*buttonWidth - 2*itemSpacingX - itemSpacingX
+		// App icons sit just to the left, with a small visual gap.
+		appButtonsX := windowCtrlX - 3*buttonWidth - 3*itemSpacingX
 
 		// Show microphone icon while recording (red) or garbling (yellow),
-		// positioned to the left of the 3 fixed buttons.
+		// positioned to the left of the app icon cluster.
 		if ui.pttRecording || ui.pttGarbling {
 			// red for recording, yellow for garbling
 			micColor := util.Select(ui.pttGarbling, imgui.Vec4{1, 1, 0, 1}, imgui.Vec4{1, 0, 0, 1})
-			imgui.SetCursorPos(imgui.Vec2{X: buttonsX - float32(iconWidth) - itemSpacingX, Y: menuBarCursorY})
+			imgui.SetCursorPos(imgui.Vec2{X: appButtonsX - float32(iconWidth) - itemSpacingX, Y: menuBarCursorY})
 			imgui.PushStyleColorVec4(imgui.ColText, micColor)
 			imgui.TextUnformatted(renderer.FontAwesomeIconMicrophone)
 			imgui.PopStyleColor()
 		}
 
-		imgui.SetCursorPos(imgui.Vec2{X: buttonsX, Y: menuBarCursorY})
+		imgui.SetCursorPos(imgui.Vec2{X: appButtonsX, Y: menuBarCursorY})
 
 		if imgui.Button(renderer.FontAwesomeIconInfoCircle) {
 			ui.showAboutDialog = !ui.showAboutDialog
@@ -311,11 +329,41 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 			imgui.SetTooltip(util.Select(p.IsFullScreen(), "Exit", "Enter") + " full-screen mode")
 		}
 
+		// Window controls (minimize, maximize/restore, close) — these are
+		// the custom title bar's replacement for the OS-supplied buttons.
+		imgui.SetCursorPos(imgui.Vec2{X: windowCtrlX, Y: menuBarCursorY})
+		if imgui.Button(renderer.FontAwesomeIconWindowMinimize) {
+			p.IconifyWindow()
+		}
+		if imgui.IsItemHovered() {
+			imgui.SetTooltip("Minimize")
+		}
+		maxIcon := util.Select(p.IsWindowMaximized(), renderer.FontAwesomeIconWindowRestore, renderer.FontAwesomeIconWindowMaximize)
+		if imgui.Button(maxIcon) {
+			p.ToggleMaximizeWindow()
+		}
+		if imgui.IsItemHovered() {
+			imgui.SetTooltip(util.Select(p.IsWindowMaximized(), "Restore", "Maximize"))
+		}
+		// Tint the close button red on hover to telegraph the destructive action.
+		imgui.PushStyleColorVec4(imgui.ColButtonHovered, imgui.Vec4{0.85, 0.15, 0.15, 1})
+		imgui.PushStyleColorVec4(imgui.ColButtonActive, imgui.Vec4{0.7, 0.1, 0.1, 1})
+		if imgui.Button(renderer.FontAwesomeIconTimes) {
+			p.CloseWindow()
+		}
+		imgui.PopStyleColorV(2)
+		if imgui.IsItemHovered() {
+			imgui.SetTooltip("Close")
+		}
+
 		imgui.PopStyleColor()
 
 		imgui.EndMainMenuBar()
 	}
 	ui.menuBarHeight = imgui.CursorPos().Y - 1
+
+	uiHandleWindowResize(p)
+	uiHandleTitleBarDrag(p)
 
 	if controlClient != nil && !hasActiveModalDialogs() {
 		uiDrawSettingsWindow(controlClient, config, activeRadarPane, p, lg)
@@ -1147,6 +1195,195 @@ func uiDrawSettingsWindow(c *client.ControlClient, config *Config, activeRadarPa
 	}
 
 	imgui.End()
+}
+
+// resizeEdge identifies which edge or corner of the borderless main
+// window is being hovered or actively resized. Top resize is intentionally
+// omitted because the top edge is the title-bar drag region.
+type resizeEdge int
+
+const (
+	resizeEdgeNone resizeEdge = iota
+	resizeEdgeLeft
+	resizeEdgeRight
+	resizeEdgeBottom
+	resizeEdgeBottomLeft
+	resizeEdgeBottomRight
+)
+
+// uiHandleWindowResize implements edge/corner resize for the borderless
+// main window. Sets a resize cursor when the mouse hovers a hit zone, and
+// resizes the window while the user drags. No-op while maximized or
+// fullscreen.
+func uiHandleWindowResize(p platform.Platform) {
+	if p.IsFullScreen() || p.IsWindowMaximized() {
+		ui.resizeEdgeActive = resizeEdgeNone
+		return
+	}
+
+	const edgeMargin = 6.0
+	const cornerMargin = 12.0
+
+	mouse := p.GetMouse()
+	winSize := p.WindowSize()
+	winPos := p.WindowPosition()
+	w, h := float32(winSize[0]), float32(winSize[1])
+	mx, my := mouse.Pos[0], mouse.Pos[1]
+
+	// Determine the edge under the mouse (or the active edge if a resize is
+	// in progress — the cursor is allowed to drift outside the window).
+	edge := ui.resizeEdgeActive
+	if edge == resizeEdgeNone {
+		nearLeft := mx >= 0 && mx < edgeMargin
+		nearRight := mx <= w && mx > w-edgeMargin
+		nearBottom := my <= h && my > h-edgeMargin
+		nearLeftCorner := mx >= 0 && mx < cornerMargin
+		nearRightCorner := mx <= w && mx > w-cornerMargin
+		nearBottomCorner := my <= h && my > h-cornerMargin
+
+		switch {
+		case nearBottomCorner && nearLeftCorner:
+			edge = resizeEdgeBottomLeft
+		case nearBottomCorner && nearRightCorner:
+			edge = resizeEdgeBottomRight
+		case nearLeft:
+			edge = resizeEdgeLeft
+		case nearRight:
+			edge = resizeEdgeRight
+		case nearBottom:
+			edge = resizeEdgeBottom
+		}
+	}
+
+	if edge == resizeEdgeNone {
+		return
+	}
+
+	// Set the resize cursor for this edge. Imgui's GLFW backend translates
+	// these into the appropriate native cursor.
+	switch edge {
+	case resizeEdgeLeft, resizeEdgeRight:
+		imgui.SetMouseCursor(imgui.MouseCursorResizeEW)
+	case resizeEdgeBottom:
+		imgui.SetMouseCursor(imgui.MouseCursorResizeNS)
+	case resizeEdgeBottomLeft:
+		imgui.SetMouseCursor(imgui.MouseCursorResizeNESW)
+	case resizeEdgeBottomRight:
+		imgui.SetMouseCursor(imgui.MouseCursorResizeNWSE)
+	}
+
+	mouseScrX := winPos[0] + int(mx)
+	mouseScrY := winPos[1] + int(my)
+
+	if ui.resizeEdgeActive == resizeEdgeNone {
+		if mouse.Clicked[platform.MouseButtonPrimary] && !imgui.IsAnyItemHovered() {
+			ui.resizeEdgeActive = edge
+			ui.resizeStartWinPos = winPos
+			ui.resizeStartWinSize = winSize
+			ui.resizeStartMouseScr = [2]int{mouseScrX, mouseScrY}
+		}
+		return
+	}
+
+	if !mouse.Down[platform.MouseButtonPrimary] {
+		ui.resizeEdgeActive = resizeEdgeNone
+		return
+	}
+
+	dx := mouseScrX - ui.resizeStartMouseScr[0]
+	dy := mouseScrY - ui.resizeStartMouseScr[1]
+	newX, newY := ui.resizeStartWinPos[0], ui.resizeStartWinPos[1]
+	newW, newH := ui.resizeStartWinSize[0], ui.resizeStartWinSize[1]
+
+	switch ui.resizeEdgeActive {
+	case resizeEdgeLeft:
+		newX = ui.resizeStartWinPos[0] + dx
+		newW = ui.resizeStartWinSize[0] - dx
+	case resizeEdgeRight:
+		newW = ui.resizeStartWinSize[0] + dx
+	case resizeEdgeBottom:
+		newH = ui.resizeStartWinSize[1] + dy
+	case resizeEdgeBottomLeft:
+		newX = ui.resizeStartWinPos[0] + dx
+		newW = ui.resizeStartWinSize[0] - dx
+		newH = ui.resizeStartWinSize[1] + dy
+	case resizeEdgeBottomRight:
+		newW = ui.resizeStartWinSize[0] + dx
+		newH = ui.resizeStartWinSize[1] + dy
+	}
+
+	// Clamp to a minimum size and re-anchor newX so the right edge doesn't
+	// jump when the user drags past the left edge limit.
+	const minW, minH = 400, 300
+	if newW < minW {
+		if ui.resizeEdgeActive == resizeEdgeLeft || ui.resizeEdgeActive == resizeEdgeBottomLeft {
+			newX = ui.resizeStartWinPos[0] + (ui.resizeStartWinSize[0] - minW)
+		}
+		newW = minW
+	}
+	if newH < minH {
+		newH = minH
+	}
+
+	if newX != winPos[0] || newY != winPos[1] {
+		p.SetWindowPosition(newX, newY)
+	}
+	if newW != winSize[0] || newH != winSize[1] {
+		p.SetWindowSize(newW, newH)
+	}
+}
+
+// uiHandleTitleBarDrag implements window dragging for the borderless main
+// window. Pressing the left mouse button on empty space within the main
+// menu bar (i.e. not over any imgui item) starts a drag that follows the
+// mouse cursor; releasing the button ends it. A double-click in that same
+// region toggles maximize.
+func uiHandleTitleBarDrag(p platform.Platform) {
+	if p.IsFullScreen() {
+		ui.windowDragActive = false
+		return
+	}
+
+	mouse := p.GetMouse()
+	mousePos := mouse.Pos
+	winPos := p.WindowPosition()
+	mouseScrX := winPos[0] + int(mousePos[0])
+	mouseScrY := winPos[1] + int(mousePos[1])
+
+	inMenuBar := mousePos[1] >= 0 && mousePos[1] <= ui.menuBarHeight
+	overItem := imgui.IsAnyItemHovered() || imgui.IsAnyItemActive()
+
+	if !ui.windowDragActive {
+		if !inMenuBar || overItem {
+			return
+		}
+		if mouse.DoubleClicked[platform.MouseButtonPrimary] {
+			p.ToggleMaximizeWindow()
+			return
+		}
+		if mouse.Clicked[platform.MouseButtonPrimary] {
+			ui.windowDragActive = true
+			ui.windowDragStartWinPos = winPos
+			ui.windowDragStartMouseScr = [2]int{mouseScrX, mouseScrY}
+		}
+		return
+	}
+
+	if !mouse.Down[platform.MouseButtonPrimary] {
+		ui.windowDragActive = false
+		return
+	}
+
+	if p.IsWindowMaximized() {
+		// Restoring on drag is the standard OS behavior, but it's a fairly
+		// invasive UX change; for now just suppress movement until the user
+		// manually restores via the title-bar button.
+		return
+	}
+
+	dx := mouseScrX - ui.windowDragStartMouseScr[0]
+	dy := mouseScrY - ui.windowDragStartMouseScr[1]
+	p.SetWindowPosition(ui.windowDragStartWinPos[0]+dx, ui.windowDragStartWinPos[1]+dy)
 }
 
 // uiHandlePTTKey handles push-to-talk key input for STT recording.

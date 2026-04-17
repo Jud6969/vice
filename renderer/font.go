@@ -216,6 +216,7 @@ var (
 	FontAwesomeIconLevelUpAlt          = faUsedIcons["LevelUpAlt"]
 	FontAwesomeIconLock                = faUsedIcons["Lock"]
 	FontAwesomeIconMicrophone          = faUsedIcons["Microphone"]
+	FontAwesomeIconMinus               = faUsedIcons["Minus"]
 	FontAwesomeIconMouse               = faUsedIcons["Mouse"]
 	FontAwesomeIconPauseCircle         = faUsedIcons["PauseCircle"]
 	FontAwesomeIconPlayCircle          = faUsedIcons["PlayCircle"]
@@ -227,8 +228,12 @@ var (
 	FontAwesomeIconSquare              = faUsedIcons["Square"]
 	FontAwesomeIconSun                 = faUsedIcons["Sun"]
 	FontAwesomeIconThumbtack           = faUsedIcons["Thumbtack"]
+	FontAwesomeIconTimes               = faUsedIcons["Times"]
 	FontAwesomeIconTrash               = faUsedIcons["Trash"]
 	FontAwesomeIconWind                = faUsedIcons["Wind"]
+	FontAwesomeIconWindowMaximize      = faUsedIcons["WindowMaximize"]
+	FontAwesomeIconWindowMinimize      = faUsedIcons["WindowMinimize"]
+	FontAwesomeIconWindowRestore       = faUsedIcons["WindowRestore"]
 )
 
 var (
@@ -270,6 +275,7 @@ var (
 		"LevelUpAlt":          FontAwesomeString("LevelUpAlt"),
 		"Lock":                FontAwesomeString("Lock"),
 		"Microphone":          FontAwesomeString("Microphone"),
+		"Minus":               FontAwesomeString("Minus"),
 		"Mouse":               FontAwesomeString("Mouse"),
 		"PauseCircle":         FontAwesomeString("PauseCircle"),
 		"PlayCircle":          FontAwesomeString("PlayCircle"),
@@ -281,8 +287,12 @@ var (
 		"Square":              FontAwesomeString("Square"),
 		"Sun":                 FontAwesomeString("Sun"),
 		"Thumbtack":           FontAwesomeString("Thumbtack"),
+		"Times":               FontAwesomeString("Times"),
 		"Trash":               FontAwesomeString("Trash"),
 		"Wind":                FontAwesomeString("Wind"),
+		"WindowMaximize":      FontAwesomeString("WindowMaximize"),
+		"WindowMinimize":      FontAwesomeString("WindowMinimize"),
+		"WindowRestore":       FontAwesomeString("WindowRestore"),
 	}
 	faBrandsUsedIcons map[string]string = map[string]string{
 		"Discord": FontAwesomeBrandsString("Discord"),

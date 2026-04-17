@@ -123,6 +123,9 @@ func New(config *Config, lg *log.Logger) (Platform, error) {
 	glfw.WindowHint(glfw.Visible, 0)
 	// Disable GLFW_AUTO_ICONIFY to stop the window from automatically minimizing in fullscreen
 	glfw.WindowHint(glfw.AutoIconify, 0)
+	// Remove native OS decorations; we draw our own title bar in the main
+	// menu bar so the window chrome matches the rest of the UI.
+	glfw.WindowHint(glfw.Decorated, 0)
 	// Maybe enable multisampling
 	if config.EnableMSAA {
 		glfw.WindowHint(glfw.Samples, 4)
@@ -308,6 +311,40 @@ func (g *glfwPlatform) WindowSize() [2]int {
 func (g *glfwPlatform) WindowPosition() [2]int {
 	x, y := g.window.GetPos()
 	return [2]int{x, y}
+}
+
+func (g *glfwPlatform) SetWindowPosition(x, y int) {
+	g.window.SetPos(x, y)
+}
+
+func (g *glfwPlatform) SetWindowSize(w, h int) {
+	if w < 200 {
+		w = 200
+	}
+	if h < 150 {
+		h = 150
+	}
+	g.window.SetSize(w, h)
+}
+
+func (g *glfwPlatform) IconifyWindow() {
+	g.window.Iconify()
+}
+
+func (g *glfwPlatform) IsWindowMaximized() bool {
+	return g.window.GetAttrib(glfw.Maximized) == glfw.True
+}
+
+func (g *glfwPlatform) ToggleMaximizeWindow() {
+	if g.IsWindowMaximized() {
+		g.window.Restore()
+	} else {
+		g.window.Maximize()
+	}
+}
+
+func (g *glfwPlatform) CloseWindow() {
+	g.window.SetShouldClose(true)
 }
 
 func (g *glfwPlatform) FramebufferSize() [2]float32 {

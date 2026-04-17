@@ -80,6 +80,28 @@ type Platform interface {
 	// WindowSize returns the position of the window on the screen.
 	WindowPosition() [2]int
 
+	// SetWindowPosition moves the window to the given screen coordinates.
+	// Used by the custom title bar to implement window dragging.
+	SetWindowPosition(x, y int)
+
+	// SetWindowSize resizes the window. Used by the custom title bar to
+	// implement edge resizing on borderless windows.
+	SetWindowSize(w, h int)
+
+	// IconifyWindow minimizes the window to the taskbar / dock.
+	IconifyWindow()
+
+	// IsWindowMaximized reports whether the window is currently maximized.
+	IsWindowMaximized() bool
+
+	// ToggleMaximizeWindow maximizes the window if it isn't, or restores it
+	// to its previous size if it is.
+	ToggleMaximizeWindow()
+
+	// CloseWindow requests that the window be closed. Equivalent to the OS
+	// close button on a decorated window.
+	CloseWindow()
+
 	// FramebufferSize returns the dimension of the framebuffer.
 	FramebufferSize() [2]float32
 
