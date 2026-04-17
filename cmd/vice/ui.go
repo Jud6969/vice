@@ -868,6 +868,19 @@ func applyPinWindowClass(windowTitle string, config *Config, p platform.Platform
 	imgui.SetNextWindowClass(wc)
 }
 
+// applyDockedWindowClass is the docked counterpart to applyPinWindowClass.
+// Used for Messages / Flight Strips when they are integrated into the
+// main window's letterbox bar. Unlike applyPinWindowClass it does NOT set
+// imgui.ViewportFlagsNoAutoMerge, so the window stays inside the main
+// viewport instead of spawning a separate OS window.
+func applyDockedWindowClass() {
+	wc := imgui.NewWindowClass()
+	// Explicitly clear NoAutoMerge so imgui folds this window into the
+	// parent viewport even if a previous frame's flags lingered.
+	wc.SetViewportFlagsOverrideClear(imgui.ViewportFlagsNoAutoMerge)
+	imgui.SetNextWindowClass(wc)
+}
+
 // drawPinButton draws a thumbtack toggle in the title bar of the current
 // window. Call immediately after imgui.BeginV().
 func drawPinButton(windowTitle string, config *Config, p platform.Platform) {
