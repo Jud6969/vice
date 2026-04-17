@@ -167,33 +167,6 @@ func DrawPanes(pane Pane, p platform.Platform, r renderer.Renderer,
 	pane.Draw(&ctx, commandBuffer)
 	commandBuffer.ResetState()
 
-	// Draw a 1 px white border on the outer edge of the square scope pane.
-	// Only runs in scope-square mode — in free-aspect mode the scope fills
-	// the framebuffer and there's no "panel" outline to draw.
-	if p.SquareScopePane() {
-		commandBuffer.SetDrawBounds(
-			math.Extent2D{
-				P0: [2]float32{0, 0},
-				P1: [2]float32{displaySize[0], displaySize[1]},
-			},
-			p.FramebufferSize()[1]/p.DisplaySize()[1],
-		)
-		border := renderer.GetLinesDrawBuilder()
-		// Inset by 0.5 px so the 1 px line sits fully inside the square.
-		x0 := paneDisplayExtent.P0[0] + 0.5
-		y0 := paneDisplayExtent.P0[1] + 0.5
-		x1 := paneDisplayExtent.P1[0] - 0.5
-		y1 := paneDisplayExtent.P1[1] - 0.5
-		border.AddLineLoop([][2]float32{
-			{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1},
-		})
-		commandBuffer.SetRGB(renderer.RGB{R: 1, G: 1, B: 1})
-		commandBuffer.LineWidth(1, p.DPIScale())
-		border.GenerateCommands(commandBuffer)
-		renderer.ReturnLinesDrawBuilder(border)
-		commandBuffer.ResetState()
-	}
-
 	if !isDragging && !isClicked {
 		wm.mouseConsumerOverride = nil
 	}
