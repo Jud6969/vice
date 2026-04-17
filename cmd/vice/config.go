@@ -158,8 +158,15 @@ func (c *Config) SaveIfChanged(renderer renderer.Renderer, platform platform.Pla
 
 	// Grab assorted things that may have changed during this session.
 	c.ImGuiSettings = imgui.SaveIniSettingsToMemory()
-	c.InitialWindowSize = platform.WindowSize()
-	c.InitialWindowPosition = platform.WindowPosition()
+	// Only persist window geometry from a real windowed state. If we
+	// captured the fullscreen or maximized geometry (which equals the
+	// monitor size), the next launch's EnableFullScreen(false) would
+	// restore the borderless window to monitor-size at the origin —
+	// visually identical to fullscreen, but with no usable chrome.
+	if !platform.IsFullScreen() && !platform.IsWindowMaximized() {
+		c.InitialWindowSize = platform.WindowSize()
+		c.InitialWindowPosition = platform.WindowPosition()
+	}
 	fn := configFilePath(lg)
 	onDisk, err := os.ReadFile(fn)
 	if err != nil {

@@ -123,13 +123,21 @@ func New(config *Config, lg *log.Logger) (Platform, error) {
 	glfw.WindowHint(glfw.ContextVersionMinor, 1)
 
 	vm := glfw.GetPrimaryMonitor().GetVideoMode()
-	if config.InitialWindowSize[0] == 0 || config.InitialWindowSize[1] == 0 {
+	// Fall back to a safely-inset windowed size if the saved geometry is
+	// missing or matches/exceeds the monitor. A pre-fix config may have
+	// persisted fullscreen/maximized geometry; without this guard, a
+	// borderless monitor-sized window at (0,0) looks identical to
+	// fullscreen and leaves the user with no usable chrome.
+	if config.InitialWindowSize[0] == 0 || config.InitialWindowSize[1] == 0 ||
+		config.InitialWindowSize[0] >= vm.Width || config.InitialWindowSize[1] >= vm.Height {
 		if runtime.GOOS == "windows" {
 			config.InitialWindowSize[0] = vm.Width - 200
 			config.InitialWindowSize[1] = vm.Height - 300
+			config.InitialWindowPosition = [2]int{100, 100}
 		} else {
 			config.InitialWindowSize[0] = vm.Width - 150
 			config.InitialWindowSize[1] = vm.Height - 150
+			config.InitialWindowPosition = [2]int{75, 75}
 		}
 	}
 	// Migrate legacy MainWindowSquare to the new WindowScaleMode field.

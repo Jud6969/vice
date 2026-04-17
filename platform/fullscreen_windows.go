@@ -24,16 +24,24 @@ func (g *glfwPlatform) EnableFullScreen(fullscreen bool) {
 	if fullscreen {
 		g.window.SetMonitor(monitor, 0, 0, vm.Width, vm.Height, vm.RefreshRate)
 	} else {
+		// Restore to a strictly windowed size. If the saved size matches
+		// the monitor (e.g. the previous shutdown captured a fullscreen
+		// or maximized state), the borderless window would land at
+		// monitor-size at (0,0) — visually identical to fullscreen, with
+		// no usable chrome — so fall back to a sensible default and
+		// re-anchor the position.
 		windowSize := [2]int{g.config.InitialWindowSize[0], g.config.InitialWindowSize[1]}
-
-		if windowSize[0] == 0 || windowSize[1] == 0 {
+		windowPos := [2]int{g.config.InitialWindowPosition[0], g.config.InitialWindowPosition[1]}
+		if windowSize[0] == 0 || windowSize[1] == 0 ||
+			windowSize[0] >= vm.Width || windowSize[1] >= vm.Height {
 			windowSize[0] = vm.Width - 200
 			windowSize[1] = vm.Height - 300
+			windowPos = [2]int{100, 100}
 		}
 		// Note: scope-square mode no longer forces a square window, only
 		// installs a SetSizeLimits floor; GLFW will clamp the size below
 		// to satisfy that floor automatically.
-		g.window.SetMonitor(nil, g.config.InitialWindowPosition[0], g.config.InitialWindowPosition[1],
+		g.window.SetMonitor(nil, windowPos[0], windowPos[1],
 			windowSize[0], windowSize[1], glfw.DontCare)
 	}
 }
