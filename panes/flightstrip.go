@@ -171,17 +171,13 @@ func formatRoute(route string, fw, width float32, nlines int) []string {
 // using imgui tables for layout.
 
 func (fsp *FlightStripPane) DrawWindow(show *bool, c *client.ControlClient,
-	p platform.Platform, unpinnedWindows map[string]struct{}, dockedFlags imgui.WindowFlags, lg *log.Logger) {
+	p platform.Platform, unpinnedWindows map[string]struct{}, lg *log.Logger) {
 
 	fsp.reconcileOrder(c.State.FlightStripACIDs)
 
-	if dockedFlags == 0 {
-		imgui.SetNextWindowSizeConstraints(imgui.Vec2{X: 400, Y: 200}, imgui.Vec2{X: 4096, Y: 4096})
-	}
-	imgui.BeginV("Flight Strips", show, dockedFlags)
-	if dockedFlags == 0 {
-		DrawPinButton("Flight Strips", unpinnedWindows, p)
-	}
+	imgui.SetNextWindowSizeConstraints(imgui.Vec2{X: 400, Y: 200}, imgui.Vec2{X: 4096, Y: 4096})
+	imgui.BeginV("Flight Strips", show, 0)
+	DrawPinButton("Flight Strips", unpinnedWindows, p)
 	if fsp.font != nil {
 		fsp.font.ImguiPush()
 	}

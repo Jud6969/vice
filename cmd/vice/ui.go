@@ -390,61 +390,13 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 			ui.launchControlWindow.Draw(eventStream, p, config)
 		}
 
-		// Layout math for docked (integrated) panes. Each pane's target
-		// letterbox bar is computed from the main window's current size
-		// and the scope-square side length. If scope-square mode is off,
-		// or the user has popped the pane out, or there is no usable
-		// letterbox (barWidth <= 0), fall through to today's floating
-		// OS-window behavior.
-		displaySize := p.DisplaySize()
-		squareActive := p.SquareScopePane()
-		side := displaySize[0]
-		if displaySize[1] < side {
-			side = displaySize[1]
-		}
-		barWidth := (displaySize[0] - side) / 2
-		barTop := ui.menuBarHeight
-		barHeight := displaySize[1] - ui.menuBarHeight
-
-		dockPane := func(onRight bool) (imgui.WindowFlags, bool) {
-			if !squareActive || barWidth <= 0 {
-				return 0, false
-			}
-			x := float32(0)
-			if onRight {
-				x = displaySize[0] - barWidth
-			}
-			imgui.SetNextWindowPos(imgui.Vec2{X: x, Y: barTop})
-			imgui.SetNextWindowSize(imgui.Vec2{X: barWidth, Y: barHeight})
-			applyDockedWindowClass()
-			return imgui.WindowFlagsNoMove | imgui.WindowFlagsNoResize |
-				imgui.WindowFlagsNoCollapse | imgui.WindowFlagsNoTitleBar, true
-		}
-
 		if ui.showMessages {
-			messagesOnRight := config.MessagesOnRight
-			var flags imgui.WindowFlags
-			var docked bool
-			if !config.PopOutMessages {
-				flags, docked = dockPane(messagesOnRight)
-			}
-			if !docked {
-				applyPinWindowClass("Messages", config, p)
-			}
-			config.MessagesPane.DrawWindow(&ui.showMessages, controlClient, p, config.UnpinnedWindows, flags, lg)
+			applyPinWindowClass("Messages", config, p)
+			config.MessagesPane.DrawWindow(&ui.showMessages, controlClient, p, config.UnpinnedWindows, lg)
 		}
 		if ui.showFlightStrips {
-			// Flight strips sit on the opposite side of Messages.
-			stripsOnRight := !config.MessagesOnRight
-			var flags imgui.WindowFlags
-			var docked bool
-			if !config.PopOutFlightStrips {
-				flags, docked = dockPane(stripsOnRight)
-			}
-			if !docked {
-				applyPinWindowClass("Flight Strips", config, p)
-			}
-			config.FlightStripPane.DrawWindow(&ui.showFlightStrips, controlClient, p, config.UnpinnedWindows, flags, lg)
+			applyPinWindowClass("Flight Strips", config, p)
+			config.FlightStripPane.DrawWindow(&ui.showFlightStrips, controlClient, p, config.UnpinnedWindows, lg)
 		}
 	}
 
@@ -916,19 +868,6 @@ func applyPinWindowClass(windowTitle string, config *Config, p platform.Platform
 	imgui.SetNextWindowClass(wc)
 }
 
-// applyDockedWindowClass is the docked counterpart to applyPinWindowClass.
-// Used for Messages / Flight Strips when they are integrated into the
-// main window's letterbox bar. Unlike applyPinWindowClass it does NOT set
-// imgui.ViewportFlagsNoAutoMerge, so the window stays inside the main
-// viewport instead of spawning a separate OS window.
-func applyDockedWindowClass() {
-	wc := imgui.NewWindowClass()
-	// Explicitly clear NoAutoMerge so imgui folds this window into the
-	// parent viewport even if a previous frame's flags lingered.
-	wc.SetViewportFlagsOverrideClear(imgui.ViewportFlagsNoAutoMerge)
-	imgui.SetNextWindowClass(wc)
-}
-
 // drawPinButton draws a thumbtack toggle in the title bar of the current
 // window. Call immediately after imgui.BeginV().
 func drawPinButton(windowTitle string, config *Config, p platform.Platform) {
@@ -1011,24 +950,6 @@ func uiDrawSettingsWindow(c *client.ControlClient, config *Config, activeRadarPa
 				p.SetMainWindowSquare(false)
 			}
 		}
-
-		// Integrated-pane settings. Only meaningful while scope-square
-		// mode is active, but we leave them enabled regardless so the
-		// user can configure them ahead of toggling scope-square on.
-		imgui.Separator()
-		imgui.TextUnformatted("Integrated panes (STARS/ERAM scaling):")
-		imgui.Checkbox("Pop out Messages", &config.PopOutMessages)
-		imgui.Checkbox("Pop out Flight Strips", &config.PopOutFlightStrips)
-
-		messagesLeft := !config.MessagesOnRight
-		if imgui.RadioButtonBool("Messages left / Flight Strips right", messagesLeft) {
-			config.MessagesOnRight = false
-		}
-		imgui.SameLine()
-		if imgui.RadioButtonBool("Messages right / Flight Strips left", !messagesLeft) {
-			config.MessagesOnRight = true
-		}
-		imgui.Separator()
 
 		imgui.Checkbox("Start in full-screen", &config.StartInFullScreen)
 
