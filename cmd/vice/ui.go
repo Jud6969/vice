@@ -392,7 +392,7 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 
 		if ui.showMessages {
 			applyPinWindowClass("Messages", config, p)
-			config.MessagesPane.DrawWindow(&ui.showMessages, controlClient, p, config.UnpinnedWindows, lg)
+			config.MessagesPane.DrawWindow(&ui.showMessages, controlClient, p, config.UnpinnedWindows, 0, lg)
 		}
 		if ui.showFlightStrips {
 			applyPinWindowClass("Flight Strips", config, p)
