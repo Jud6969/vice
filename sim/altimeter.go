@@ -10,17 +10,13 @@ import (
 )
 
 // initPilotAltim sets ac.PilotAltim and ac.PilotAltimSetAt according to the
-// hybrid spawn rule. No-op if SimulatePilotAltimeter is off.
+// hybrid spawn rule.
 //
 // Categories:
 //   - Departure: local field altimeter (or nearest METAR if airport has no METAR)
 //   - Arrival / IFR overflight / VFR with flight-following: nearest METAR at spawn
 //   - VFR overflight without flight-following: 70% nearest, 30% random within 100 NM
 func (s *Sim) initPilotAltim(ac *Aircraft) {
-	if !s.State.FacilityAdaptation.SimulatePilotAltimeter {
-		return
-	}
-
 	pos := ac.Nav.FlightState.Position
 
 	wrongEligible := ac.TypeOfFlight == av.FlightTypeOverflight &&
@@ -102,12 +98,9 @@ func altimBiasFeet(nearestActualInHg, pilotInHg float32) float32 {
 }
 
 // altimBiasFor returns the current altimeter bias for ac, applying the same
-// gating as the per-tick update loop (feature on, airborne, below FL180).
-// Returns 0 when the bias should not apply.
+// gating as the per-tick update loop (airborne, below FL180). Returns 0
+// when the bias should not apply.
 func (s *Sim) altimBiasFor(ac *Aircraft) float32 {
-	if !s.State.FacilityAdaptation.SimulatePilotAltimeter {
-		return 0
-	}
 	if !ac.Nav.IsAirborne() || ac.Altitude() >= 18000 {
 		return 0
 	}

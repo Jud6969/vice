@@ -2090,11 +2090,8 @@ func (s *Sim) ATISCommand(tcw TCW, callsign av.ADSBCallsign, letter string) (av.
 // tunePilotAltimToATISAirport sets the pilot's altimeter to the METAR for
 // the airport whose ATIS the pilot just acknowledged. Arrivals prefer the
 // arrival airport; everything else prefers the departure airport. No-op
-// when the feature is off or no METAR is available.
+// when no METAR is available.
 func (s *Sim) tunePilotAltimToATISAirport(ac *Aircraft) {
-	if !s.State.FacilityAdaptation.SimulatePilotAltimeter {
-		return
-	}
 	candidates := []string{ac.FlightPlan.ArrivalAirport, ac.FlightPlan.DepartureAirport}
 	if ac.TypeOfFlight != av.FlightTypeArrival {
 		candidates = []string{ac.FlightPlan.DepartureAirport, ac.FlightPlan.ArrivalAirport}
@@ -3042,11 +3039,8 @@ func (s *Sim) enqueueEmergencyTransmission(callsign av.ADSBCallsign, tcp TCP, rt
 // handleAltimeterSetting processes an "altimeter X.XX" command issued by a
 // controller. Mutates the pilot's altimeter setting and returns a readback
 // intent so the acknowledgment joins any other readbacks from the same
-// transmission. Returns nil when the feature toggle is off.
+// transmission.
 func (s *Sim) handleAltimeterSetting(ac *Aircraft, settingHundredths int) av.CommandIntent {
-	if !s.State.FacilityAdaptation.SimulatePilotAltimeter {
-		return nil
-	}
 	ac.PilotAltim = float32(settingHundredths) / 100
 	ac.PilotAltimSetAt = s.State.SimTime
 	return av.AltimeterReadbackIntent{SettingHundredths: settingHundredths}
