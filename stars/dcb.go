@@ -1083,14 +1083,19 @@ func dcbCaptureMouseFromRegion(ctx *panes.Context, buttonScale float32) {
 }
 
 func dcbCaptureMouse(ctx *panes.Context, bounds math.Extent2D) {
-	// This is horrific and one of many ugly things about capturing the
-	// mouse, but most of Panes' work is in the simplified space of a
-	// pane coordinate system; here we need something in terms of
-	// window coordinates, so need to both account for the viewport
-	// call that lets us draw things oblivious to the menubar as well
-	// as flip things in y.
-	h := ctx.PaneExtent.Height() + ctx.MenuBarHeight
-	bounds.P0[1], bounds.P1[1] = h-bounds.P1[1], h-bounds.P0[1]
+	// bounds is in pane-local coordinates: bottom-origin, with (0,0) at
+	// the pane's bottom-left corner. StartCaptureMouse expects top-origin
+	// window coordinates. Translate by the pane's offset within the
+	// window (PaneExtent.P0) and flip Y about the full display height.
+	// The previous implementation assumed the pane sat at window x=0 and
+	// covered the full vertical area below the menubar; with the
+	// scope-square mode the pane is offset to a centered sub-region, so
+	// both axes need an explicit offset.
+	px, py := ctx.PaneExtent.P0[0], ctx.PaneExtent.P0[1]
+	dh := ctx.Platform.DisplaySize()[1]
+	bounds.P0[0] += px
+	bounds.P1[0] += px
+	bounds.P0[1], bounds.P1[1] = dh-(py+bounds.P1[1]), dh-(py+bounds.P0[1])
 	ctx.Platform.StartCaptureMouse(bounds)
 }
 
