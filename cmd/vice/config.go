@@ -58,6 +58,19 @@ type ConfigNoSim struct {
 	ShowMessages     bool
 	ShowFlightStrips bool
 
+	// Pop-out toggles for panes that can integrate into the letterbox bars
+	// when the application is in scope-square mode. Zero value (false) means
+	// "integrated"; true means "float as an OS window" (pre-feature behavior).
+	PopOutMessages     bool
+	PopOutFlightStrips bool
+
+	// Side layout for the integrated panes. Zero value (false) places
+	// Messages in the left letterbox bar and Flight Strips in the right.
+	// When true, the sides are swapped. The two panes can never share a
+	// side: the flight-strip side is always the opposite of the messages
+	// side.
+	MessagesOnRight bool
+
 	AskedDiscordOptIn      bool
 	InhibitDiscordActivity util.AtomicBool
 	NotifiedTargetGenMode  bool
