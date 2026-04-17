@@ -145,6 +145,11 @@ type Aircraft struct {
 	// random delay to simulate identification and reaction time).
 	VisualRequestTime Time
 
+	// Altimeter setting simulation. PilotAltim == 0 is the "feature off /
+	// not initialized" sentinel; bias math short-circuits to 0 in that case.
+	PilotAltim      float32
+	PilotAltimSetAt Time
+
 	TouchAndGosRemaining int // >0 means pattern aircraft; decremented each lap
 }
 
