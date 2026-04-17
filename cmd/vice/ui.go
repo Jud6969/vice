@@ -333,12 +333,28 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 		if imgui.IsItemHovered() {
 			imgui.SetTooltip("Minimize")
 		}
-		maxIcon := util.Select(p.IsWindowMaximized(), renderer.FontAwesomeIconWindowRestore, renderer.FontAwesomeIconWindowMaximize)
+		// The maximize/restore button also serves as the only way out of
+		// true GLFW fullscreen now that the dedicated fullscreen toggle
+		// has been removed. Restore() does not exit a SetMonitor-based
+		// fullscreen, so detect that case explicitly and call
+		// EnableFullScreen(false) instead.
+		maxRestore := p.IsWindowMaximized() || p.IsFullScreen()
+		maxIcon := util.Select(maxRestore, renderer.FontAwesomeIconWindowRestore, renderer.FontAwesomeIconWindowMaximize)
 		if imgui.Button(maxIcon) {
-			p.ToggleMaximizeWindow()
+			if p.IsFullScreen() {
+				p.EnableFullScreen(false)
+			} else {
+				p.ToggleMaximizeWindow()
+			}
 		}
 		if imgui.IsItemHovered() {
-			imgui.SetTooltip(util.Select(p.IsWindowMaximized(), "Restore", "Maximize"))
+			tip := "Maximize"
+			if p.IsFullScreen() {
+				tip = "Exit full-screen"
+			} else if p.IsWindowMaximized() {
+				tip = "Restore"
+			}
+			imgui.SetTooltip(tip)
 		}
 		// Tint the close button red on hover to telegraph the destructive action.
 		imgui.PushStyleColorVec4(imgui.ColButtonHovered, imgui.Vec4{0.85, 0.15, 0.15, 1})
@@ -1359,7 +1375,16 @@ func uiHandleWindowResize(p platform.Platform) {
 // region toggles maximize.
 func uiHandleTitleBarDrag(p platform.Platform) {
 	if p.IsFullScreen() {
+		// In true fullscreen, dragging is meaningless — but a double-click
+		// in the menubar should still offer a way out, mirroring the
+		// title-bar maximize button's exit-fullscreen behavior.
 		ui.windowDragActive = false
+		mouse := p.GetMouse()
+		inMenuBar := mouse.Pos[1] >= 0 && mouse.Pos[1] <= ui.menuBarHeight
+		overItem := imgui.IsAnyItemHovered() || imgui.IsAnyItemActive()
+		if inMenuBar && !overItem && mouse.DoubleClicked[platform.MouseButtonPrimary] {
+			p.EnableFullScreen(false)
+		}
 		return
 	}
 
