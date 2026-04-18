@@ -383,7 +383,7 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 		uiDrawHomeDialog(mgr, config, p, lg)
 	}
 
-	if controlClient != nil && !hasActiveModalDialogs() {
+	if controlClient != nil && controlClient.Connected() && !hasActiveModalDialogs() {
 		uiDrawSettingsWindow(controlClient, config, activeRadarPane, p, lg)
 
 		if ui.showScenarioInfo {
