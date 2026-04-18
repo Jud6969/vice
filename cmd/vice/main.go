@@ -631,6 +631,12 @@ func runGUI(config *Config, configErr error, lg *log.Logger) error {
 		}
 	}
 
+	// Start with the main (radar) window hidden. The home dialog is its
+	// own imgui-multi-viewport OS window and renders independently.
+	// ShowWindow is called when a scenario is connected (see where
+	// controlClient is first assigned).
+	plat.HideWindow()
+
 	///////////////////////////////////////////////////////////////////////////
 	// Main event / rendering loop
 	lg.Info("Starting main loop")
