@@ -466,24 +466,28 @@ func (ac *Aircraft) AltitudeOurDiscretion() av.CommandIntent {
 	}
 }
 
-func (ac *Aircraft) ContactTower(lg *log.Logger, freq av.Frequency) (av.CommandIntent, bool) {
+// ContactTower produces a ContactTowerIntent if the aircraft is eligible.
+// When target is nil and positionOnly is true, renders a position-only
+// readback (STT bare-tower path, single-tower airport). Otherwise target
+// must be non-nil and the readback includes position + frequency.
+func (ac *Aircraft) ContactTower(target *av.Controller, freq av.Frequency, positionOnly bool, lg *log.Logger) (av.CommandIntent, bool) {
 	if ac.GotContactTower {
-		// No response; they're not on our frequency any more.
 		return nil, false
-	} else if ac.FlightPlan.Rules == av.FlightRulesVFR {
-		// VFR aircraft on flight following can be told to contact tower
-		// without needing an approach assignment.
-		ac.GotContactTower = true
-		_ = freq
-		return av.ContactTowerIntent{PositionOnly: true}, true
-	} else if ac.Nav.Approach.Assigned == nil {
-		return av.MakeUnableIntent("unable. We haven't been given an approach."), false
-	} else if !ac.Nav.Approach.Cleared {
-		return av.MakeUnableIntent("unable. We haven't been cleared for the approach."), false
-	} else {
-		ac.GotContactTower = true
-		return av.ContactTowerIntent{PositionOnly: true}, true
 	}
+	if ac.FlightPlan.Rules != av.FlightRulesVFR {
+		if ac.Nav.Approach.Assigned == nil {
+			return av.MakeUnableIntent("unable. We haven't been given an approach."), false
+		}
+		if !ac.Nav.Approach.Cleared {
+			return av.MakeUnableIntent("unable. We haven't been cleared for the approach."), false
+		}
+	}
+	ac.GotContactTower = true
+	return av.ContactTowerIntent{
+		ToController: target,
+		Frequency:    freq,
+		PositionOnly: positionOnly,
+	}, true
 }
 
 func (ac *Aircraft) InterceptApproach(lg *log.Logger) av.CommandIntent {

@@ -2196,15 +2196,51 @@ func (s *Sim) DescendViaSTAR(tcw TCW, callsign av.ADSBCallsign) (av.CommandInten
 		})
 }
 
-func (s *Sim) ContactTower(tcw TCW, callsign av.ADSBCallsign, freq av.Frequency) (av.CommandIntent, error) {
+func (s *Sim) ContactTower(tcw TCW, callsign av.ADSBCallsign, freq av.Frequency, positionHint string, fromTypedCommand bool) (av.CommandIntent, error) {
 	s.mu.Lock(s.lg)
 	defer s.mu.Unlock(s.lg)
 
+	ac, ok := s.Aircraft[callsign]
+	if !ok {
+		return nil, ErrNoMatchingFlight
+	}
+	airport := ac.FlightPlan.ArrivalAirport
+	towers := s.towersForAirport(airport)
+
+	var target *av.Controller
+	positionOnly := false
+
+	if freq == 0 {
+		switch len(towers) {
+		case 0:
+			return nil, ErrNoTowerForAirport
+		case 1:
+			target = towers[0]
+			positionOnly = !fromTypedCommand
+		default:
+			return nil, ErrAmbiguousTower
+		}
+	} else {
+		resolved, err := s.resolveControllerByFrequency(ac, freq, positionHint)
+		if err != nil {
+			return av.UnknownFrequencyIntent{Frequency: freq}, nil
+		}
+		prefix := airport + "_"
+		if !strings.HasSuffix(resolved.Callsign, "_TWR") || !strings.HasPrefix(resolved.Callsign, prefix) {
+			return nil, ErrFrequencyNotTower
+		}
+		target = resolved
+	}
+
 	return s.dispatchControlledAircraftCommand(tcw, callsign,
 		func(tcw TCW, ac *Aircraft) av.CommandIntent {
-			result, ok := ac.ContactTower(s.lg, freq)
+			result, ok := ac.ContactTower(target, freq, positionOnly, s.lg)
 			if ok {
-				ac.ControllerFrequency = "_TOWER"
+				if target != nil {
+					ac.ControllerFrequency = ControlPosition(target.Callsign)
+				} else {
+					ac.ControllerFrequency = "_TOWER"
+				}
 			}
 			return result
 		})
@@ -4079,7 +4115,7 @@ func (s *Sim) runOneControlCommand(tcw TCW, callsign av.ADSBCallsign, command st
 			if ac, ok := s.Aircraft[callsign]; ok && ac.Nav.Approach.Cleared {
 				// STT sometimes gets confused and gives FC for "contact tower" instructions, so
 				// we'll just roll with that.
-				return s.ContactTower(tcw, callsign, av.Frequency(0))
+				return s.ContactTower(tcw, callsign, 0, "", true)
 			} else {
 				return s.ContactTrackingController(tcw, ACID(callsign))
 			}
@@ -4287,7 +4323,7 @@ func (s *Sim) runOneControlCommand(tcw TCW, callsign av.ADSBCallsign, command st
 					freq = av.Frequency(n)
 				}
 			}
-			return s.ContactTower(tcw, callsign, freq)
+			return s.ContactTower(tcw, callsign, freq, "", true)
 		} else if n := len(command); n > 2 {
 			if deg, err := strconv.Atoi(command[1 : n-1]); err == nil {
 				if command[n-1] == 'L' {
