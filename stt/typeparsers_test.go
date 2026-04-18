@@ -60,6 +60,33 @@ func TestFrequencyParser(t *testing.T) {
 			},
 			want: 0, cons: 0,
 		},
+		{
+			name: "aggregated_prefix_token",
+			tokens: []Token{
+				{Type: TokenNumber, Value: 127}, {Type: TokenWord, Text: "point"},
+				{Type: TokenNumber, Value: 7}, {Type: TokenNumber, Value: 5},
+			},
+			want: 127750, cons: 4,
+		},
+		{
+			name: "lower_boundary_inclusive",
+			tokens: []Token{
+				{Type: TokenNumber, Value: 1}, {Type: TokenNumber, Value: 1},
+				{Type: TokenNumber, Value: 8}, {Type: TokenWord, Text: "point"},
+				{Type: TokenNumber, Value: 0}, {Type: TokenNumber, Value: 0},
+			},
+			want: 118000, cons: 6,
+		},
+		{
+			name: "upper_boundary_inclusive",
+			tokens: []Token{
+				{Type: TokenNumber, Value: 1}, {Type: TokenNumber, Value: 3},
+				{Type: TokenNumber, Value: 6}, {Type: TokenWord, Text: "point"},
+				{Type: TokenNumber, Value: 9}, {Type: TokenNumber, Value: 7},
+				{Type: TokenNumber, Value: 5},
+			},
+			want: 136975, cons: 7,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
