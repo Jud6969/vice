@@ -217,3 +217,32 @@ func TestContactTowerIntentWithFrequency(t *testing.T) {
 		assertContainsAny(t, readback, "124.3")
 	}
 }
+
+func TestContactIntentSameFacilityFreqOnly(t *testing.T) {
+	ctrl := &Controller{Callsign: "MCO_APP", RadioName: "Orlando Approach", Frequency: 127750, Facility: "MCO"}
+	intent := ContactIntent{Type: ContactController, ToController: ctrl, Frequency: 127750, SameFacility: true}
+	for seed := uint64(1); seed <= 20; seed++ {
+		readback := renderIntentForTest(intent, seed)
+		if !strings.Contains(readback, "127.75") {
+			t.Errorf("seed %d: want '127.75' in output, got %q", seed, readback)
+		}
+		if strings.Contains(readback, "orlando") {
+			t.Errorf("seed %d: same-facility readback should not include controller name 'orlando': %q", seed, readback)
+		}
+		if strings.Contains(readback, "approach") {
+			t.Errorf("seed %d: same-facility readback should not include controller name 'approach': %q", seed, readback)
+		}
+	}
+}
+
+func TestContactIntentCrossFacilityFull(t *testing.T) {
+	ctrl := &Controller{Callsign: "ZJX_N56", RadioName: "Jacksonville Center", Frequency: 134000, Facility: "ZJX"}
+	intent := ContactIntent{Type: ContactController, ToController: ctrl, Frequency: 134000, SameFacility: false}
+	for seed := uint64(1); seed <= 20; seed++ {
+		readback := renderIntentForTest(intent, seed)
+		if !strings.Contains(readback, "134.0") {
+			t.Errorf("seed %d: want '134.0' in output, got %q", seed, readback)
+		}
+		assertContainsAny(t, readback, "jacksonville", "center")
+	}
+}

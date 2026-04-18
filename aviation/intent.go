@@ -798,17 +798,25 @@ const (
 	ContactRadarTerminated
 )
 
-// ContactIntent represents contact/handoff commands
+// ContactIntent represents contact/handoff commands.
+// SameFacility is set by the dispatcher: true iff the aircraft's current
+// controller and the target controller share a Facility. Typed-command paths
+// pass false unconditionally so readbacks always include position+frequency.
 type ContactIntent struct {
 	Type         ContactType
-	ToController *Controller // the controller being contacted
+	ToController *Controller
 	Frequency    Frequency
-	IsDeparture  bool // affects rendering (departure vs approach controller)
+	IsDeparture  bool
+	SameFacility bool
 }
 
 func (c ContactIntent) Render(rt *RadioTransmission, r *rand.Rand) {
 	switch c.Type {
 	case ContactController:
+		if c.SameFacility {
+			rt.Add("[|that's ]{freq}, [good day|seeya|thanks|]", c.Frequency)
+			return
+		}
 		if c.IsDeparture {
 			rt.Add("[contact|over to|] {dctrl} on {freq}, [good day|seeya|]", c.ToController, c.Frequency)
 		} else {

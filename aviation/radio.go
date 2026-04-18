@@ -1433,7 +1433,7 @@ type FrequencySnippetFormatter struct{}
 
 func (FrequencySnippetFormatter) Written(arg any) string {
 	f := arg.(Frequency)
-	return fmt.Sprintf("%03d.%02d", f/1000, (f%1000)/10)
+	return f.StringSpoken()
 }
 
 func (FrequencySnippetFormatter) Spoken(r *rand.Rand, arg any) string {
