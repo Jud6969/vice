@@ -384,6 +384,14 @@ func (g *glfwPlatform) SetWindowSize(w, h int) {
 	g.window.SetSize(w, h)
 }
 
+func (g *glfwPlatform) ShowWindow() {
+	g.window.Show()
+}
+
+func (g *glfwPlatform) HideWindow() {
+	g.window.Hide()
+}
+
 func (g *glfwPlatform) IconifyWindow() {
 	g.window.Iconify()
 }

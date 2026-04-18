@@ -98,6 +98,15 @@ type Platform interface {
 	// implement edge resizing on borderless windows.
 	SetWindowSize(w, h int)
 
+	// ShowWindow makes the main application window visible. Used to
+	// reveal the radar window after a scenario is selected.
+	ShowWindow()
+
+	// HideWindow hides the main application window. Used to return the
+	// app to the home/connect dialog state without tearing down the
+	// GLFW context. imgui secondary viewports continue to render.
+	HideWindow()
+
 	// IconifyWindow minimizes the window to the taskbar / dock.
 	IconifyWindow()
 
