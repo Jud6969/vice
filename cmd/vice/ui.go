@@ -212,7 +212,7 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 			}
 		}
 
-		if imgui.Button(renderer.FontAwesomeIconRedo) {
+		if imgui.Button(renderer.FontAwesomeIconRedo) && !hasActiveModalDialogs() {
 			uiReturnToHomeDialog(mgr, p)
 		}
 		if imgui.IsItemHovered() {
@@ -359,7 +359,7 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 		// Tint the close button red on hover to telegraph the destructive action.
 		imgui.PushStyleColorVec4(imgui.ColButtonHovered, imgui.Vec4{0.85, 0.15, 0.15, 1})
 		imgui.PushStyleColorVec4(imgui.ColButtonActive, imgui.Vec4{0.7, 0.1, 0.1, 1})
-		if imgui.Button(renderer.FontAwesomeIconTimes) {
+		if imgui.Button(renderer.FontAwesomeIconTimes) && !hasActiveModalDialogs() {
 			uiReturnToHomeDialog(mgr, p)
 		}
 		imgui.PopStyleColorV(2)
@@ -415,7 +415,9 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 
 	drawActiveDialogBoxes()
 
-	uiDrawKeyboardWindow(controlClient, config, p)
+	if controlClient != nil && controlClient.Connected() && !hasActiveModalDialogs() {
+		uiDrawKeyboardWindow(controlClient, config, p)
+	}
 
 	imgui.PopFont()
 
