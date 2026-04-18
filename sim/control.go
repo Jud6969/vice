@@ -2247,8 +2247,17 @@ func (s *Sim) ContactTower(tcw TCW, callsign av.ADSBCallsign, freq av.Frequency,
 			return av.UnknownFrequencyIntent{Frequency: freq}, nil
 		}
 		prefix := airport + "_"
-		if !strings.HasSuffix(resolved.Callsign, "_TWR") || !strings.HasPrefix(resolved.Callsign, prefix) {
-			return nil, ErrFrequencyNotTower
+		isTower := strings.HasSuffix(resolved.Callsign, "_TWR") && strings.HasPrefix(resolved.Callsign, prefix)
+		if !isTower {
+			if len(towers) > 0 {
+				// Scenario declares tower controllers but the given frequency
+				// doesn't resolve to one — reject so the user sees the mismatch.
+				return nil, ErrFrequencyNotTower
+			}
+			// No tower controllers for this airport: degrade to a
+			// position-only "contact tower" readback while still handing
+			// the aircraft to the resolved controller.
+			positionOnly = true
 		}
 		target = resolved
 	}
