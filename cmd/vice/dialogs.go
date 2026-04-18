@@ -92,8 +92,9 @@ func uiDrawHomeDialog(mgr *client.ConnectionManager, config *Config, p platform.
 	}
 
 	// Scenario selection UI (inline, not modal). This is the same body
-	// used by ScenarioSelectionModalClient.Draw().
-	_ = homeDialog.simConfig.DrawScenarioSelectionUI(p, config)
+	// used by ScenarioSelectionModalClient.Draw(). Returns true if the
+	// user pressed Enter, which should trigger the default button.
+	enter := homeDialog.simConfig.DrawScenarioSelectionUI(p, config)
 
 	imgui.Separator()
 
@@ -103,7 +104,7 @@ func uiDrawHomeDialog(mgr *client.ConnectionManager, config *Config, p platform.
 	if disabled {
 		imgui.BeginDisabled()
 	}
-	if imgui.Button(btnText) {
+	if imgui.Button(btnText) || (enter && !disabled) {
 		if homeDialog.simConfig.ShowConfigurationWindow() {
 			// Create flow: push the configuration modal on top.
 			cfgClient := &ConfigurationModalClient{
