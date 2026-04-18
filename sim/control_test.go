@@ -376,3 +376,44 @@ func TestTowersForAirport(t *testing.T) {
 		t.Errorf("MCO: got %d, want 0", len(got))
 	}
 }
+
+func TestResolveControllerByFrequency_ZeroMatches(t *testing.T) {
+	s := &Sim{State: &CommonState{Controllers: map[TCP]*av.Controller{
+		"A": {Callsign: "A", Frequency: 127750},
+	}}}
+	ac := &Aircraft{}
+	ctrl, err := s.resolveControllerByFrequency(ac, 135000, "")
+	if ctrl != nil || err == nil {
+		t.Errorf("want (nil, err), got (%v, %v)", ctrl, err)
+	}
+}
+
+func TestResolveControllerByFrequency_UniqueMatch(t *testing.T) {
+	target := &av.Controller{Callsign: "A", Frequency: 127750}
+	s := &Sim{State: &CommonState{Controllers: map[TCP]*av.Controller{"A": target}}}
+	ac := &Aircraft{}
+	ctrl, err := s.resolveControllerByFrequency(ac, 127750, "")
+	if err != nil || ctrl != target {
+		t.Errorf("want target, got (%v, %v)", ctrl, err)
+	}
+}
+
+func TestResolveControllerByFrequency_NameHintWins(t *testing.T) {
+	a := &av.Controller{Callsign: "X", RadioName: "Orlando Approach", Frequency: 127750, Facility: "MCO"}
+	b := &av.Controller{Callsign: "Y", RadioName: "Tampa Approach", Frequency: 127750, Facility: "TPA"}
+	s := &Sim{State: &CommonState{Controllers: map[TCP]*av.Controller{"X": a, "Y": b}}}
+	ac := &Aircraft{}
+	ctrl, err := s.resolveControllerByFrequency(ac, 127750, "orlando")
+	if err != nil || ctrl != a {
+		t.Errorf("want Orlando, got (%v, %v)", ctrl, err)
+	}
+}
+
+func TestResolveControllerByFrequency_OutOfBandError(t *testing.T) {
+	s := &Sim{State: &CommonState{Controllers: map[TCP]*av.Controller{}}}
+	ac := &Aircraft{}
+	_, err := s.resolveControllerByFrequency(ac, 99000, "")
+	if err == nil {
+		t.Errorf("want err for out-of-band freq, got nil")
+	}
+}

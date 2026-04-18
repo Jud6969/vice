@@ -10,6 +10,7 @@ import (
 	"maps"
 	gomath "math"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -901,6 +902,116 @@ func (s *Sim) towersForAirport(airport string) []*av.Controller {
 		}
 	}
 	return out
+}
+
+// resolveControllerByFrequency picks the best matching controller for the
+// given frequency across the full scenario controller set. On multi-match,
+// applies the layered tiebreaker D1 (name hint), D2 (facility adjacency),
+// D3 (phase of flight). Returns (nil, ErrInvalidFrequency) on zero matches.
+func (s *Sim) resolveControllerByFrequency(ac *Aircraft, freq av.Frequency, positionHint string) (*av.Controller, error) {
+	if freq < 118000 || freq > 137000 {
+		return nil, ErrInvalidFrequency
+	}
+	var candidates []*av.Controller
+	for _, c := range s.State.Controllers {
+		if c != nil && c.Frequency == freq {
+			candidates = append(candidates, c)
+		}
+	}
+	if len(candidates) == 0 {
+		return nil, ErrInvalidFrequency
+	}
+	if len(candidates) == 1 {
+		return candidates[0], nil
+	}
+
+	// D1: name hint filter.
+	if positionHint != "" {
+		hint := strings.ToLower(strings.TrimSpace(positionHint))
+		filtered := candidates[:0:0]
+		for _, c := range candidates {
+			if strings.Contains(strings.ToLower(c.RadioName), hint) ||
+				strings.Contains(strings.ToLower(c.Callsign), hint) {
+				filtered = append(filtered, c)
+			}
+		}
+		if len(filtered) > 0 {
+			candidates = filtered
+		}
+	}
+	if len(candidates) == 1 {
+		return candidates[0], nil
+	}
+
+	// D2: facility adjacency.
+	fromFacility := ""
+	if ac != nil {
+		if fromCtrl := s.controllerForAircraft(ac); fromCtrl != nil {
+			fromFacility = fromCtrl.Facility
+		}
+	}
+	if fromFacility != "" {
+		filtered := candidates[:0:0]
+		for _, c := range candidates {
+			if c.Facility == fromFacility {
+				filtered = append(filtered, c)
+			}
+		}
+		if len(filtered) > 0 {
+			candidates = filtered
+		}
+	}
+	if len(candidates) == 1 {
+		return candidates[0], nil
+	}
+
+	// D3: phase of flight.
+	filtered := candidates[:0:0]
+	if ac != nil && ac.Nav.Approach.Cleared {
+		prefix := ac.FlightPlan.ArrivalAirport + "_"
+		for _, c := range candidates {
+			if strings.HasPrefix(c.Callsign, prefix) {
+				filtered = append(filtered, c)
+			}
+		}
+	} else {
+		for _, c := range candidates {
+			if c.ERAMFacility {
+				filtered = append(filtered, c)
+			}
+		}
+	}
+	if len(filtered) > 0 {
+		candidates = filtered
+	}
+
+	// Deterministic fallback.
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].Callsign < candidates[j].Callsign
+	})
+	if s.lg != nil && len(candidates) > 1 {
+		s.lg.Warnf("ambiguous frequency %s resolved to %s; candidates: %v",
+			freq.StringSpoken(), candidates[0].Callsign, callsignList(candidates))
+	}
+	return candidates[0], nil
+}
+
+func callsignList(cs []*av.Controller) []string {
+	out := make([]string, len(cs))
+	for i, c := range cs {
+		out[i] = c.Callsign
+	}
+	return out
+}
+
+func (s *Sim) controllerForAircraft(ac *Aircraft) *av.Controller {
+	if ac == nil {
+		return nil
+	}
+	if c, ok := s.State.Controllers[TCP(ac.ControllerFrequency)]; ok {
+		return c
+	}
+	return nil
 }
 
 func (s *Sim) AcceptHandoff(tcw TCW, acid ACID) error {

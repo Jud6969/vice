@@ -31,6 +31,7 @@ var (
 	ErrIllegalScratchpad               = errors.New("Illegal scratchpad")
 	ErrInvalidAbbreviatedFP            = errors.New("Invalid abbreviated flight plan")
 	ErrInvalidDepartureController      = errors.New("Invalid departure controller")
+	ErrInvalidFrequency                = errors.New("Frequency does not resolve to any controller")
 	ErrInvalidRestrictionAreaIndex     = errors.New("Invalid restriction area index")
 	ErrInvalidVolumeId                 = errors.New("Invalid ATPA volume ID")
 	ErrNoACType                        = errors.New("No aircraft type")
