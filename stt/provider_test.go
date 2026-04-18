@@ -722,6 +722,30 @@ func TestHandoffCommands(t *testing.T) {
 			},
 			expected: "DAL500 FC132400:los_angeles_center",
 		},
+		{
+			name:       "contact position tower with frequency",
+			transcript: "American 222 contact Kennedy tower one one nine point one zero",
+			aircraft: map[string]Aircraft{
+				"American 222": {Callsign: "AAL222", State: "on approach"},
+			},
+			expected: "AAL222 TO119100:kennedy",
+		},
+		{
+			name:       "contact tower with frequency",
+			transcript: "American 222 contact tower one one nine point one zero",
+			aircraft: map[string]Aircraft{
+				"American 222": {Callsign: "AAL222", State: "on approach"},
+			},
+			expected: "AAL222 TO119100",
+		},
+		{
+			name:       "contact position tower bare",
+			transcript: "American 222 contact Kennedy tower",
+			aircraft: map[string]Aircraft{
+				"American 222": {Callsign: "AAL222", State: "on approach"},
+			},
+			expected: "AAL222 TO",
+		},
 	}
 
 	provider := NewTranscriber(nil)

@@ -1298,6 +1298,11 @@ func registerAllCommands() {
 		WithName("over_to_position_freq"),
 		WithPriority(11),
 	)
+	// NOTE: in practice, the priority 12 "contact {text} {frequency}" pattern above
+	// overshadows this registration because {text} greedily captures the
+	// facility-type word (approach/departure/center/etc.). Kept in the table per
+	// the design spec as a safety net for tokenizer edge cases where the
+	// facility-type literal matches but {text} does not.
 	registerSTTCommand(
 		"contact approach|departure|center|ground|clearance|ramp {frequency}",
 		func(f av.Frequency) string { return "FC" + frequencyToDigits(f) },
