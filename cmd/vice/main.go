@@ -582,7 +582,9 @@ func runGUI(config *Config, configErr error, lg *log.Logger) error {
 			}
 			uiResetControlClient(c, plat, lg)
 			controlClient = c
-			plat.ShowWindow()
+			if c != nil {
+				plat.ShowWindow()
+			}
 		},
 		func(err error) {
 			switch err {
