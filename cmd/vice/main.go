@@ -631,10 +631,6 @@ func runGUI(config *Config, configErr error, lg *log.Logger) error {
 		}
 	}
 
-	if !mgr.Connected() && !*starsRandoms {
-		uiShowConnectOrBenchmarkDialog(mgr, false, config, plat, lg)
-	}
-
 	///////////////////////////////////////////////////////////////////////////
 	// Main event / rendering loop
 	lg.Info("Starting main loop")
@@ -725,7 +721,7 @@ func runGUI(config *Config, configErr error, lg *log.Logger) error {
 			break
 		}
 
-		if plat.ShouldStop() && !hasActiveModalDialogs() {
+		if (plat.ShouldStop() || homeDialogShouldQuit()) && !hasActiveModalDialogs() {
 			// Do this while we're still running the event loop.
 			if fuzzController != nil {
 				fuzzController.PrintStatistics()

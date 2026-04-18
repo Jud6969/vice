@@ -376,6 +376,13 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 	uiHandleWindowResize(p)
 	uiHandleTitleBarDrag(p)
 
+	// Home dialog renders whenever the app is disconnected. It is its
+	// own OS window (multi-viewport + NoDecoration), independent of the
+	// main GLFW window's visibility.
+	if (controlClient == nil || !controlClient.Connected()) && !hasActiveModalDialogs() {
+		uiDrawHomeDialog(mgr, config, p, lg)
+	}
+
 	if controlClient != nil && !hasActiveModalDialogs() {
 		uiDrawSettingsWindow(controlClient, config, activeRadarPane, p, lg)
 

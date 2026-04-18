@@ -57,6 +57,84 @@ func uiShowModalDialog(d *ModalDialogBox, atFront bool) {
 	}
 }
 
+// homeDialog holds persistent state for the home / scenario-manager
+// window. Kept as a package-level value because it's a singleton tied
+// to the app's disconnected state.
+var homeDialog struct {
+	simConfig *NewSimConfiguration
+	// quitRequested is set when the user clicks the window's close (X)
+	// button. The main loop polls it and exits.
+	quitRequested bool
+}
+
+// uiDrawHomeDialog renders the home / scenario manager as a standalone
+// OS window (via imgui multi-viewport + NoAutoMerge + NoDecoration).
+// Called every frame by uiDraw when the app is disconnected.
+func uiDrawHomeDialog(mgr *client.ConnectionManager, config *Config, p platform.Platform, lg *log.Logger) {
+	if homeDialog.simConfig == nil {
+		homeDialog.simConfig = MakeNewSimConfiguration(mgr, &config.LastTRACON, lg)
+	}
+
+	// Viewport class — borderless, never folds into the main viewport.
+	applyBorderlessViewportClass("vice", config, p)
+	imgui.SetNextWindowSize(imgui.Vec2{X: 500, Y: 550})
+
+	show := true
+	flags := imgui.WindowFlagsNoResize | imgui.WindowFlagsNoCollapse |
+		imgui.WindowFlagsNoTitleBar | imgui.WindowFlagsNoSavedSettings
+	if !imgui.BeginV("vice", &show, flags) {
+		imgui.End()
+		return
+	}
+	if drawWindowTitleBar("vice", "", config, p) {
+		// User clicked the home dialog's close (X) — request app quit.
+		homeDialog.quitRequested = true
+	}
+
+	// Scenario selection UI (inline, not modal). This is the same body
+	// used by ScenarioSelectionModalClient.Draw().
+	_ = homeDialog.simConfig.DrawScenarioSelectionUI(p, config)
+
+	imgui.Separator()
+
+	// Connect button — behaves like the modal's Next/Create button.
+	btnText := homeDialog.simConfig.UIButtonText()
+	disabled := homeDialog.simConfig.ScenarioSelectionDisabled(config)
+	if disabled {
+		imgui.BeginDisabled()
+	}
+	if imgui.Button(btnText) {
+		if homeDialog.simConfig.ShowConfigurationWindow() {
+			// Create flow: push the configuration modal on top.
+			cfgClient := &ConfigurationModalClient{
+				lg:          lg,
+				simConfig:   homeDialog.simConfig,
+				allowCancel: true,
+				platform:    p,
+				config:      config,
+				mgr:         mgr,
+			}
+			uiShowModalDialog(NewModalDialogBox(cfgClient, p), false)
+		} else {
+			// Join flow: start directly.
+			homeDialog.simConfig.displayError = homeDialog.simConfig.Start(config)
+		}
+	}
+	if disabled {
+		imgui.EndDisabled()
+	}
+
+	imgui.End()
+}
+
+// homeDialogShouldQuit returns (and clears) the quit request set by the
+// home dialog's close button. Main loop calls this each frame.
+func homeDialogShouldQuit() bool {
+	q := homeDialog.quitRequested
+	homeDialog.quitRequested = false
+	return q
+}
+
 func uiShowConnectDialog(mgr *client.ConnectionManager, allowCancel bool, config *Config, p platform.Platform, lg *log.Logger) {
 	client := &ScenarioSelectionModalClient{
 		mgr:         mgr,
