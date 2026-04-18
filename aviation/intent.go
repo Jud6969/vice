@@ -873,6 +873,20 @@ func (c ContactTowerIntent) Render(rt *RadioTransmission, r *rand.Rand) {
 	}
 }
 
+// UnknownFrequencyIntent is returned when the controller issued a handoff to
+// a frequency that does not resolve to any known controller. The aircraft
+// does NOT switch frequencies; it verbally asks for the correct freq.
+type UnknownFrequencyIntent struct {
+	Frequency Frequency
+}
+
+func (u UnknownFrequencyIntent) Render(rt *RadioTransmission, r *rand.Rand) {
+	rt.Add("[what was that frequency?|"+
+		"we hear nothing on {freq}, what was the frequency?|"+
+		"say again the frequency?|"+
+		"nothing heard on {freq}, say again?]", u.Frequency)
+}
+
 // ATISIntent represents the pilot's acknowledgment of the ATIS letter.
 type ATISIntent struct {
 	Letter string

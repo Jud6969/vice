@@ -187,3 +187,11 @@ func TestCompoundSpeedReadbackIncludesQualifiers(t *testing.T) {
 		}
 	}
 }
+
+func TestUnknownFrequencyIntentRenders(t *testing.T) {
+	intent := UnknownFrequencyIntent{Frequency: 127750}
+	for seed := uint64(1); seed <= 20; seed++ {
+		readback := renderIntentForTest(intent, seed)
+		assertContainsAny(t, readback, "frequency", "say again", "nothing")
+	}
+}
