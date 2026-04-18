@@ -952,6 +952,17 @@ func (s *Sim) resolveControllerByFrequency(ac *Aircraft, freq av.Frequency, posi
 			candidates = append(candidates, c)
 		}
 	}
+	// Pilots often speak the 5-digit shorthand ("one two eight point three
+	// seven" = 128370) which could also mean 128.375. If nothing matched the
+	// explicit value, try the +5 kHz variant — this covers both the 5-digit
+	// STT form and typed commands where the user dropped the trailing digit.
+	if len(candidates) == 0 && freq%10 == 0 {
+		for _, c := range s.State.Controllers {
+			if c != nil && c.Frequency == freq+5 {
+				candidates = append(candidates, c)
+			}
+		}
+	}
 	if len(candidates) == 0 {
 		return nil, ErrInvalidFrequency
 	}
