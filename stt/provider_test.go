@@ -764,6 +764,110 @@ func TestHandoffCommands(t *testing.T) {
 	}
 }
 
+// TestSTTContactFrequencyE2E feeds representative contact/frequency-change
+// transcripts through the full STT pipeline and locks the emitted command
+// strings. These complement TestHandoffCommands by exercising the 5-digit
+// no-point frequency form, out-of-band frequency rejection, and the known-
+// unreachable "over to" phrasing.
+func TestSTTContactFrequencyE2E(t *testing.T) {
+	tests := []struct {
+		name       string
+		transcript string
+		aircraft   map[string]Aircraft
+		expected   string
+	}{
+		{
+			// Facility-type hint ("approach"): priority 12's greedy {text}
+			// wins and consumes "orlando approach" as the hint, rather than
+			// priority 10's facility-type-only pattern.
+			name:       "facility type hint with frequency",
+			transcript: "Delta 500 contact orlando approach one two seven point seven five",
+			aircraft: map[string]Aircraft{
+				"Delta 500": {Callsign: "DAL500", State: "overflight"},
+			},
+			expected: "DAL500 FC127750:orlando_approach",
+		},
+		{
+			// Five-digit no-point form: "one two seven seven five" normalizes
+			// to the single token 12775, which the frequency parser scales
+			// to 127.750 MHz.
+			name:       "five digit no point frequency",
+			transcript: "Delta 500 contact orlando approach one two seven seven five",
+			aircraft: map[string]Aircraft{
+				"Delta 500": {Callsign: "DAL500", State: "overflight"},
+			},
+			expected: "DAL500 FC127750:orlando_approach",
+		},
+		{
+			// Tower with explicit frequency + position (priority 20).
+			name:       "tower with frequency and position",
+			transcript: "American 222 contact Kennedy tower one one nine point one zero",
+			aircraft: map[string]Aircraft{
+				"American 222": {Callsign: "AAL222", State: "on approach"},
+			},
+			expected: "AAL222 TO119100:kennedy",
+		},
+		{
+			// Tower with explicit frequency, no position (priority 16).
+			name:       "tower with frequency no position",
+			transcript: "American 222 contact tower one one nine point one zero",
+			aircraft: map[string]Aircraft{
+				"American 222": {Callsign: "AAL222", State: "on approach"},
+			},
+			expected: "AAL222 TO119100",
+		},
+		{
+			// Bare contact + frequency, no position (priority 9).
+			name:       "bare contact with frequency",
+			transcript: "Delta 500 contact one two seven point seven five",
+			aircraft: map[string]Aircraft{
+				"Delta 500": {Callsign: "DAL500", State: "overflight"},
+			},
+			expected: "DAL500 FC127750",
+		},
+		{
+			// Out-of-band frequency (105.00 MHz is below the 118 MHz floor):
+			// the frequency parser rejects, the FC pattern fails to match,
+			// and the pipeline emits AGAIN as the fallback.
+			name:       "out of band frequency rejected",
+			transcript: "Delta 500 contact one zero five point zero zero",
+			aircraft: map[string]Aircraft{
+				"Delta 500": {Callsign: "DAL500", State: "overflight"},
+			},
+			expected: "DAL500 AGAIN",
+		},
+		{
+			// KNOWN UNREACHABLE: "over to ..." patterns can never fire
+			// because the normalizer strips "over" and "to" as filler words
+			// before pattern capture (see stt/handlers.go:1256-1260 and
+			// :1293-1296). This regression lock documents that dead code —
+			// if someone later fixes the filler stripping, this test will
+			// flip and they'll know to update the expectation.
+			name:       "over to pattern unreachable",
+			transcript: "Delta 500 over to jacksonville center one three four point zero zero",
+			aircraft: map[string]Aircraft{
+				"Delta 500": {Callsign: "DAL500", State: "overflight"},
+			},
+			expected: "DAL500 AGAIN",
+		},
+	}
+
+	provider := NewTranscriber(nil)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := provider.DecodeTranscript(tt.aircraft, tt.transcript, "")
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+				return
+			}
+			if result != tt.expected {
+				t.Errorf("got %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
+
 func TestVFRCommands(t *testing.T) {
 	tests := []struct {
 		name       string
