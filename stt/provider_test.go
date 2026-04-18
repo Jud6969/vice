@@ -840,9 +840,10 @@ func TestSTTContactFrequencyE2E(t *testing.T) {
 			// KNOWN UNREACHABLE: "over to ..." patterns can never fire
 			// because the normalizer strips "over" and "to" as filler words
 			// before pattern capture (see stt/handlers.go:1256-1260 and
-			// :1293-1296). This regression lock documents that dead code —
+			// :1297-1298). This regression lock documents that dead code —
 			// if someone later fixes the filler stripping, this test will
-			// flip and they'll know to update the expectation.
+			// flip; the correct expectation then becomes
+			// "DAL500 FC134000:jacksonville_center".
 			name:       "over to pattern unreachable",
 			transcript: "Delta 500 over to jacksonville center one three four point zero zero",
 			aircraft: map[string]Aircraft{
