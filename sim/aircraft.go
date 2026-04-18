@@ -474,14 +474,15 @@ func (ac *Aircraft) ContactTower(lg *log.Logger, freq av.Frequency) (av.CommandI
 		// VFR aircraft on flight following can be told to contact tower
 		// without needing an approach assignment.
 		ac.GotContactTower = true
-		return av.ContactTowerIntent{Frequency: freq}, true
+		_ = freq
+		return av.ContactTowerIntent{PositionOnly: true}, true
 	} else if ac.Nav.Approach.Assigned == nil {
 		return av.MakeUnableIntent("unable. We haven't been given an approach."), false
 	} else if !ac.Nav.Approach.Cleared {
 		return av.MakeUnableIntent("unable. We haven't been cleared for the approach."), false
 	} else {
 		ac.GotContactTower = true
-		return av.ContactTowerIntent{Frequency: freq}, true
+		return av.ContactTowerIntent{PositionOnly: true}, true
 	}
 }
 

@@ -859,18 +859,21 @@ func (t TransponderIntent) Render(rt *RadioTransmission, r *rand.Rand) {
 // Special Intents
 
 // ContactTowerIntent represents contact tower command.
-// Frequency is optional (zero means "not given"); when set, the pilot
-// readback sometimes includes the tower frequency.
+// PositionOnly is true only on the STT bare-tower path (and only valid at
+// airports with exactly one tower). All other paths supply ToController and
+// Frequency and read back position + frequency.
 type ContactTowerIntent struct {
-	Frequency Frequency
+	ToController *Controller
+	Frequency    Frequency
+	PositionOnly bool
 }
 
 func (c ContactTowerIntent) Render(rt *RadioTransmission, r *rand.Rand) {
-	if c.Frequency != 0 {
-		rt.Add("[tower {freq}|over to tower {freq}|contact tower {freq}|tower|over to tower]", c.Frequency)
-	} else {
+	if c.PositionOnly {
 		rt.Add("[contact|over to|] tower")
+		return
 	}
+	rt.Add("[contact|over to|] {actrl} on {freq}, [good day|seeya|]", c.ToController, c.Frequency)
 }
 
 // UnknownFrequencyIntent is returned when the controller issued a handoff to

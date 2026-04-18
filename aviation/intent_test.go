@@ -195,3 +195,25 @@ func TestUnknownFrequencyIntentRenders(t *testing.T) {
 		assertContainsAny(t, readback, "frequency", "say again", "nothing")
 	}
 }
+
+func TestContactTowerIntentPositionOnly(t *testing.T) {
+	intent := ContactTowerIntent{PositionOnly: true}
+	for seed := uint64(1); seed <= 20; seed++ {
+		readback := renderIntentForTest(intent, seed)
+		if !strings.Contains(readback, "tower") {
+			t.Errorf("seed %d: want 'tower' in output, got %q", seed, readback)
+		}
+		if strings.Contains(readback, ".") {
+			t.Errorf("seed %d: position-only readback should not include a frequency: %q", seed, readback)
+		}
+	}
+}
+
+func TestContactTowerIntentWithFrequency(t *testing.T) {
+	ctrl := &Controller{Callsign: "ORL_TWR", RadioName: "Orlando Tower", Frequency: 124300}
+	intent := ContactTowerIntent{ToController: ctrl, Frequency: 124300}
+	for seed := uint64(1); seed <= 20; seed++ {
+		readback := renderIntentForTest(intent, seed)
+		assertContainsAny(t, readback, "124.3")
+	}
+}
