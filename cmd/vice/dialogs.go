@@ -110,7 +110,7 @@ func uiDrawHomeDialog(mgr *client.ConnectionManager, config *Config, p platform.
 	}
 	if !canResolvePrev {
 		imgui.EndDisabled()
-		if imgui.IsItemHovered() {
+		if imgui.IsItemHoveredV(imgui.HoveredFlagsAllowWhenDisabled) {
 			imgui.SetTooltip("No previous scenario available")
 		}
 	}

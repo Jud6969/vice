@@ -55,7 +55,7 @@ type ConfigNoSim struct {
 	LastFacility     string
 	LastGroupName    string
 	LastScenarioName string
-	UIFontSize    int
+	UIFontSize       int
 
 	// Store individual pane instances
 	STARSPane       *stars.STARSPane
