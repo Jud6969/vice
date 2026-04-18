@@ -1253,6 +1253,10 @@ func registerAllCommands() {
 		WithName("contact_position_tower_freq"),
 		WithPriority(20),
 	)
+	// NOTE: currently unreachable — "to" is in the filler-word list
+	// (stt/normalize.go), so the matcher strips it between "over" and {text}
+	// and the literal "to" in this template can never match. Kept per the
+	// design spec; revisit when the normalizer learns per-template filler rules.
 	registerSTTCommand(
 		"over to {text} tower {frequency}",
 		func(pos string, f av.Frequency) string {
@@ -1290,6 +1294,8 @@ func registerAllCommands() {
 		WithName("contact_position_freq"),
 		WithPriority(12),
 	)
+	// NOTE: currently unreachable — same filler-word issue as
+	// over_to_position_tower_freq above.
 	registerSTTCommand(
 		"over to {text} {frequency}",
 		func(pos string, f av.Frequency) string {
