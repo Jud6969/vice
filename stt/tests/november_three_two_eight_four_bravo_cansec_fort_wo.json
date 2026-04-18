@@ -15,7 +15,7 @@
   "processor": "GPU: NVIDIA GeForce RTX 4070 SUPER (11999MB)",
   "whisper_model": "ggml-medium.en-jlvatc-q5_0.bin",
   "callsign": "N3284B",
-  "command": "FC",
+  "command": "FC127450:fort_worth_center",
   "stt_aircraft": {
     "B E fifty-eight one one kebeck": {
       "Callsign": "N9711Q",

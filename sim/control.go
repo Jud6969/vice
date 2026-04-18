@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	av "github.com/mmp/vice/aviation"
 	"github.com/mmp/vice/math"
@@ -925,18 +926,34 @@ func (s *Sim) resolveControllerByFrequency(ac *Aircraft, freq av.Frequency, posi
 		return candidates[0], nil
 	}
 
-	// D1: name hint filter.
+	// D1: name hint filter. Tokenize the hint on '_'/'-'/whitespace so that
+	// multi-word hints emitted by the STT grammar (e.g. "Los_Angeles_Center")
+	// match controllers whose RadioName is "Los Angeles Center". Every hint
+	// token must appear as a substring of either the RadioName or Callsign
+	// (lower-cased).
 	if positionHint != "" {
-		hint := strings.ToLower(strings.TrimSpace(positionHint))
-		filtered := candidates[:0:0]
-		for _, c := range candidates {
-			if strings.Contains(strings.ToLower(c.RadioName), hint) ||
-				strings.Contains(strings.ToLower(c.Callsign), hint) {
-				filtered = append(filtered, c)
+		hintTokens := strings.FieldsFunc(strings.ToLower(positionHint), func(r rune) bool {
+			return r == '_' || r == '-' || unicode.IsSpace(r)
+		})
+		if len(hintTokens) > 0 {
+			filtered := candidates[:0:0]
+			for _, c := range candidates {
+				name := strings.ToLower(c.RadioName)
+				call := strings.ToLower(c.Callsign)
+				allMatch := true
+				for _, t := range hintTokens {
+					if !strings.Contains(name, t) && !strings.Contains(call, t) {
+						allMatch = false
+						break
+					}
+				}
+				if allMatch {
+					filtered = append(filtered, c)
+				}
 			}
-		}
-		if len(filtered) > 0 {
-			candidates = filtered
+			if len(filtered) > 0 {
+				candidates = filtered
+			}
 		}
 	}
 	if len(candidates) == 1 {

@@ -17,13 +17,6 @@ func CommandsEquivalent(expected, actual string, aircraft map[string]Aircraft) b
 	expectedParts := strings.Fields(expected)
 	actualParts := strings.Fields(actual)
 
-	// The frequency-change grammar can emit FC/TO hints containing spaces
-	// (e.g. "FC132400:Los Angeles Center"). Collapse trailing hint words into
-	// the preceding FC/TO token so field-wise comparison still lines up with
-	// legacy regression strings like "FC".
-	actualParts = collapseFCTOHintParts(actualParts)
-	expectedParts = collapseFCTOHintParts(expectedParts)
-
 	if len(expectedParts) != len(actualParts) {
 		return false
 	}
@@ -62,90 +55,10 @@ func CommandsEquivalent(expected, actual string, aircraft map[string]Aircraft) b
 	return true
 }
 
-// collapseFCTOHintParts merges trailing words into any FC{digits}:hint or
-// TO{digits}:hint token. The STT grammar emits position hints like
-// "FC132400:Los Angeles Center" which strings.Fields splits into multiple
-// parts; this rejoins them so comparisons against legacy "FC" / "TO"
-// expectations see a single command token.
-func collapseFCTOHintParts(parts []string) []string {
-	out := make([]string, 0, len(parts))
-	for i := 0; i < len(parts); i++ {
-		p := parts[i]
-		out = append(out, p)
-		isFC := strings.HasPrefix(p, "FC") && len(p) > 2 && p[2] >= '0' && p[2] <= '9'
-		isTO := strings.HasPrefix(p, "TO") && len(p) > 2 && p[2] >= '0' && p[2] <= '9'
-		if !(isFC || isTO) {
-			continue
-		}
-		if !strings.Contains(p, ":") {
-			continue
-		}
-		// Absorb subsequent word-only parts (no digits, no ':' separator) that
-		// are plausibly part of a multi-word position hint.
-		for i+1 < len(parts) {
-			next := parts[i+1]
-			if isLikelyCommandToken(next) {
-				break
-			}
-			out[len(out)-1] = out[len(out)-1] + " " + next
-			i++
-		}
-	}
-	return out
-}
-
-// isLikelyCommandToken reports whether s looks like a standalone command
-// (e.g. "D50", "S170/U5", "DGANDY") rather than a continuation of a
-// position hint. A token is considered a command if it starts with an
-// uppercase letter followed by a digit, or contains '/', or is all-caps 5+.
-func isLikelyCommandToken(s string) bool {
-	if s == "" {
-		return true
-	}
-	if strings.ContainsAny(s, "/") {
-		return true
-	}
-	// Starts with capital then digit: C110, D50, S170, A120 …
-	if len(s) >= 2 && s[0] >= 'A' && s[0] <= 'Z' && s[1] >= '0' && s[1] <= '9' {
-		return true
-	}
-	// All-uppercase fix names (e.g. DGANDY, DKEWB). Hint words from the text
-	// parser are title-cased (e.g. "Boston"), so all-caps implies command.
-	allUpper := true
-	hasLetter := false
-	for _, r := range s {
-		if r >= 'a' && r <= 'z' {
-			allUpper = false
-			break
-		}
-		if r >= 'A' && r <= 'Z' {
-			hasLetter = true
-		}
-	}
-	if hasLetter && allUpper {
-		return true
-	}
-	return false
-}
-
 // commandEquivalent checks if two individual commands are equivalent.
 func commandEquivalent(expected, actual string, ac Aircraft, hasAircraftContext bool) bool {
 	if expected == actual {
 		return true
-	}
-
-	// FC/TO commands: bare "FC"/"TO" in expected is equivalent to any
-	// "FC{digits}[:hint]" / "TO{digits}[:hint]" in actual. The richer forms
-	// were added by the frequency-change-readback grammar upgrade; legacy
-	// regression expectations only capture the command type.
-	for _, prefix := range []string{"FC", "TO"} {
-		if expected == prefix && strings.HasPrefix(actual, prefix) && len(actual) > len(prefix) {
-			rest := actual[len(prefix):]
-			// rest must start with a digit (frequency) to be a match.
-			if len(rest) > 0 && rest[0] >= '0' && rest[0] <= '9' {
-				return true
-			}
-		}
 	}
 
 	// Check for A/D/C altitude command equivalence

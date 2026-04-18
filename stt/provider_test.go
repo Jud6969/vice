@@ -720,7 +720,7 @@ func TestHandoffCommands(t *testing.T) {
 			aircraft: map[string]Aircraft{
 				"Delta 500": {Callsign: "DAL500", State: "overflight"},
 			},
-			expected: "DAL500 FC132400:Los Angeles Center",
+			expected: "DAL500 FC132400:los_angeles_center",
 		},
 	}
 

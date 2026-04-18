@@ -409,6 +409,20 @@ func TestResolveControllerByFrequency_NameHintWins(t *testing.T) {
 	}
 }
 
+func TestResolveControllerByFrequency_MultiTokenHint(t *testing.T) {
+	// Two controllers on the same frequency; only one has RadioName
+	// "Los Angeles Center". An underscore-joined hint from the STT grammar
+	// should be tokenized and match every token against either field.
+	a := &av.Controller{Callsign: "LAX_CTR", RadioName: "Los Angeles Center", Frequency: 132400, Facility: "ZLA"}
+	b := &av.Controller{Callsign: "OAK_CTR", RadioName: "Oakland Center", Frequency: 132400, Facility: "ZOA"}
+	s := &Sim{State: &CommonState{Controllers: map[TCP]*av.Controller{"LAX_CTR": a, "OAK_CTR": b}}}
+	ac := &Aircraft{}
+	ctrl, err := s.resolveControllerByFrequency(ac, 132400, "los_angeles")
+	if err != nil || ctrl != a {
+		t.Errorf("want Los Angeles Center, got (%v, %v)", ctrl, err)
+	}
+}
+
 func TestResolveControllerByFrequency_OutOfBandError(t *testing.T) {
 	s := &Sim{State: &CommonState{Controllers: map[TCP]*av.Controller{}}}
 	ac := &Aircraft{}

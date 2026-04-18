@@ -15,7 +15,7 @@
   "processor": "GPU: Apple M4, 10 CPU / 10 GPU cores, 24GB",
   "whisper_model": "ggml-small.en-jlvatc-q5_0.bin",
   "callsign": "JBU6259",
-  "command": "FC",
+  "command": "FC128750:passe_and_sunnair",
   "stt_aircraft": {
     "Chronos niner 64": {
       "Callsign": "CNS964",

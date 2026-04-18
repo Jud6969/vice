@@ -774,8 +774,10 @@ func (p *holdParser) parse(tokens []Token, pos int, ac Aircraft) (any, int, stri
 // facility / position names (e.g., "Los Angeles Center" in "contact Los
 // Angeles Center {frequency}"). Stops at the next non-word token so a trailing
 // {frequency} or other typed parameter in the same pattern still parses.
-// Returns the joined words as a single space-free token so the result remains
-// a single command when the dispatcher splits on whitespace.
+// Joins the run with '_' so the result is a single whitespace-free token that
+// survives the dispatcher's strings.Fields tokenization of command strings.
+// The downstream resolver tokenizes hints on '_'/'-'/whitespace before
+// matching, so the underscore separator is transparent to hint filtering.
 type textParser struct{}
 
 func (p *textParser) identifier() string {
@@ -810,16 +812,12 @@ func (p *textParser) parse(tokens []Token, pos int, ac Aircraft) (value any, con
 	}
 	var parts []string
 	for i := pos; i < end; i++ {
-		t := tokens[i].Text
-		if t == "" {
+		if tokens[i].Text == "" {
 			continue
 		}
-		// Title-case the first letter for readable facility / position hints.
-		parts = append(parts, strings.ToUpper(t[:1])+t[1:])
+		parts = append(parts, tokens[i].Text)
 	}
-	// Join with spaces so downstream hint matching (substring against
-	// Controller.RadioName like "Los Angeles Center") works naturally.
-	return strings.Join(parts, " "), end - pos, ""
+	return strings.Join(parts, "_"), end - pos, ""
 }
 
 // atisLetterParser extracts a NATO phonetic letter for ATIS information.
