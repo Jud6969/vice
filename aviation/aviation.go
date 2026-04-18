@@ -87,6 +87,20 @@ func (f Frequency) String() string {
 	return s
 }
 
+// StringSpoken renders the frequency for speech/readback: trims trailing
+// zeros from the fractional part but keeps at least one fractional digit.
+// Example: Frequency(127750).StringSpoken() == "127.75".
+func (f Frequency) StringSpoken() string {
+	whole := int(f / 1000)
+	frac := int(f % 1000)
+	if frac == 0 {
+		return fmt.Sprintf("%d.0", whole)
+	}
+	s := fmt.Sprintf("%03d", frac)
+	s = strings.TrimRight(s, "0")
+	return fmt.Sprintf("%d.%s", whole, s)
+}
+
 type ReportingPoint struct {
 	Fix      string
 	Location math.Point2LL

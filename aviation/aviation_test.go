@@ -325,3 +325,23 @@ func TestLocalSquawkCodePool(t *testing.T) {
 		t.Errorf("unexpected code %s", c)
 	}
 }
+
+func TestFrequencyStringSpoken(t *testing.T) {
+	tests := []struct {
+		val  Frequency
+		want string
+	}{
+		{127750, "127.75"},
+		{118300, "118.3"},
+		{134000, "134.0"},
+		{127755, "127.755"},
+		{118000, "118.0"},
+		{136975, "136.975"},
+	}
+	for _, tc := range tests {
+		got := tc.val.StringSpoken()
+		if got != tc.want {
+			t.Errorf("Frequency(%d).StringSpoken() = %q, want %q", tc.val, got, tc.want)
+		}
+	}
+}
