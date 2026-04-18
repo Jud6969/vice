@@ -2246,6 +2246,38 @@ func (s *Sim) ContactTower(tcw TCW, callsign av.ADSBCallsign, freq av.Frequency,
 		})
 }
 
+// FrequencyChange dispatches a non-tower handoff by frequency. fromTypedCommand
+// forces SameFacility=false so typed commands always produce full readback.
+func (s *Sim) FrequencyChange(tcw TCW, callsign av.ADSBCallsign, freq av.Frequency, positionHint string, fromTypedCommand bool) (av.CommandIntent, error) {
+	s.mu.Lock(s.lg)
+	defer s.mu.Unlock(s.lg)
+
+	ac, ok := s.Aircraft[callsign]
+	if !ok {
+		return nil, ErrNoMatchingFlight
+	}
+
+	target, err := s.resolveControllerByFrequency(ac, freq, positionHint)
+	if err != nil {
+		return av.UnknownFrequencyIntent{Frequency: freq}, nil
+	}
+
+	fromCtrl := s.controllerForAircraft(ac)
+	sameFacility := !fromTypedCommand && fromCtrl != nil && fromCtrl.Facility == target.Facility
+
+	return s.dispatchControlledAircraftCommand(tcw, callsign,
+		func(tcw TCW, ac *Aircraft) av.CommandIntent {
+			intent := av.ContactIntent{
+				Type:         av.ContactController,
+				ToController: target,
+				Frequency:    freq,
+				SameFacility: sameFacility,
+			}
+			ac.ControllerFrequency = ControlPosition(target.Callsign)
+			return intent
+		})
+}
+
 // ATISCommand handles the controller telling a pilot the current ATIS letter.
 // If the aircraft already reported the correct ATIS, no readback is needed.
 // Otherwise the pilot responds with "we'll pick up (letter)".
