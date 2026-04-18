@@ -215,6 +215,7 @@ var (
 	FontAwesomeIconKeyboard            = faUsedIcons["Keyboard"]
 	FontAwesomeIconLevelUpAlt          = faUsedIcons["LevelUpAlt"]
 	FontAwesomeIconLock                = faUsedIcons["Lock"]
+	FontAwesomeIconLockOpen            = faUsedIcons["LockOpen"]
 	FontAwesomeIconMicrophone          = faUsedIcons["Microphone"]
 	FontAwesomeIconMinus               = faUsedIcons["Minus"]
 	FontAwesomeIconMouse               = faUsedIcons["Mouse"]
@@ -274,6 +275,7 @@ var (
 		"Keyboard":            FontAwesomeString("Keyboard"),
 		"LevelUpAlt":          FontAwesomeString("LevelUpAlt"),
 		"Lock":                FontAwesomeString("Lock"),
+		"LockOpen":            FontAwesomeString("LockOpen"),
 		"Microphone":          FontAwesomeString("Microphone"),
 		"Minus":               FontAwesomeString("Minus"),
 		"Mouse":               FontAwesomeString("Mouse"),

@@ -1802,7 +1802,7 @@ func drawScenarioInfoWindow(config *Config, c *client.ControlClient, activeRadar
 	show := true
 	applyBorderlessViewportClass("ScenarioInfo", config, p)
 	imgui.BeginV(c.State.SimDescription+"###ScenarioInfo", &show, imgui.WindowFlagsAlwaysAutoResize|imgui.WindowFlagsNoTitleBar)
-	if panes.DrawTitleBar(c.State.SimDescription, "ScenarioInfo", config.UnpinnedWindows, p) {
+	if panes.DrawTitleBar(c.State.SimDescription, "ScenarioInfo", config.UnpinnedWindows, nil, p) {
 		show = false
 	}
 

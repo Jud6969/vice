@@ -120,7 +120,7 @@ func (msg *Message) ImguiColor() imgui.Vec4 {
 }
 
 func (mp *MessagesPane) DrawWindow(show *bool, c *client.ControlClient, p platform.Platform,
-	unpinnedWindows map[string]struct{}, lg *log.Logger) {
+	unpinnedWindows, lockedWindows map[string]struct{}, lg *log.Logger) {
 	// Only play sounds if the window has been continuously visible. If
 	// more than 250ms have elapsed since the last DrawWindow call, we
 	// must have missed frames (window was hidden), so drain accumulated
@@ -134,8 +134,15 @@ func (mp *MessagesPane) DrawWindow(show *bool, c *client.ControlClient, p platfo
 	if mp.font != nil {
 		mp.font.ImguiPush()
 	}
-	imgui.BeginV("Messages", show, imgui.WindowFlagsNoTitleBar)
-	if DrawTitleBar("Messages", "Messages", unpinnedWindows, p) {
+	// ConfigWindowsMoveFromTitleBarOnly doesn't apply to NoTitleBar windows,
+	// so imgui would otherwise drag the window from any background click.
+	// Add NoMove when the user has locked this window to fully freeze it.
+	flags := imgui.WindowFlagsNoTitleBar
+	if _, locked := lockedWindows["Messages"]; locked {
+		flags |= imgui.WindowFlagsNoMove
+	}
+	imgui.BeginV("Messages", show, flags)
+	if DrawTitleBar("Messages", "Messages", unpinnedWindows, lockedWindows, p) {
 		*show = false
 	}
 	if imgui.BeginChildStrV("##messages_scroll", imgui.Vec2{}, 0, 0) {

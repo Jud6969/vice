@@ -124,12 +124,14 @@ func New(config *Config, lg *log.Logger) (Platform, error) {
 
 	vm := glfw.GetPrimaryMonitor().GetVideoMode()
 	// Fall back to a safely-inset windowed size if the saved geometry is
-	// missing or matches/exceeds the monitor. A pre-fix config may have
-	// persisted fullscreen/maximized geometry; without this guard, a
+	// missing or fully covers the primary monitor. A pre-fix config may
+	// have persisted fullscreen/maximized geometry; without this guard, a
 	// borderless monitor-sized window at (0,0) looks identical to
-	// fullscreen and leaves the user with no usable chrome.
+	// fullscreen and leaves the user with no usable chrome. Both
+	// dimensions must meet/exceed the monitor — matching only one is a
+	// legitimate Aero Snap half-screen size and must not trigger a reset.
 	if config.InitialWindowSize[0] == 0 || config.InitialWindowSize[1] == 0 ||
-		config.InitialWindowSize[0] >= vm.Width || config.InitialWindowSize[1] >= vm.Height {
+		(config.InitialWindowSize[0] >= vm.Width && config.InitialWindowSize[1] >= vm.Height) {
 		if runtime.GOOS == "windows" {
 			config.InitialWindowSize[0] = vm.Width - 200
 			config.InitialWindowSize[1] = vm.Height - 300
@@ -215,6 +217,7 @@ func New(config *Config, lg *log.Logger) (Platform, error) {
 	platform.installCallbacks()
 	platform.createMouseCursors()
 	platform.EnableVSync(true)
+	platform.installNativeTitleBar()
 
 	glfw.SetMonitorCallback(platform.MonitorCallback)
 
@@ -293,6 +296,40 @@ func (g *glfwPlatform) GetAllMonitorNames() []string {
 		monitorNames = append(monitorNames, "("+strconv.Itoa(index)+") "+monitor.GetName())
 	}
 	return monitorNames
+}
+
+// MainWindowMonitorWorkArea returns the work area of the monitor the
+// main window currently overlaps the most. Falls back to the primary
+// monitor if no overlap is found (e.g. the window has been moved off
+// all monitors).
+func (g *glfwPlatform) MainWindowMonitorWorkArea() (x, y, w, h int) {
+	monitors := glfw.GetMonitors()
+	if len(monitors) == 0 {
+		return 0, 0, 1280, 720
+	}
+
+	winPos := g.WindowPosition()
+	winSize := g.WindowSize()
+	winCx := winPos[0] + winSize[0]/2
+	winCy := winPos[1] + winSize[1]/2
+
+	// Pick the monitor whose main rect contains the window center; if
+	// none contain it, fall back to the primary monitor.
+	var chosen *glfw.Monitor
+	for _, m := range monitors {
+		mx, my := m.GetPos()
+		vm := m.GetVideoMode()
+		if winCx >= mx && winCx < mx+vm.Width && winCy >= my && winCy < my+vm.Height {
+			chosen = m
+			break
+		}
+	}
+	if chosen == nil {
+		chosen = glfw.GetPrimaryMonitor()
+	}
+
+	wx, wy, ww, wh := chosen.GetWorkarea()
+	return wx, wy, ww, wh
 }
 
 func (g *glfwPlatform) MonitorCallback(monitor *glfw.Monitor, event glfw.PeripheralEvent) {

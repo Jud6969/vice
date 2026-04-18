@@ -63,6 +63,11 @@ func uiShowModalDialog(d *ModalDialogBox, atFront bool) {
 // to the app's disconnected state.
 var homeDialog struct {
 	simConfig *NewSimConfiguration
+	// showConfig switches the home window's body from scenario-selection
+	// to the configuration screen. Using an inline flag rather than a
+	// modal because the main GLFW window is hidden in disconnected mode,
+	// and ModalDialogBox forces itself into that viewport.
+	showConfig bool
 	// quitRequested is set when the user clicks the window's close (X)
 	// button. The main loop polls it and exits.
 	quitRequested bool
@@ -74,24 +79,57 @@ var homeDialog struct {
 func uiDrawHomeDialog(mgr *client.ConnectionManager, config *Config, p platform.Platform, lg *log.Logger) {
 	if homeDialog.simConfig == nil {
 		homeDialog.simConfig = MakeNewSimConfiguration(mgr, &config.LastTRACON, lg)
+		homeDialog.showConfig = false
 	}
 
 	// Viewport class — borderless, never folds into the main viewport.
 	applyBorderlessViewportClass("vice", config, p)
-	imgui.SetNextWindowSize(imgui.Vec2{X: 500, Y: 550})
+
+	dpiScale := util.Select(runtime.GOOS == "windows", p.DPIScale(), float32(1))
+	imgui.SetNextWindowSizeConstraints(
+		imgui.Vec2{X: dpiScale * 850, Y: dpiScale * 100},
+		imgui.Vec2{X: -1, Y: -1})
+
+	// Center on the monitor the main window currently sits on. Pivot
+	// (0.5, 0.5) anchors by the dialog center so the WindowFlagsAlwaysAutoResize
+	// sizing still works — imgui places the box around this point.
+	mx, my, mw, mh := p.MainWindowMonitorWorkArea()
+	imgui.SetNextWindowPosV(
+		imgui.Vec2{X: float32(mx) + float32(mw)/2, Y: float32(my) + float32(mh)/2},
+		imgui.CondAppearing,
+		imgui.Vec2{X: 0.5, Y: 0.5})
 
 	show := true
-	flags := imgui.WindowFlagsNoResize | imgui.WindowFlagsNoCollapse |
-		imgui.WindowFlagsNoTitleBar | imgui.WindowFlagsNoSavedSettings
+	flags := imgui.WindowFlagsNoResize | imgui.WindowFlagsAlwaysAutoResize |
+		imgui.WindowFlagsNoCollapse | imgui.WindowFlagsNoTitleBar |
+		imgui.WindowFlagsNoSavedSettings
 	if !imgui.BeginV("vice", &show, flags) {
 		imgui.End()
 		return
 	}
-	if panes.DrawTitleBar("vice", "", config.UnpinnedWindows, p) {
+
+	title := "vice"
+	if homeDialog.showConfig {
+		title = homeDialog.simConfig.Facility + " - " + homeDialog.simConfig.ScenarioName
+	}
+	if panes.DrawTitleBar(title, "", config.UnpinnedWindows, nil, p) {
 		// User clicked the home dialog's close (X) — request app quit.
 		homeDialog.quitRequested = true
 	}
 
+	if !homeDialog.showConfig {
+		uiDrawHomeScenarioScreen(config, p)
+	} else {
+		uiDrawHomeConfigScreen(config, p)
+	}
+
+	imgui.End()
+}
+
+// uiDrawHomeScenarioScreen renders the scenario-selection body of the
+// home dialog: Launch Previous button, DrawScenarioSelectionUI, and the
+// Next/Connect button.
+func uiDrawHomeScenarioScreen(config *Config, p platform.Platform) {
 	// Launch Previous Scenario — primary action, populated from Config.
 	hasPrev := config.LastFacility != "" && config.LastGroupName != "" && config.LastScenarioName != ""
 	canResolvePrev := hasPrev && homeDialog.simConfig.CanResolveScenario(
@@ -117,14 +155,10 @@ func uiDrawHomeDialog(mgr *client.ConnectionManager, config *Config, p platform.
 	}
 	imgui.Separator()
 
-	// Scenario selection UI (inline, not modal). This is the same body
-	// used by ScenarioSelectionModalClient.Draw(). Returns true if the
-	// user pressed Enter, which should trigger the default button.
 	enter := homeDialog.simConfig.DrawScenarioSelectionUI(p, config)
 
 	imgui.Separator()
 
-	// Connect button — behaves like the modal's Next/Create button.
 	btnText := homeDialog.simConfig.UIButtonText()
 	disabled := homeDialog.simConfig.ScenarioSelectionDisabled(config)
 	if disabled {
@@ -132,16 +166,8 @@ func uiDrawHomeDialog(mgr *client.ConnectionManager, config *Config, p platform.
 	}
 	if imgui.Button(btnText) || (enter && !disabled) {
 		if homeDialog.simConfig.ShowConfigurationWindow() {
-			// Create flow: push the configuration modal on top.
-			cfgClient := &ConfigurationModalClient{
-				lg:          lg,
-				simConfig:   homeDialog.simConfig,
-				allowCancel: true,
-				platform:    p,
-				config:      config,
-				mgr:         mgr,
-			}
-			uiShowModalDialog(NewModalDialogBox(cfgClient, p), false)
+			// Create flow: switch inline to the config screen.
+			homeDialog.showConfig = true
 		} else {
 			// Join flow: start directly.
 			homeDialog.simConfig.displayError = homeDialog.simConfig.Start(config)
@@ -150,8 +176,30 @@ func uiDrawHomeDialog(mgr *client.ConnectionManager, config *Config, p platform.
 	if disabled {
 		imgui.EndDisabled()
 	}
+}
 
-	imgui.End()
+// uiDrawHomeConfigScreen renders the configuration body of the home
+// dialog: DrawConfigurationUI plus Previous/Create buttons.
+func uiDrawHomeConfigScreen(config *Config, p platform.Platform) {
+	enter := homeDialog.simConfig.DrawConfigurationUI(p, config)
+
+	imgui.Separator()
+
+	if imgui.Button("Previous") {
+		homeDialog.showConfig = false
+	}
+	imgui.SameLine()
+
+	disabled := homeDialog.simConfig.ConfigurationDisabled(config)
+	if disabled {
+		imgui.BeginDisabled()
+	}
+	if imgui.Button("Create") || (enter && !disabled) {
+		homeDialog.simConfig.displayError = homeDialog.simConfig.Start(config)
+	}
+	if disabled {
+		imgui.EndDisabled()
+	}
 }
 
 // homeDialogShouldQuit returns (and clears) the quit request set by the

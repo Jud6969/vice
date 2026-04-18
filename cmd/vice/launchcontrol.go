@@ -285,7 +285,7 @@ func (lc *LaunchControlWindow) Draw(eventStream *sim.EventStream, p platform.Pla
 	imgui.SetNextWindowSizeConstraints(imgui.Vec2{300, 100}, imgui.Vec2{-1, float32(p.WindowSize()[1]) * 19 / 20})
 	applyBorderlessViewportClass("Launch Control", config, p)
 	imgui.BeginV("Launch Control", &showLaunchControls, imgui.WindowFlagsAlwaysAutoResize|imgui.WindowFlagsNoTitleBar)
-	if panes.DrawTitleBar("Launch Control", "Launch Control", config.UnpinnedWindows, p) {
+	if panes.DrawTitleBar("Launch Control", "Launch Control", config.UnpinnedWindows, nil, p) {
 		showLaunchControls = false
 	}
 

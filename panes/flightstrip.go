@@ -171,13 +171,20 @@ func formatRoute(route string, fw, width float32, nlines int) []string {
 // using imgui tables for layout.
 
 func (fsp *FlightStripPane) DrawWindow(show *bool, c *client.ControlClient,
-	p platform.Platform, unpinnedWindows map[string]struct{}, lg *log.Logger) {
+	p platform.Platform, unpinnedWindows, lockedWindows map[string]struct{}, lg *log.Logger) {
 
 	fsp.reconcileOrder(c.State.FlightStripACIDs)
 
 	imgui.SetNextWindowSizeConstraints(imgui.Vec2{X: 400, Y: 200}, imgui.Vec2{X: 4096, Y: 4096})
-	imgui.BeginV("Flight Strips", show, imgui.WindowFlagsNoTitleBar)
-	if DrawTitleBar("Flight Strips", "Flight Strips", unpinnedWindows, p) {
+	// ConfigWindowsMoveFromTitleBarOnly doesn't apply to NoTitleBar windows,
+	// so imgui would otherwise drag the window from any background click.
+	// Add NoMove when the user has locked this window to fully freeze it.
+	flags := imgui.WindowFlagsNoTitleBar
+	if _, locked := lockedWindows["Flight Strips"]; locked {
+		flags |= imgui.WindowFlagsNoMove
+	}
+	imgui.BeginV("Flight Strips", show, flags)
+	if DrawTitleBar("Flight Strips", "Flight Strips", unpinnedWindows, lockedWindows, p) {
 		*show = false
 	}
 	if fsp.font != nil {

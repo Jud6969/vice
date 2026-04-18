@@ -437,36 +437,6 @@ func startBackgroundModelLoading(config *Config, plat platform.Platform, lg *log
 	}()
 }
 
-// loadSavedSim attempts to restore the previously-saved simulation from
-// config. Returns the control client and active radar pane if
-// successful, or nil for both if loading fails or there is no saved sim.
-func loadSavedSim(mgr *client.ConnectionManager, config *Config,
-	plat platform.Platform, lg *log.Logger) (*client.ControlClient, panes.Pane) {
-
-	if config.Sim == nil || *resetSim || *starsRandoms {
-		return nil, nil
-	}
-
-	c, err := mgr.LoadLocalSim(config.Sim, config.ControllerInitials, lg)
-	if err != nil {
-		lg.Errorf("Error loading local sim: %v", err)
-		return nil, nil
-	}
-
-	// Notify the active radar pane about the loaded sim
-	isSTARSSim := av.DB.IsTRACON(c.State.Facility) || av.DB.IsATCT(c.State.Facility)
-	activeRadarPane := config.ActiveRadarPane(isSTARSSim)
-	activeRadarPane.LoadedSim(c, plat, lg)
-	uiResetControlClient(c, plat, lg)
-
-	// Apply waypoint commands if specified via command line
-	if *waypointCommands != "" {
-		c.SetWaypointCommands(*waypointCommands)
-	}
-
-	return c, activeRadarPane
-}
-
 // setupFuzzTesting connects to a server, picks a random scenario, and
 // creates a fuzz controller for STARS command testing.
 func setupFuzzTesting(mgr *client.ConnectionManager, config *Config,
@@ -617,15 +587,9 @@ func runGUI(config *Config, configErr error, lg *log.Logger) error {
 		ShowErrorDialog(plat, lg, "Errors in additional scenario file (scenario will not be loaded):\n\n%s", extraScenarioErrors)
 	}
 
-	// Wait for whisper benchmark to complete before loading saved sim.
+	// Wait for whisper benchmark to complete before entering the main loop.
 	// This shows a progress dialog if benchmarking is still in progress.
 	WaitForWhisperBenchmark(render, plat, lg)
-
-	// Restore previously-saved simulation if available.
-	if c, arp := loadSavedSim(mgr, config, plat, lg); c != nil {
-		controlClient = c
-		activeRadarPane = arp
-	}
 
 	if *starsRandoms {
 		var err error

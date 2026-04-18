@@ -81,6 +81,13 @@ type Platform interface {
 	// GetAllMonitorNames() returns an array of all available monitors' names.
 	GetAllMonitorNames() []string
 
+	// MainWindowMonitorWorkArea returns the work area (screen rect
+	// excluding taskbar / menu bar) of the monitor the main window
+	// currently sits on. Returned as (x, y, w, h) in screen pixels.
+	// Used by dialogs that want to center themselves on the active
+	// monitor.
+	MainWindowMonitorWorkArea() (x, y, w, h int)
+
 	// DisplaySize returns the dimension of the display.
 	DisplaySize() [2]float32
 
@@ -120,6 +127,28 @@ type Platform interface {
 	// CloseWindow requests that the window be closed. Equivalent to the OS
 	// close button on a decorated window.
 	CloseWindow()
+
+	// SetCaptionRegions tells the OS which rectangles within the main
+	// window's client area should be treated as a title bar / caption
+	// (in window-client coordinates). Used on Windows: a WM_NCHITTEST
+	// hook returns HTCAPTION for these rects, so Windows handles drag,
+	// Aero Snap, double-click to maximize, and the right-click system
+	// menu natively. No-op on macOS and Linux (those use the imperative
+	// BeginNativeWindowDrag path instead).
+	//
+	// Call every frame the custom title bar is drawn; pass nil or an
+	// empty slice to clear.
+	SetCaptionRegions(rects []math.Extent2D)
+
+	// BeginNativeWindowDrag initiates a native OS window drag of the
+	// main window, as if the user had clicked on a native title bar.
+	// On macOS calls -[NSWindow performWindowDragWithEvent:] (enables
+	// window tiling); on Linux X11 sends _NET_WM_MOVERESIZE (enables
+	// WM-side edge snapping). On Windows returns false because the
+	// WM_NCHITTEST hook installed via SetCaptionRegions already routes
+	// drags through the OS. Callers should fall back to software drag
+	// when this returns false.
+	BeginNativeWindowDrag() bool
 
 	// FramebufferSize returns the dimension of the framebuffer.
 	FramebufferSize() [2]float32

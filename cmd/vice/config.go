@@ -89,6 +89,10 @@ type ConfigNoSim struct {
 	// Windows absent from the set are pinned by default.
 	UnpinnedWindows map[string]struct{}
 
+	// Set of child windows whose position is locked by the user (drag
+	// disabled). Windows absent from the set are free to move.
+	LockedWindows map[string]struct{}
+
 	UserPTTKey         imgui.Key
 	SelectedMicrophone string
 
@@ -291,6 +295,9 @@ func LoadOrMakeDefaultConfig(lg *log.Logger) (config *Config, configErr error) {
 
 	if config.UnpinnedWindows == nil {
 		config.UnpinnedWindows = make(map[string]struct{})
+	}
+	if config.LockedWindows == nil {
+		config.LockedWindows = make(map[string]struct{})
 	}
 	if config.UIFontSize == 0 {
 		config.UIFontSize = 16

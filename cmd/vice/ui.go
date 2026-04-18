@@ -18,6 +18,7 @@ import (
 
 	"github.com/mmp/vice/client"
 	"github.com/mmp/vice/log"
+	"github.com/mmp/vice/math"
 	"github.com/mmp/vice/panes"
 	"github.com/mmp/vice/platform"
 	"github.com/mmp/vice/renderer"
@@ -177,6 +178,12 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 	}
 
 	ui.font.ImguiPush()
+	// dragStartX / dragEndX bracket the empty strip between the left-cluster
+	// menu buttons and the right-cluster app/window-control buttons. They're
+	// reported to the platform layer as the draggable caption region so
+	// Windows' Aero Snap / macOS tiling / Linux WM snap kicks in when the
+	// user drags there.
+	var dragStartX, dragEndX float32
 	if imgui.BeginMainMenuBar() {
 		menuBarCursorY := imgui.CursorPosY()
 		imgui.PushStyleColorVec4(imgui.ColButton, imgui.Vec4{})
@@ -280,6 +287,9 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 			imgui.SetTooltip("Display online vice documentation")
 		}
 
+		// Left-cluster ends here; the empty strip starts past this X.
+		dragStartX = imgui.CursorPosX()
+
 		// Handle PTT key for STT recording
 		uiHandlePTTKey(p, controlClient, config, lg)
 
@@ -300,6 +310,10 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 		// app icons remain (info, discord); the fullscreen toggle was
 		// removed in favor of the title-bar maximize button.
 		appButtonsX := windowCtrlX - 2*buttonWidth - 2*itemSpacingX
+
+		// Right-cluster starts at the mic icon position (appButtonsX minus
+		// one icon slot). Draggable strip ends here.
+		dragEndX = appButtonsX - float32(iconWidth) - itemSpacingX
 
 		// Show microphone icon while recording (red) or garbling (yellow),
 		// positioned to the left of the app icon cluster.
@@ -373,6 +387,19 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 	}
 	ui.menuBarHeight = imgui.CursorPos().Y - 1
 
+	// Publish the draggable strip as the OS caption region. On Windows
+	// this is what enables Aero Snap (the WM_NCHITTEST hook returns
+	// HTCAPTION here); on macOS/Linux it's a no-op — those paths use
+	// BeginNativeWindowDrag instead.
+	if dragEndX > dragStartX && ui.menuBarHeight > 0 && !p.IsFullScreen() {
+		p.SetCaptionRegions([]math.Extent2D{{
+			P0: [2]float32{dragStartX, 0},
+			P1: [2]float32{dragEndX, ui.menuBarHeight},
+		}})
+	} else {
+		p.SetCaptionRegions(nil)
+	}
+
 	uiHandleWindowResize(p)
 	uiHandleTitleBarDrag(p)
 
@@ -399,11 +426,11 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 
 		if ui.showMessages {
 			applyBorderlessViewportClass("Messages", config, p)
-			config.MessagesPane.DrawWindow(&ui.showMessages, controlClient, p, config.UnpinnedWindows, lg)
+			config.MessagesPane.DrawWindow(&ui.showMessages, controlClient, p, config.UnpinnedWindows, config.LockedWindows, lg)
 		}
 		if ui.showFlightStrips {
 			applyBorderlessViewportClass("Flight Strips", config, p)
-			config.FlightStripPane.DrawWindow(&ui.showFlightStrips, controlClient, p, config.UnpinnedWindows, lg)
+			config.FlightStripPane.DrawWindow(&ui.showFlightStrips, controlClient, p, config.UnpinnedWindows, config.LockedWindows, lg)
 		}
 	}
 
@@ -926,7 +953,7 @@ func uiDrawSettingsWindow(c *client.ControlClient, config *Config, activeRadarPa
 
 	applyBorderlessViewportClass("Settings", config, p)
 	imgui.BeginV("Settings", &ui.showSettings, imgui.WindowFlagsAlwaysAutoResize|imgui.WindowFlagsNoTitleBar)
-	if panes.DrawTitleBar("Settings", "Settings", config.UnpinnedWindows, p) {
+	if panes.DrawTitleBar("Settings", "Settings", config.UnpinnedWindows, nil, p) {
 		ui.showSettings = false
 	}
 
@@ -1448,11 +1475,29 @@ func uiHandleTitleBarDrag(p platform.Platform) {
 		if !inMenuBar || overItem {
 			return
 		}
+		// Multi-viewport guard: imgui reports mouse state globally, but
+		// p.GetMouse() translates to main-window-relative coords. A click
+		// on a secondary floating window (Messages, Flight Strips) whose
+		// screen Y happens to land inside [0, menuBarHeight] after the
+		// translation would otherwise wrongly start a main-window drag.
+		// MouseHoveredViewport is the OS window the cursor is actually
+		// over; only proceed if it's the main viewport (or unknown, 0).
+		hoveredVP := imgui.CurrentIO().MouseHoveredViewport()
+		if hoveredVP != 0 && hoveredVP != imgui.MainViewport().ID() {
+			return
+		}
 		if mouse.DoubleClicked[platform.MouseButtonPrimary] {
 			p.ToggleMaximizeWindow()
 			return
 		}
 		if mouse.Clicked[platform.MouseButtonPrimary] {
+			// Prefer a native OS drag (enables Aero Snap on Windows —
+			// reached via the WM_NCHITTEST hook, not this branch;
+			// macOS window tiling; X11 WM edge snap). If the platform
+			// can't initiate one, fall back to software drag.
+			if p.BeginNativeWindowDrag() {
+				return
+			}
 			ui.windowDragActive = true
 			ui.windowDragStartWinPos = winPos
 			ui.windowDragStartMouseScr = [2]int{mouseScrX, mouseScrY}
