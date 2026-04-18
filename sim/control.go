@@ -873,33 +873,66 @@ func (s *Sim) contactController(fromTCP TCP, sfp *NASFlightPlan, ac *Aircraft, t
 	return intent
 }
 
+// airportCallsignPrefixes returns the candidate "<AIRPORT>_" prefixes used to
+// match controller callsigns. ac.FlightPlan.ArrivalAirport may carry the ICAO
+// K/P-prefix (e.g. "KMCO", "PHNL") while controller callsigns use the 3-letter
+// code ("MCO_TWR", "HNL_TWR"), so we try both forms.
+func airportCallsignPrefixes(airport string) []string {
+	if airport == "" {
+		return nil
+	}
+	prefixes := []string{airport + "_"}
+	if len(airport) == 4 && (airport[0] == 'K' || airport[0] == 'P') {
+		prefixes = append(prefixes, airport[1:]+"_")
+	}
+	return prefixes
+}
+
+// isAirportTowerCallsign reports whether callsign matches the
+// `<AIRPORT>[_<TAG>]_TWR` convention for the given airport, accepting either
+// the 3-letter or ICAO-prefixed airport form.
+func isAirportTowerCallsign(callsign, airport string) bool {
+	if !strings.HasSuffix(callsign, "_TWR") {
+		return false
+	}
+	for _, prefix := range airportCallsignPrefixes(airport) {
+		if strings.HasPrefix(callsign, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // towersForAirport returns all controllers whose callsign matches the
 // tower convention `<AIRPORT>_TWR` or `<AIRPORT>_<TAG>_TWR` (e.g. IAD_N_TWR).
+// ArrivalAirport may be stored with an ICAO K-prefix (e.g. "KMCO") while
+// controller callsigns use the 3-letter code ("MCO_TWR"); try both.
 func (s *Sim) towersForAirport(airport string) []*av.Controller {
 	if airport == "" {
 		return nil
 	}
-	prefix := airport + "_"
+	prefixes := airportCallsignPrefixes(airport)
 	var out []*av.Controller
 	for _, c := range s.State.Controllers {
 		if c == nil {
 			continue
 		}
 		cs := c.Callsign
-		if !strings.HasPrefix(cs, prefix) {
-			continue
-		}
-		// rest is everything after "<airport>_", e.g. "TWR" or "N_TWR".
-		rest := cs[len(prefix):]
-		if rest == "TWR" {
-			// Exact match: <airport>_TWR
-			out = append(out, c)
-		} else if strings.HasSuffix(rest, "_TWR") {
-			// Tagged match: <airport>_<tag>_TWR — tag must not contain "_".
-			tag := rest[:len(rest)-len("_TWR")]
-			if !strings.Contains(tag, "_") {
-				out = append(out, c)
+		for _, prefix := range prefixes {
+			if !strings.HasPrefix(cs, prefix) {
+				continue
 			}
+			// rest is everything after "<airport>_", e.g. "TWR" or "N_TWR".
+			rest := cs[len(prefix):]
+			if rest == "TWR" {
+				out = append(out, c)
+			} else if strings.HasSuffix(rest, "_TWR") {
+				tag := rest[:len(rest)-len("_TWR")]
+				if !strings.Contains(tag, "_") {
+					out = append(out, c)
+				}
+			}
+			break
 		}
 	}
 	return out
@@ -985,10 +1018,13 @@ func (s *Sim) resolveControllerByFrequency(ac *Aircraft, freq av.Frequency, posi
 	// D3: phase of flight.
 	filtered := candidates[:0:0]
 	if ac != nil && ac.Nav.Approach.Cleared {
-		prefix := ac.FlightPlan.ArrivalAirport + "_"
+		prefixes := airportCallsignPrefixes(ac.FlightPlan.ArrivalAirport)
 		for _, c := range candidates {
-			if strings.HasPrefix(c.Callsign, prefix) {
-				filtered = append(filtered, c)
+			for _, prefix := range prefixes {
+				if strings.HasPrefix(c.Callsign, prefix) {
+					filtered = append(filtered, c)
+					break
+				}
 			}
 		}
 	} else {
@@ -2246,8 +2282,7 @@ func (s *Sim) ContactTower(tcw TCW, callsign av.ADSBCallsign, freq av.Frequency,
 		if err != nil {
 			return av.UnknownFrequencyIntent{Frequency: freq}, nil
 		}
-		prefix := airport + "_"
-		isTower := strings.HasSuffix(resolved.Callsign, "_TWR") && strings.HasPrefix(resolved.Callsign, prefix)
+		isTower := isAirportTowerCallsign(resolved.Callsign, airport)
 		if !isTower {
 			if len(towers) > 0 {
 				// Scenario declares tower controllers but the given frequency
@@ -4251,8 +4286,7 @@ func (s *Sim) runOneControlCommand(tcw TCW, callsign av.ADSBCallsign, command st
 			fromTyped := hint == ""
 			if ac, ok := s.Aircraft[callsign]; ok && ac.Nav.Approach.Cleared {
 				if target, rerr := s.resolveControllerByFrequency(ac, freq, hint); rerr == nil {
-					prefix := ac.FlightPlan.ArrivalAirport + "_"
-					if strings.HasSuffix(target.Callsign, "_TWR") && strings.HasPrefix(target.Callsign, prefix) {
+					if isAirportTowerCallsign(target.Callsign, ac.FlightPlan.ArrivalAirport) {
 						return s.ContactTower(tcw, callsign, freq, hint, fromTyped)
 					}
 				}
