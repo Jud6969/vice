@@ -871,6 +871,38 @@ func (s *Sim) contactController(fromTCP TCP, sfp *NASFlightPlan, ac *Aircraft, t
 	return intent
 }
 
+// towersForAirport returns all controllers whose callsign matches the
+// tower convention `<AIRPORT>_TWR` or `<AIRPORT>_<TAG>_TWR` (e.g. IAD_N_TWR).
+func (s *Sim) towersForAirport(airport string) []*av.Controller {
+	if airport == "" {
+		return nil
+	}
+	prefix := airport + "_"
+	var out []*av.Controller
+	for _, c := range s.State.Controllers {
+		if c == nil {
+			continue
+		}
+		cs := c.Callsign
+		if !strings.HasPrefix(cs, prefix) {
+			continue
+		}
+		// rest is everything after "<airport>_", e.g. "TWR" or "N_TWR".
+		rest := cs[len(prefix):]
+		if rest == "TWR" {
+			// Exact match: <airport>_TWR
+			out = append(out, c)
+		} else if strings.HasSuffix(rest, "_TWR") {
+			// Tagged match: <airport>_<tag>_TWR — tag must not contain "_".
+			tag := rest[:len(rest)-len("_TWR")]
+			if !strings.Contains(tag, "_") {
+				out = append(out, c)
+			}
+		}
+	}
+	return out
+}
+
 func (s *Sim) AcceptHandoff(tcw TCW, acid ACID) error {
 	s.mu.Lock(s.lg)
 	defer s.mu.Unlock(s.lg)

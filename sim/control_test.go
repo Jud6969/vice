@@ -350,3 +350,29 @@ func TestRunOneControlCommandAtFixClearedStraightInApproach(t *testing.T) {
 		t.Fatal("AtFixClearedRoute was not populated")
 	}
 }
+
+func TestTowersForAirport(t *testing.T) {
+	s := &Sim{
+		State: &CommonState{
+			Controllers: map[TCP]*av.Controller{
+				"IAD_N_TWR": {Callsign: "IAD_N_TWR", Frequency: 120100},
+				"IAD_E_TWR": {Callsign: "IAD_E_TWR", Frequency: 120750},
+				"IAD_W_TWR": {Callsign: "IAD_W_TWR", Frequency: 119850},
+				"DCA_TWR":   {Callsign: "DCA_TWR", Frequency: 119100},
+				"MCO_APP":   {Callsign: "MCO_APP", Frequency: 127750},
+			},
+		},
+	}
+	got := s.towersForAirport("IAD")
+	if len(got) != 3 {
+		t.Fatalf("IAD: got %d towers, want 3", len(got))
+	}
+	got = s.towersForAirport("DCA")
+	if len(got) != 1 || got[0].Callsign != "DCA_TWR" {
+		t.Errorf("DCA: got %+v, want 1 DCA_TWR", got)
+	}
+	got = s.towersForAirport("MCO")
+	if len(got) != 0 {
+		t.Errorf("MCO: got %d, want 0", len(got))
+	}
+}
