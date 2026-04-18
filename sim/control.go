@@ -3537,7 +3537,7 @@ type ControlCommandsResult struct {
 // the pilot-reaction delay applied by deferred-action Nav commands is reduced by
 // (audioDuration - callsignAudioOffset), floored at zero.
 func (s *Sim) RunAircraftControlCommands(tcw TCW, callsign av.ADSBCallsign, commandStr string, audioDuration time.Duration) ControlCommandsResult {
-	commands := strings.Fields(commandStr)
+	commands := mergeFrequencyArgs(strings.Fields(commandStr))
 
 	delayReduction := audioDuration - callsignAudioOffset
 	if delayReduction < 0 {
@@ -3914,6 +3914,34 @@ func parseLAHSOSuffix(spec string) (base string, lahsoRunway string) {
 		lahsoRunway = strings.TrimPrefix(suffix, "LAHSO")
 	}
 	return base, lahsoRunway
+}
+
+// mergeFrequencyArgs collapses typed `FC <digits>` / `TO <digits>` pairs into
+// single `FC<digits>` / `TO<digits>` tokens so the runOneControlCommand parser
+// sees a contiguous command. Only merges when the follow-up token is 5 or 6
+// digits (the accepted frequency lengths); anything else passes through.
+func mergeFrequencyArgs(tokens []string) []string {
+	isFreq := func(s string) bool {
+		if len(s) != 5 && len(s) != 6 {
+			return false
+		}
+		for _, r := range s {
+			if r < '0' || r > '9' {
+				return false
+			}
+		}
+		return true
+	}
+	out := make([]string, 0, len(tokens))
+	for i := 0; i < len(tokens); i++ {
+		if (tokens[i] == "FC" || tokens[i] == "TO") && i+1 < len(tokens) && isFreq(tokens[i+1]) {
+			out = append(out, tokens[i]+tokens[i+1])
+			i++
+			continue
+		}
+		out = append(out, tokens[i])
+	}
+	return out
 }
 
 // parseFrequencyDigits accepts 5 or 6 ASCII digits. 5 digits are treated as
