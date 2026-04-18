@@ -10,6 +10,7 @@ import (
 
 var (
 	ErrAircraftAlreadyReleased         = errors.New("Aircraft already released")
+	ErrAmbiguousTower                  = errors.New("Multiple towers serve this airport; specify frequency")
 	ErrATPADisabled                    = errors.New("ATPA is disabled system-wide")
 	ErrBeaconMismatch                  = errors.New("Beacon code mismatch")
 	ErrControllerAlreadySignedIn       = errors.New("Controller with that callsign already signed in")
@@ -18,6 +19,7 @@ var (
 	ErrFDAMIllegalArea                 = errors.New("ILL AREA")
 	ErrFDAMNoRegions                   = errors.New("ILL FNCT - NO REGIONS")
 	ErrFDAMProcessingOff               = errors.New("ILL FNCT - PROCESSING OFF")
+	ErrFrequencyNotTower               = errors.New("Frequency does not resolve to a tower controller for this airport")
 	ErrIllegalACID                     = errors.New("Illegal ACID")
 	ErrIllegalACType                   = errors.New("Illegal aircraft type")
 	ErrIllegalATIS                     = errors.New("Illegal ATIS")
@@ -36,6 +38,7 @@ var (
 	ErrNoMatchingFlightPlan            = errors.New("No matching flight plan")
 	ErrNoScratchpad                    = errors.New("No scratchpad")
 	ErrNoRecentCommand                 = errors.New("No recent command to roll back")
+	ErrNoTowerForAirport               = errors.New("No tower controller configured for arrival airport")
 	ErrNoVFRAircraftForFlightFollowing = errors.New("No VFR aircraft available for flight following")
 	ErrNotLaunchController             = errors.New("Not signed in as the launch controller")
 	ErrTCPAlreadyConsolidated          = errors.New("TCP already consolidated - deconsolidate first")
