@@ -1043,6 +1043,91 @@ func (p *frequencyValueParser) parse(tokens []Token, pos int, ac Aircraft) (any,
 	return av.Frequency(khz), 3, ""
 }
 
+// frequencyParser matches a spoken frequency and returns it as av.Frequency
+// (kHz ×1000). Accepted shapes:
+//   - "N N N point N N"   → e.g. 127 point 75  → Frequency(127750)
+//   - "N N N point N N N" → e.g. 127 point 750 → Frequency(127750)
+//   - "N N N N N"         → 5 digits, trailing zero implicit → Frequency(127750)
+//   - "N N N N N N"       → 6 digits explicit → Frequency(127750)
+//
+// Rejects values outside 118000..137000.
+type frequencyParser struct{}
+
+func (p *frequencyParser) identifier() string { return "frequency" }
+func (p *frequencyParser) goType() reflect.Type {
+	return reflect.TypeOf(av.Frequency(0))
+}
+
+func (p *frequencyParser) parse(tokens []Token, pos int, ac Aircraft) (any, int, string) {
+	if pos >= len(tokens) {
+		return nil, 0, ""
+	}
+	// Collect up to 10 consecutive digit/point tokens starting at pos.
+	maxLookahead := min(10, len(tokens)-pos)
+	var digits []int
+	sawPoint := false
+	pointAt := -1
+	consumed := 0
+	for i := 0; i < maxLookahead; i++ {
+		t := tokens[pos+i]
+		if t.Type == TokenNumber && t.Value >= 0 && t.Value <= 9 {
+			digits = append(digits, t.Value)
+			consumed = i + 1
+			continue
+		}
+		if t.Type == TokenWord && strings.ToLower(t.Text) == "point" && !sawPoint {
+			sawPoint = true
+			pointAt = len(digits)
+			consumed = i + 1
+			continue
+		}
+		// Also accept multi-digit number tokens like "127" or "75" as a
+		// sequence of digits (the tokenizer may aggregate some spoken numbers).
+		if t.Type == TokenNumber && t.Value >= 10 {
+			v := t.Value
+			var tmp []int
+			for v > 0 {
+				tmp = append([]int{v % 10}, tmp...)
+				v /= 10
+			}
+			digits = append(digits, tmp...)
+			consumed = i + 1
+			continue
+		}
+		break
+	}
+
+	// Need at least 5 digits total.
+	if len(digits) < 5 || len(digits) > 6 {
+		return nil, 0, ""
+	}
+
+	// If "point" was present, enforce 3 digits before it and 2 or 3 after.
+	if sawPoint {
+		if pointAt != 3 {
+			return nil, 0, ""
+		}
+		after := len(digits) - 3
+		if after != 2 && after != 3 {
+			return nil, 0, ""
+		}
+	}
+
+	// Assemble kHz value. 5 digits → append trailing 0; 6 digits → as-is.
+	khz := 0
+	for _, d := range digits {
+		khz = khz*10 + d
+	}
+	if len(digits) == 5 {
+		khz *= 10
+	}
+
+	if khz < 118000 || khz > 137000 {
+		return nil, 0, ""
+	}
+	return av.Frequency(khz), consumed, ""
+}
+
 // compassDirParser extracts a cardinal/ordinal compass direction.
 // Matches: north, south, east, west, northeast, northwest, southeast, southwest.
 // Returns the short abbreviation (N, S, E, W, NE, NW, SE, SW) as a string.
@@ -1118,8 +1203,13 @@ func getTypeParser(typeID string) typeParser {
 		return &dmeParser{}
 	case "contact_frequency":
 		return &contactFrequencyParser{}
+<<<<<<< HEAD
 	case "frequency_value":
 		return &frequencyValueParser{}
+=======
+	case "frequency":
+		return &frequencyParser{}
+>>>>>>> 08dc4a88 (stt: frequencyParser returning av.Frequency for FC/TO arguments)
 	case "standalone_altitude":
 		return &standaloneAltitudeParser{}
 	case "compass_dir":
