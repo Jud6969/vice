@@ -39,7 +39,6 @@ var (
 	ErrNoMatchingFlightPlan            = errors.New("No matching flight plan")
 	ErrNoScratchpad                    = errors.New("No scratchpad")
 	ErrNoRecentCommand                 = errors.New("No recent command to roll back")
-	ErrNoTowerForAirport               = errors.New("No tower controller configured for arrival airport")
 	ErrNoVFRAircraftForFlightFollowing = errors.New("No VFR aircraft available for flight following")
 	ErrNotLaunchController             = errors.New("Not signed in as the launch controller")
 	ErrTCPAlreadyConsolidated          = errors.New("TCP already consolidated - deconsolidate first")

@@ -2228,12 +2228,16 @@ func (s *Sim) ContactTower(tcw TCW, callsign av.ADSBCallsign, freq av.Frequency,
 	positionOnly := false
 
 	if freq == 0 {
+		// Bare TO: no caller-supplied frequency. Always render position-only;
+		// if the scenario declares a tower controller we hand off to it, otherwise
+		// fall back to the sentinel so the 117 scenarios without `<AIRPORT>_TWR`
+		// controllers still get the pre-revamp "contact tower" behavior.
+		positionOnly = true
 		switch len(towers) {
 		case 0:
-			return nil, ErrNoTowerForAirport
+			target = nil
 		case 1:
 			target = towers[0]
-			positionOnly = !fromTypedCommand
 		default:
 			return nil, ErrAmbiguousTower
 		}
