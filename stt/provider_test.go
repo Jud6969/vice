@@ -716,11 +716,11 @@ func TestHandoffCommands(t *testing.T) {
 		},
 		{
 			name:       "frequency change with frequency",
-			transcript: "Delta 500 contact Los Angeles Center one three two point four",
+			transcript: "Delta 500 contact Los Angeles Center one three two point four zero",
 			aircraft: map[string]Aircraft{
 				"Delta 500": {Callsign: "DAL500", State: "overflight"},
 			},
-			expected: "DAL500 FC",
+			expected: "DAL500 FC132400:Los Angeles Center",
 		},
 	}
 

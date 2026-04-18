@@ -1241,83 +1241,79 @@ func registerAllCommands() {
 		WithPriority(20),
 	)
 
-	// Contact tower patterns - need to handle "contact <facility> tower"
+	// === CONTACT / FREQUENCY CHANGE PATTERNS ===
+	// See docs/superpowers/specs/2026-04-18-frequency-change-readback-design.md
+
+	// TO with explicit frequency and position (highest priority).
 	registerSTTCommand(
-		"contact tower [{frequency_value}]",
-		func(freq *av.Frequency) string {
-			if freq == nil {
-				return "TO"
-			}
-			return fmt.Sprintf("TO/%d", int(*freq))
+		"contact {text} tower {frequency}",
+		func(pos string, f av.Frequency) string {
+			return fmt.Sprintf("TO%s:%s", frequencyToDigits(f), pos)
 		},
-		WithName("contact_tower"),
-		WithPriority(15),
+		WithName("contact_position_tower_freq"),
+		WithPriority(20),
 	)
-	// "{facility} tower" (when "contact" is garbled but facility name remains)
-	// E.g., "Konak tower", "San Francisco tower"
-	// Uses {garbled_word} to require a non-command word before "tower",
-	// preventing bare "tower" from matching as noise in transcripts.
 	registerSTTCommand(
-		"{garbled_word} tower [{frequency_value}]",
-		func(_ string, freq *av.Frequency) string {
-			if freq == nil {
-				return "TO"
-			}
-			return fmt.Sprintf("TO/%d", int(*freq))
+		"over to {text} tower {frequency}",
+		func(pos string, f av.Frequency) string {
+			return fmt.Sprintf("TO%s:%s", frequencyToDigits(f), pos)
 		},
-		WithName("facility_tower"),
-		WithPriority(5),
+		WithName("over_to_position_tower_freq"),
+		WithPriority(19),
 	)
-	// Pattern: "contact Kennedy Tower" or "contact Lindbergh Tower"
-	// The {text} parameter consumes one token (the facility name)
+	// Bare tower with position name (no freq). Requires single-tower airport at runtime.
 	registerSTTCommand(
-		"contact {text} tower [{frequency_value}]",
-		func(_ string, freq *av.Frequency) string {
-			if freq == nil {
-				return "TO"
-			}
-			return fmt.Sprintf("TO/%d", int(*freq))
-		},
-		WithName("contact_facility_tower"),
+		"contact {text} tower",
+		func(_ string) string { return "TO" },
+		WithName("contact_position_tower_bare"),
+		WithPriority(18),
+	)
+	registerSTTCommand(
+		"contact tower {frequency}",
+		func(f av.Frequency) string { return "TO" + frequencyToDigits(f) },
+		WithName("contact_tower_freq"),
 		WithPriority(16),
 	)
-
-	// "contact approach/departure/center" produces FC
-	// Requires a facility type word after "contact" to avoid matching phrases like
-	// "contact clerder" where "clerder" is garbled "cleared"
-	// The "radar contact" pattern has higher priority and produces ""
 	registerSTTCommand(
-		"contact approach|departure|center",
-		func() string { return "FC" },
-		WithName("frequency_change"),
-		WithPriority(3), // Low priority - "radar contact" pattern (priority 20) wins when applicable
+		"contact tower",
+		func() string { return "TO" },
+		WithName("contact_tower_bare"),
+		WithPriority(15),
 	)
 
-	// Pattern: "contact <garbled facility> <frequency>"
-	// Handles cases where the facility name is garbled but ends with a frequency.
-	// E.g., "contact for ersena one two seven point zero" (Fort Worth Center 127.0)
+	// FC with position hint and frequency.
 	registerSTTCommand(
-		"contact {contact_frequency}",
-		func(_ string) string { return "FC" },
-		WithName("frequency_change_with_frequency"),
-		WithPriority(4), // Just above the basic "contact facility" pattern
+		"contact {text} {frequency}",
+		func(pos string, f av.Frequency) string {
+			return fmt.Sprintf("FC%s:%s", frequencyToDigits(f), pos)
+		},
+		WithName("contact_position_freq"),
+		WithPriority(12),
 	)
-
-	// Fallback: "contact" + garbled word without frequency pattern → assume tower
-	// If we clearly heard "contact" but what follows is too short to be a frequency,
-	// it's most likely "contact tower" with a garbled "tower".
-	// Uses {garbled_word} to avoid matching command keywords like "climb".
-	// Lower priority than FC patterns so those match first when applicable.
 	registerSTTCommand(
-		"contact {garbled_word}",
-		func(_ string) string { return "TO" },
-		WithName("contact_garbled_tower"),
-		WithPriority(2),
+		"over to {text} {frequency}",
+		func(pos string, f av.Frequency) string {
+			return fmt.Sprintf("FC%s:%s", frequencyToDigits(f), pos)
+		},
+		WithName("over_to_position_freq"),
+		WithPriority(11),
+	)
+	registerSTTCommand(
+		"contact approach|departure|center|ground|clearance|ramp {frequency}",
+		func(f av.Frequency) string { return "FC" + frequencyToDigits(f) },
+		WithName("contact_facilitytype_freq"),
+		WithPriority(10),
+	)
+	registerSTTCommand(
+		"contact {frequency}",
+		func(f av.Frequency) string { return "FC" + frequencyToDigits(f) },
+		WithName("contact_freq"),
+		WithPriority(9),
 	)
 
 	registerSTTCommand(
 		"frequency change approved",
-		func() string { return "" }, // Ignored - informational only
+		func() string { return "" },
 		WithName("frequency_change_approved"),
 		WithPriority(15),
 	)
@@ -1463,4 +1459,10 @@ func registerAllCommands() {
 		WithName("airport_in_sight_inquiry"),
 		WithPriority(10),
 	)
+}
+
+// frequencyToDigits renders a Frequency as a 6-digit string for the command
+// string form. 127750 → "127750".
+func frequencyToDigits(f av.Frequency) string {
+	return fmt.Sprintf("%06d", int(f))
 }

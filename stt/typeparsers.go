@@ -770,7 +770,12 @@ func (p *holdParser) parse(tokens []Token, pos int, ac Aircraft) (any, int, stri
 	return "H" + fix, fixConsumed, ""
 }
 
-// textParser extracts a single word token. Used for free-form text like facility names.
+// textParser extracts a run of word tokens. Used for free-form text like
+// facility / position names (e.g., "Los Angeles Center" in "contact Los
+// Angeles Center {frequency}"). Stops at the next non-word token so a trailing
+// {frequency} or other typed parameter in the same pattern still parses.
+// Returns the joined words as a single space-free token so the result remains
+// a single command when the dispatcher splits on whitespace.
 type textParser struct{}
 
 func (p *textParser) identifier() string {
@@ -785,11 +790,36 @@ func (p *textParser) parse(tokens []Token, pos int, ac Aircraft) (value any, con
 	if pos >= len(tokens) {
 		return nil, 0, ""
 	}
-	// Just consume one word token (not a number)
-	if tokens[pos].Type == TokenWord {
-		return tokens[pos].Text, 1, ""
+	// Stop words that must not be swallowed: the word "tower" is a literal in
+	// "contact {text} tower ...", and "point" signals the interior of a spoken
+	// frequency. Without these the greedy run would eat them.
+	stopWords := map[string]struct{}{
+		"tower": {},
+		"point": {},
 	}
-	return nil, 0, ""
+	// Collect consecutive word tokens.
+	end := pos
+	for end < len(tokens) && tokens[end].Type == TokenWord {
+		if _, stop := stopWords[strings.ToLower(tokens[end].Text)]; stop {
+			break
+		}
+		end++
+	}
+	if end == pos {
+		return nil, 0, ""
+	}
+	var parts []string
+	for i := pos; i < end; i++ {
+		t := tokens[i].Text
+		if t == "" {
+			continue
+		}
+		// Title-case the first letter for readable facility / position hints.
+		parts = append(parts, strings.ToUpper(t[:1])+t[1:])
+	}
+	// Join with spaces so downstream hint matching (substring against
+	// Controller.RadioName like "Los Angeles Center") works naturally.
+	return strings.Join(parts, " "), end - pos, ""
 }
 
 // atisLetterParser extracts a NATO phonetic letter for ATIS information.
@@ -942,105 +972,6 @@ func (p *standaloneAltitudeParser) parse(tokens []Token, pos int, ac Aircraft) (
 	}
 
 	return nil, 0, ""
-}
-
-// contactFrequencyParser matches the pattern for "contact <facility> <frequency>".
-// It looks for tokens ending with a frequency pattern: 2-3 digit number + "point" + 1-2 digit number.
-// This handles garbled facility names like "contact for ersena one two seven point zero".
-type contactFrequencyParser struct{}
-
-func (p *contactFrequencyParser) identifier() string {
-	return "contact_frequency"
-}
-
-func (p *contactFrequencyParser) goType() reflect.Type {
-	return reflect.TypeOf("")
-}
-
-func (p *contactFrequencyParser) parse(tokens []Token, pos int, ac Aircraft) (any, int, string) {
-	if pos >= len(tokens) {
-		return nil, 0, ""
-	}
-
-	// Look for the frequency pattern: number (10-9999) + "point" + number (0-99)
-	// We accept up to 9999 because spoken digit-by-digit frequencies like "one two four"
-	// can be combined with preceding garbled words (e.g., "seven one two four" where
-	// "seven" is mis-heard "center") resulting in numbers like 7124.
-	// Scan up to 10 tokens ahead looking for this pattern
-	maxLookahead := min(10, len(tokens)-pos)
-
-	for i := pos; i < pos+maxLookahead-2; i++ {
-		t := tokens[i]
-
-		// Check if this token is a number in valid frequency range (10-9999)
-		if t.Type != TokenNumber || t.Value < 10 || t.Value > 9999 {
-			continue
-		}
-
-		// Check if next token is "point"
-		if i+1 >= len(tokens) {
-			continue
-		}
-		pointToken := tokens[i+1]
-		if pointToken.Type != TokenWord || strings.ToLower(pointToken.Text) != "point" {
-			continue
-		}
-
-		// Check if token after "point" is a number (0-99)
-		if i+2 >= len(tokens) {
-			continue
-		}
-		decimalToken := tokens[i+2]
-		if decimalToken.Type != TokenNumber || decimalToken.Value < 0 || decimalToken.Value > 99 {
-			continue
-		}
-
-		// Found a valid frequency pattern - consume all tokens up to and including it
-		consumed := (i + 3) - pos
-		return "frequency", consumed, ""
-	}
-
-	return nil, 0, ""
-}
-
-// frequencyValueParser extracts an aviation VHF frequency value
-// from the pattern: NUMBER "point" NUMBER. Returns av.Frequency
-// (integer with ×1000 scaling, matching av.NewFrequency).
-type frequencyValueParser struct{}
-
-func (p *frequencyValueParser) identifier() string   { return "frequency_value" }
-func (p *frequencyValueParser) goType() reflect.Type { return reflect.TypeOf(av.Frequency(0)) }
-
-func (p *frequencyValueParser) parse(tokens []Token, pos int, ac Aircraft) (any, int, string) {
-	if pos+2 >= len(tokens) {
-		return nil, 0, ""
-	}
-
-	whole := tokens[pos]
-	if whole.Type != TokenNumber || whole.Value < 100 || whole.Value > 999 {
-		return nil, 0, ""
-	}
-
-	point := tokens[pos+1]
-	if point.Type != TokenWord || strings.ToLower(point.Text) != "point" {
-		return nil, 0, ""
-	}
-
-	dec := tokens[pos+2]
-	if dec.Type != TokenNumber || dec.Value < 0 || dec.Value > 99 {
-		return nil, 0, ""
-	}
-
-	// Decimal scaling is based on the number of digits spoken, not the
-	// numeric magnitude. "point nine" (text="9") → 0.9 (×100).
-	// "point four five" (text="45") → 0.45 (×10). Tokenize preserves
-	// original digit count in Text (see parseDigitSequence).
-	scale := 100
-	if len(dec.Text) >= 2 {
-		scale = 10
-	}
-	khz := whole.Value*1000 + dec.Value*scale
-	return av.Frequency(khz), 3, ""
 }
 
 // frequencyParser matches a spoken frequency and returns it as av.Frequency
@@ -1201,15 +1132,8 @@ func getTypeParser(typeID string) typeParser {
 		return &speedUntilParser{}
 	case "dme":
 		return &dmeParser{}
-	case "contact_frequency":
-		return &contactFrequencyParser{}
-<<<<<<< HEAD
-	case "frequency_value":
-		return &frequencyValueParser{}
-=======
 	case "frequency":
 		return &frequencyParser{}
->>>>>>> 08dc4a88 (stt: frequencyParser returning av.Frequency for FC/TO arguments)
 	case "standalone_altitude":
 		return &standaloneAltitudeParser{}
 	case "compass_dir":
