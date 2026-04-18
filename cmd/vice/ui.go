@@ -908,10 +908,6 @@ func drawWindowTitleBar(title, windowTitle string, config *Config, p platform.Pl
 	style := imgui.CurrentStyle()
 	lineHeight := imgui.TextLineHeight() + 2*style.FramePadding().Y
 	closeBtnWidth := imgui.CalcTextSize(renderer.FontAwesomeIconTimes).X + 2*style.FramePadding().X
-	pinBtnWidth := float32(0)
-	if windowTitle != "" {
-		pinBtnWidth = imgui.CalcTextSize(renderer.FontAwesomeIconThumbtack).X + 2*style.FramePadding().X
-	}
 
 	// Title bar background. Use ImGui's title-bar color so it blends.
 	drawList := imgui.WindowDrawList()
@@ -930,13 +926,13 @@ func drawWindowTitleBar(title, windowTitle string, config *Config, p platform.Pl
 	imgui.TextUnformatted(title)
 
 	// Right-cluster: optional pin button, then close button.
-	rightX := winSize.X - closeBtnWidth - style.FramePadding().X
+	// panes.DrawPinButton positions itself via ForegroundDrawList (it ignores
+	// the imgui cursor), so we just call it when we need it and position the
+	// close button directly from the right edge.
 	if windowTitle != "" {
-		rightX -= pinBtnWidth + style.ItemSpacing().X
-		imgui.SetCursorPos(imgui.Vec2{X: rightX, Y: style.FramePadding().Y})
 		panes.DrawPinButton(windowTitle, config.UnpinnedWindows, p)
-		rightX += pinBtnWidth + style.ItemSpacing().X
 	}
+	rightX := winSize.X - closeBtnWidth - style.FramePadding().X
 	imgui.SetCursorPos(imgui.Vec2{X: rightX, Y: style.FramePadding().Y})
 	imgui.PushStyleColorVec4(imgui.ColButtonHovered, imgui.Vec4{0.85, 0.15, 0.15, 1})
 	imgui.PushStyleColorVec4(imgui.ColButtonActive, imgui.Vec4{0.7, 0.1, 0.1, 1})
