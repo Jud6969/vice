@@ -46,6 +46,15 @@ type ConfigNoSim struct {
 	WhatsNewIndex int
 	LastServer    string
 	LastTRACON    string
+
+	// LastFacility / LastGroupName / LastScenarioName identify the most
+	// recently launched scenario so the home dialog can offer a
+	// "Launch Previous" shortcut. Empty strings mean "no previous run";
+	// stale values (server/TRACON/scenario no longer resolvable) are
+	// detected at dialog-draw time and disable the button.
+	LastFacility     string
+	LastGroupName    string
+	LastScenarioName string
 	UIFontSize    int
 
 	// Store individual pane instances

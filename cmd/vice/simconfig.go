@@ -197,6 +197,29 @@ func (c *NewSimConfiguration) SetFacility(name string) {
 	c.SetScenario(c.GroupName, scenarioCatalog.DefaultScenario)
 }
 
+// CanResolveScenario reports whether the given facility/group/scenario
+// triple can be located in the current catalog. Used by the home
+// dialog's Launch Previous button to decide whether to enable it.
+func (c *NewSimConfiguration) CanResolveScenario(facility, groupName, scenarioName string) bool {
+	if c.selectedServer == nil {
+		return false
+	}
+	catalogs := c.selectedServer.GetScenarioCatalogs()
+	if catalogs == nil {
+		return false
+	}
+	facilityCatalogs, ok := catalogs[facility]
+	if !ok {
+		return false
+	}
+	groupCatalog, ok := facilityCatalogs[groupName]
+	if !ok {
+		return false
+	}
+	_, ok = groupCatalog.Scenarios[scenarioName]
+	return ok
+}
+
 func (c *NewSimConfiguration) SetScenario(groupName, scenarioName string) {
 	var ok bool
 	var scenarioCatalog *server.ScenarioCatalog
@@ -1471,6 +1494,12 @@ func (c *NewSimConfiguration) Start(config *Config) error {
 	}
 
 	*c.defaultFacility = c.Facility
+
+	// Persist enough state for the home dialog's "Launch Previous"
+	// button to reconstitute this scenario on the next session.
+	config.LastFacility = c.Facility
+	config.LastGroupName = c.GroupName
+	config.LastScenarioName = c.ScenarioName
 	return nil
 }
 

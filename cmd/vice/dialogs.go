@@ -91,6 +91,31 @@ func uiDrawHomeDialog(mgr *client.ConnectionManager, config *Config, p platform.
 		homeDialog.quitRequested = true
 	}
 
+	// Launch Previous Scenario — primary action, populated from Config.
+	hasPrev := config.LastFacility != "" && config.LastGroupName != "" && config.LastScenarioName != ""
+	canResolvePrev := hasPrev && homeDialog.simConfig.CanResolveScenario(
+		config.LastFacility, config.LastGroupName, config.LastScenarioName)
+	label := "Launch Previous Scenario"
+	if hasPrev {
+		label = fmt.Sprintf("Launch Previous: %s / %s / %s",
+			config.LastFacility, config.LastGroupName, config.LastScenarioName)
+	}
+	if !canResolvePrev {
+		imgui.BeginDisabled()
+	}
+	if imgui.Button(label) {
+		homeDialog.simConfig.SetFacility(config.LastFacility)
+		homeDialog.simConfig.SetScenario(config.LastGroupName, config.LastScenarioName)
+		homeDialog.simConfig.displayError = homeDialog.simConfig.Start(config)
+	}
+	if !canResolvePrev {
+		imgui.EndDisabled()
+		if imgui.IsItemHovered() {
+			imgui.SetTooltip("No previous scenario available")
+		}
+	}
+	imgui.Separator()
+
 	// Scenario selection UI (inline, not modal). This is the same body
 	// used by ScenarioSelectionModalClient.Draw(). Returns true if the
 	// user pressed Enter, which should trigger the default button.
