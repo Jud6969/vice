@@ -221,6 +221,10 @@ type Platform interface {
 	// IsPlayingSpeech returns true if speech audio is currently playing.
 	IsPlayingSpeech() bool
 
+	// StopSpeech immediately discards any queued speech PCM so playback
+	// stops without waiting for the current utterance to finish.
+	StopSpeech()
+
 	// SetAudioVolume sets the volume for audio playback; the value passed
 	// should be between 0 and 10.
 	SetAudioVolume(vol int)

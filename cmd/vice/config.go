@@ -158,9 +158,13 @@ func (c *Config) Save(lg *log.Logger) error {
 
 func (c *Config) SaveIfChanged(renderer renderer.Renderer, platform platform.Platform,
 	client *client.ControlClient, saveSim bool, lg *log.Logger) bool {
-	c.Sim = nil
-	c.UserWorkstation = ""
+	// Only overwrite c.Sim when we have a fresh one to save. If saveSim
+	// is false (e.g., a secondary save during shutdown after return-to-home
+	// already disconnected the client), preserve whatever Sim was set
+	// during the earlier save so it survives to the next launch.
 	if saveSim {
+		c.Sim = nil
+		c.UserWorkstation = ""
 		if sim, err := client.GetSerializeSim(); err != nil {
 			lg.Errorf("%v", err)
 		} else {

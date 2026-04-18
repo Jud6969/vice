@@ -235,6 +235,22 @@ func (tm *TransmissionManager) IsPlaying() bool {
 	return tm.playing
 }
 
+// Reset drops any queued transmissions and clears playback/hold state. Used
+// on disconnect so queued pilot speech doesn't keep firing after the user
+// has returned to the scenario manager.
+func (tm *TransmissionManager) Reset() {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+
+	tm.queue = nil
+	tm.playing = false
+	tm.holdCount = 0
+	tm.holdUntil = time.Time{}
+	tm.lastCallsign = ""
+	tm.lastWasContact = false
+	tm.contactRequested = false
+}
+
 // ShouldRequestContact returns true if the client should request a contact from the server.
 // It checks that we're not playing, not held, queue is empty, and no request is pending.
 func (tm *TransmissionManager) ShouldRequestContact() bool {

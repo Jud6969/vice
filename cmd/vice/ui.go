@@ -220,7 +220,7 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 		}
 
 		if imgui.Button(renderer.FontAwesomeIconRedo) && !hasActiveModalDialogs() {
-			uiReturnToHomeDialog(mgr, p)
+			uiReturnToHomeDialog(mgr, config, r, controlClient, p, lg)
 		}
 		if imgui.IsItemHovered() {
 			imgui.SetTooltip("Start new simulation")
@@ -374,7 +374,7 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 		imgui.PushStyleColorVec4(imgui.ColButtonHovered, imgui.Vec4{0.85, 0.15, 0.15, 1})
 		imgui.PushStyleColorVec4(imgui.ColButtonActive, imgui.Vec4{0.7, 0.1, 0.1, 1})
 		if imgui.Button(renderer.FontAwesomeIconTimes) && !hasActiveModalDialogs() {
-			uiReturnToHomeDialog(mgr, p)
+			uiReturnToHomeDialog(mgr, config, r, controlClient, p, lg)
 		}
 		imgui.PopStyleColorV(2)
 		if imgui.IsItemHovered() {
@@ -927,12 +927,20 @@ func applyBorderlessViewportClass(windowTitle string, config *Config, p platform
 
 // uiReturnToHomeDialog takes the app from radar-mode back to home-mode.
 // Called when the user closes the radar window (title-bar X) or clicks
-// "New simulation". Disconnects the active controlClient (so uiDraw
-// renders the home dialog on the next frame), hides the radar GLFW
-// window, and resets the home-dialog state so the scenario picker
-// reflects a fresh session.
-func uiReturnToHomeDialog(mgr *client.ConnectionManager, p platform.Platform) {
+// "New simulation". Saves the current local sim so "Launch Previous"
+// can resume from the same state, disconnects the active controlClient
+// (so uiDraw renders the home dialog on the next frame), hides the
+// radar GLFW window, and resets the home-dialog state so the scenario
+// picker reflects a fresh session.
+func uiReturnToHomeDialog(mgr *client.ConnectionManager, config *Config, r renderer.Renderer,
+	controlClient *client.ControlClient, p platform.Platform, lg *log.Logger) {
+	saveSim := mgr.ClientIsLocal() && controlClient != nil
+	config.SaveIfChanged(r, p, controlClient, saveSim, lg)
 	mgr.Disconnect()
+	// Cut off any pilot transmission that's mid-utterance. The queued
+	// readbacks/contacts have already been cleared by ControlClient.Disconnect,
+	// but the platform audio engine still has PCM loaded for the current one.
+	p.StopSpeech()
 	p.HideWindow()
 	// Force the home dialog to rebuild its simConfig next frame so
 	// newly-available servers / TRACONs are picked up.

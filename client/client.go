@@ -243,6 +243,10 @@ func (c *ControlClient) Disconnect() {
 	c.State.Tracks = nil
 	c.State.UnassociatedFlightPlans = nil
 	c.State.Controllers = nil
+	// Drop any queued pilot transmissions so the next launch starts clean.
+	// The in-flight speech in the platform audio engine is stopped by the
+	// caller (which has Platform in scope) via Platform.StopSpeech.
+	c.transmissions.Reset()
 }
 
 func (c *ControlClient) addCall(pc *pendingCall) {

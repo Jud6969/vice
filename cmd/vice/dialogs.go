@@ -118,7 +118,7 @@ func uiDrawHomeDialog(mgr *client.ConnectionManager, config *Config, p platform.
 	}
 
 	if !homeDialog.showConfig {
-		uiDrawHomeScenarioScreen(config, p)
+		uiDrawHomeScenarioScreen(mgr, config, p, lg)
 	} else {
 		uiDrawHomeConfigScreen(config, p)
 	}
@@ -129,7 +129,7 @@ func uiDrawHomeDialog(mgr *client.ConnectionManager, config *Config, p platform.
 // uiDrawHomeScenarioScreen renders the scenario-selection body of the
 // home dialog: Launch Previous button, DrawScenarioSelectionUI, and the
 // Next/Connect button.
-func uiDrawHomeScenarioScreen(config *Config, p platform.Platform) {
+func uiDrawHomeScenarioScreen(mgr *client.ConnectionManager, config *Config, p platform.Platform, lg *log.Logger) {
 	// Launch Previous Scenario — primary action, populated from Config.
 	hasPrev := config.LastFacility != "" && config.LastGroupName != "" && config.LastScenarioName != ""
 	canResolvePrev := hasPrev && homeDialog.simConfig.CanResolveScenario(
@@ -143,9 +143,21 @@ func uiDrawHomeScenarioScreen(config *Config, p platform.Platform) {
 		imgui.BeginDisabled()
 	}
 	if imgui.Button(label) {
-		homeDialog.simConfig.SetFacility(config.LastFacility)
-		homeDialog.simConfig.SetScenario(config.LastGroupName, config.LastScenarioName)
-		homeDialog.simConfig.displayError = homeDialog.simConfig.Start(config)
+		// If we have a serialized Sim from the previous session, restore
+		// the exact prior state (aircraft, positions, commands) via
+		// LoadLocalSim. Otherwise fall back to spawning a fresh scenario.
+		if config.Sim != nil {
+			if _, err := mgr.LoadLocalSim(config.Sim, config.ControllerInitials, lg); err != nil {
+				homeDialog.simConfig.displayError = err
+				homeDialog.simConfig.SetFacility(config.LastFacility)
+				homeDialog.simConfig.SetScenario(config.LastGroupName, config.LastScenarioName)
+				homeDialog.simConfig.displayError = homeDialog.simConfig.Start(config)
+			}
+		} else {
+			homeDialog.simConfig.SetFacility(config.LastFacility)
+			homeDialog.simConfig.SetScenario(config.LastGroupName, config.LastScenarioName)
+			homeDialog.simConfig.displayError = homeDialog.simConfig.Start(config)
+		}
 	}
 	if !canResolvePrev {
 		imgui.EndDisabled()

@@ -185,6 +185,20 @@ func (a *audioEngine) IsPlayingSpeech() bool {
 	return len(a.speechq) > 0
 }
 
+func (a *audioEngine) StopSpeech() {
+	a.mu.Lock()
+	cb := a.speechcb
+	a.speechq = nil
+	a.speechcb = nil
+	a.mu.Unlock()
+
+	// Invoke the callback outside the lock so the TransmissionManager
+	// sees playing=false and won't block the next Update.
+	if cb != nil {
+		cb()
+	}
+}
+
 //export audioCallback
 func audioCallback(user unsafe.Pointer, ptr *C.uint8, size C.int) {
 	n := int(size)
