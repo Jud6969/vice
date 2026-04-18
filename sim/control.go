@@ -4191,6 +4191,15 @@ func (s *Sim) runOneControlCommand(tcw TCW, callsign av.ADSBCallsign, command st
 		}
 
 	case 'F':
+		if command == "FC" {
+			// Bare FC: hand off to the tracking controller. When the aircraft
+			// is cleared for approach we treat it as a tower handoff (the STT
+			// layer sometimes emits bare FC for "contact tower").
+			if ac, ok := s.Aircraft[callsign]; ok && ac.Nav.Approach.Cleared {
+				return s.ContactTower(tcw, callsign, 0, "", true)
+			}
+			return s.ContactTrackingController(tcw, ACID(callsign))
+		}
 		if strings.HasPrefix(command, "FC") && len(command) > 2 {
 			rest := command[2:]
 			var hint string
