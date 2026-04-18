@@ -16,6 +16,7 @@ import (
 	"github.com/mmp/vice/client"
 	"github.com/mmp/vice/log"
 	"github.com/mmp/vice/math"
+	"github.com/mmp/vice/panes"
 	"github.com/mmp/vice/platform"
 	"github.com/mmp/vice/renderer"
 	"github.com/mmp/vice/server"
@@ -282,9 +283,11 @@ func (lc *LaunchControlWindow) cleanupAllAircraft() {
 func (lc *LaunchControlWindow) Draw(eventStream *sim.EventStream, p platform.Platform, config *Config) {
 	showLaunchControls := true
 	imgui.SetNextWindowSizeConstraints(imgui.Vec2{300, 100}, imgui.Vec2{-1, float32(p.WindowSize()[1]) * 19 / 20})
-	applyPinWindowClass("Launch Control", config, p)
-	imgui.BeginV("Launch Control", &showLaunchControls, imgui.WindowFlagsAlwaysAutoResize)
-	drawPinButton("Launch Control", config, p)
+	applyBorderlessViewportClass("Launch Control", config, p)
+	imgui.BeginV("Launch Control", &showLaunchControls, imgui.WindowFlagsAlwaysAutoResize|imgui.WindowFlagsNoTitleBar)
+	if panes.DrawTitleBar("Launch Control", "Launch Control", config.UnpinnedWindows, p) {
+		showLaunchControls = false
+	}
 
 	ctrl := lc.client.State.LaunchConfig.Controller
 

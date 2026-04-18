@@ -922,9 +922,11 @@ func uiDrawSettingsWindow(c *client.ControlClient, config *Config, activeRadarPa
 		return
 	}
 
-	applyPinWindowClass("Settings", config, p)
-	imgui.BeginV("Settings", &ui.showSettings, imgui.WindowFlagsAlwaysAutoResize)
-	drawPinButton("Settings", config, p)
+	applyBorderlessViewportClass("Settings", config, p)
+	imgui.BeginV("Settings", &ui.showSettings, imgui.WindowFlagsAlwaysAutoResize|imgui.WindowFlagsNoTitleBar)
+	if panes.DrawTitleBar("Settings", "Settings", config.UnpinnedWindows, p) {
+		ui.showSettings = false
+	}
 
 	if imgui.SliderFloatV("Simulation speed", &c.State.SimRate, 1, 20, "%.1f", 0) {
 		c.SetSimRate(c.State.SimRate)

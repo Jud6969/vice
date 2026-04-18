@@ -1800,9 +1800,11 @@ func drawScenarioInfoWindow(config *Config, c *client.ControlClient, activeRadar
 	imgui.SetNextWindowSizeConstraints(imgui.Vec2{sz.X + 50, 0}, imgui.Vec2{100000, 100000})
 
 	show := true
-	applyPinWindowClass("ScenarioInfo", config, p)
-	imgui.BeginV(c.State.SimDescription+"###ScenarioInfo", &show, imgui.WindowFlagsAlwaysAutoResize)
-	drawPinButton("ScenarioInfo", config, p)
+	applyBorderlessViewportClass("ScenarioInfo", config, p)
+	imgui.BeginV(c.State.SimDescription+"###ScenarioInfo", &show, imgui.WindowFlagsAlwaysAutoResize|imgui.WindowFlagsNoTitleBar)
+	if panes.DrawTitleBar(c.State.SimDescription, "ScenarioInfo", config.UnpinnedWindows, p) {
+		show = false
+	}
 
 	if imgui.CollapsingHeaderBoolPtr("Controllers", nil) {
 		// Make big(ish) tables somewhat more legible
