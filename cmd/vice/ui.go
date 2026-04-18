@@ -213,7 +213,7 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 		}
 
 		if imgui.Button(renderer.FontAwesomeIconRedo) {
-			uiShowConnectOrBenchmarkDialog(mgr, true, config, p, lg)
+			uiReturnToHomeDialog(mgr, p)
 		}
 		if imgui.IsItemHovered() {
 			imgui.SetTooltip("Start new simulation")
@@ -360,7 +360,7 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 		imgui.PushStyleColorVec4(imgui.ColButtonHovered, imgui.Vec4{0.85, 0.15, 0.15, 1})
 		imgui.PushStyleColorVec4(imgui.ColButtonActive, imgui.Vec4{0.7, 0.1, 0.1, 1})
 		if imgui.Button(renderer.FontAwesomeIconTimes) {
-			p.CloseWindow()
+			uiReturnToHomeDialog(mgr, p)
 		}
 		imgui.PopStyleColorV(2)
 		if imgui.IsItemHovered() {
@@ -894,6 +894,20 @@ func applyBorderlessViewportClass(windowTitle string, config *Config, p platform
 	wc.SetViewportFlagsOverrideSet(setFlags)
 	wc.SetViewportFlagsOverrideClear(clearFlags)
 	imgui.SetNextWindowClass(wc)
+}
+
+// uiReturnToHomeDialog takes the app from radar-mode back to home-mode.
+// Called when the user closes the radar window (title-bar X) or clicks
+// "New simulation". Disconnects the active controlClient (so uiDraw
+// renders the home dialog on the next frame), hides the radar GLFW
+// window, and resets the home-dialog state so the scenario picker
+// reflects a fresh session.
+func uiReturnToHomeDialog(mgr *client.ConnectionManager, p platform.Platform) {
+	mgr.Disconnect()
+	p.HideWindow()
+	// Force the home dialog to rebuild its simConfig next frame so
+	// newly-available servers / TRACONs are picked up.
+	homeDialog.simConfig = nil
 }
 
 // drawWindowTitleBar draws a custom title bar at the top of the current

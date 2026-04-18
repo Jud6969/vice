@@ -582,6 +582,7 @@ func runGUI(config *Config, configErr error, lg *log.Logger) error {
 			}
 			uiResetControlClient(c, plat, lg)
 			controlClient = c
+			plat.ShowWindow()
 		},
 		func(err error) {
 			switch err {
@@ -595,7 +596,8 @@ func runGUI(config *Config, configErr error, lg *log.Logger) error {
 
 			case server.ErrServerDisconnected:
 				ShowErrorDialog(plat, lg, "Lost connection to the vice server.")
-				uiShowConnectOrBenchmarkDialog(mgr, false, config, plat, lg)
+				plat.HideWindow()
+				homeDialog.simConfig = nil
 
 			default:
 				lg.Errorf("Server connection error: %v", err)
