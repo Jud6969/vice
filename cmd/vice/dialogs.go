@@ -20,6 +20,7 @@ import (
 
 	"github.com/mmp/vice/client"
 	"github.com/mmp/vice/log"
+	"github.com/mmp/vice/panes"
 	"github.com/mmp/vice/platform"
 	"github.com/mmp/vice/renderer"
 	"github.com/mmp/vice/util"
@@ -86,7 +87,7 @@ func uiDrawHomeDialog(mgr *client.ConnectionManager, config *Config, p platform.
 		imgui.End()
 		return
 	}
-	if drawWindowTitleBar("vice", "", config, p) {
+	if panes.DrawTitleBar("vice", "", config.UnpinnedWindows, p) {
 		// User clicked the home dialog's close (X) — request app quit.
 		homeDialog.quitRequested = true
 	}
