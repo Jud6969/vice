@@ -173,16 +173,15 @@ func New(config *Config, lg *log.Logger) (Platform, error) {
 	if config.WindowScaleMode != "" {
 		config.MainWindowSquare = true
 	}
-	// If scope-square mode is active, ensure the initial window is at
-	// least the minimum so the floor we install below doesn't immediately
-	// resize the user's window.
+	// If scope-square mode is active, snap the initial window size to
+	// the target square derived from the primary monitor and install
+	// the minimum-size floor. This covers the case where a user's saved
+	// InitialWindowSize was non-square (e.g. from before this feature
+	// or a mode change made via hand-edited config).
 	if config.MainWindowSquare {
-		if config.InitialWindowSize[0] < SquareScopePaneMinWindow {
-			config.InitialWindowSize[0] = SquareScopePaneMinWindow
-		}
-		if config.InitialWindowSize[1] < SquareScopePaneMinWindow {
-			config.InitialWindowSize[1] = SquareScopePaneMinWindow
-		}
+		target := computeSquareSnapSize(config.WindowScaleMode, vm.Width, vm.Height)
+		config.InitialWindowSize[0] = target
+		config.InitialWindowSize[1] = target
 	}
 
 	// If window position is out of bounds, create the window at (100, 100)
@@ -218,11 +217,12 @@ func New(config *Config, lg *log.Logger) (Platform, error) {
 		return nil, fmt.Errorf("failed to create window: %w", err)
 	}
 	if config.MainWindowSquare {
-		// Floor the window dimensions so the user cannot shrink below the
-		// scope. We deliberately do NOT lock aspect ratio: the application
-		// window stays free, only the scope pane is squared at draw time.
+		// Aspect-lock the window 1:1 and install the size floor. Both
+		// are mirrored by SetMainWindowSquare(true) for the runtime-
+		// toggle path; this is the startup counterpart.
 		window.SetSizeLimits(SquareScopePaneMinWindow, SquareScopePaneMinWindow,
 			glfw.DontCare, glfw.DontCare)
+		window.SetAspectRatio(1, 1)
 	}
 	window.SetPos(config.InitialWindowPosition[0], config.InitialWindowPosition[1])
 	window.Show()
