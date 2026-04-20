@@ -13,6 +13,15 @@ func (g *glfwPlatform) IsFullScreen() bool {
 }
 
 func (g *glfwPlatform) EnableFullScreen(fullscreen bool) {
+	// Scope-square mode locks the radar window to a 1:1 aspect ratio,
+	// which is incompatible with fullscreen on any non-square monitor.
+	// Honor the user's only-one-at-a-time contract by refusing to enter
+	// fullscreen while that mode is active. Settings UI disables the
+	// checkbox; this is the belt-and-braces guard.
+	if fullscreen && g.config.WindowScaleMode != "" {
+		return
+	}
+
 	monitors := glfw.GetMonitors()
 	if g.config.FullScreenMonitor >= len(monitors) {
 		// Shouldn't happen, but just to be sure
@@ -38,9 +47,6 @@ func (g *glfwPlatform) EnableFullScreen(fullscreen bool) {
 			windowSize[1] = vm.Height - 300
 			windowPos = [2]int{100, 100}
 		}
-		// Note: scope-square mode no longer forces a square window, only
-		// installs a SetSizeLimits floor; GLFW will clamp the size below
-		// to satisfy that floor automatically.
 		g.window.SetMonitor(nil, windowPos[0], windowPos[1],
 			windowSize[0], windowSize[1], glfw.DontCare)
 	}

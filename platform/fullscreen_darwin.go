@@ -27,6 +27,9 @@ int isNativeFullscreen(void *window) {
 import "C"
 
 func (g *glfwPlatform) EnableFullScreen(fullscreen bool) {
+	if fullscreen && g.config.WindowScaleMode != "" {
+		return
+	}
 	window := g.window.GetCocoaWindow()
 	C.makeFullscreenNative(window)
 }
