@@ -473,6 +473,8 @@ var fuzzyMatchBlocklist = map[string][]string{
 	"claimed":      {"climbed", "climb"},  // STT noise vs altitude command
 	"maintained":   {"maintain"},          // STT echo after "maintain" should not re-match
 	"hitting":      {"heading"},           // garbled word should not match heading command
+	"say":          {"stop"},              // "say altitude" vs "stop altitude squawk"
+	"stop":         {"say"},               // "stop altitude squawk" vs "say altitude"
 }
 
 // FuzzyMatch returns true if word matches target with Jaro-Winkler >= threshold
