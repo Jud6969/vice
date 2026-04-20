@@ -126,6 +126,11 @@ type Sim struct {
 	LastSTTCommand *LastSTTCommand
 
 	AvailableStripCIDs []int
+
+	// suppressPilotTx, when true, causes enqueuePilotTransmission to silently
+	// drop all pilot readbacks. Used by Guard dispatch so aircraft apply the
+	// state change without emitting any verbal response.
+	suppressPilotTx bool
 }
 
 // LastSTTCommand stores the nav snapshot from before the most recent STT command

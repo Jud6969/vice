@@ -329,7 +329,7 @@ func TestRunOneControlCommandAtFixClearedStraightInApproach(t *testing.T) {
 		lg:              lg,
 	}
 
-	intent, err := s.runOneControlCommand("TCW1", callsign, "AMATTY/CSIRG24", 0)
+	intent, err := s.runOneControlCommand("TCW1", callsign, "AMATTY/CSIRG24", 0, false)
 	if err != nil {
 		t.Fatalf("runOneControlCommand() returned error: %v", err)
 	}
@@ -540,7 +540,7 @@ func makeBareFCSim(t *testing.T, realistic bool) (*Sim, av.ADSBCallsign) {
 func TestFC_Bare_Conventional_FallsBackToTrackingController(t *testing.T) {
 	s, callsign := makeBareFCSim(t, false /* conventional */)
 
-	intent, err := s.runOneControlCommand("TCW1", callsign, "FC", 0)
+	intent, err := s.runOneControlCommand("TCW1", callsign, "FC", 0, false)
 	if err != nil {
 		t.Fatalf("Conventional bare FC: got error %v, want nil", err)
 	}
@@ -557,7 +557,7 @@ func TestFC_Bare_Conventional_FallsBackToTrackingController(t *testing.T) {
 func TestFC_Bare_Realistic_Rejects(t *testing.T) {
 	s, callsign := makeBareFCSim(t, true /* realistic */)
 
-	_, err := s.runOneControlCommand("TCW1", callsign, "FC", 0)
+	_, err := s.runOneControlCommand("TCW1", callsign, "FC", 0, false)
 	if err == nil {
 		t.Fatal("Realistic bare FC: got nil error, want ErrInvalidCommandSyntax")
 	}
@@ -573,7 +573,7 @@ func TestFC_UnknownFreq_Conventional_RoutesToTrackingController(t *testing.T) {
 	s, callsign := makeBareFCSim(t, false /* conventional */)
 
 	// 13560 (135.60 MHz) is not assigned to any controller in the test sim.
-	intent, err := s.runOneControlCommand("TCW1", callsign, "FC13560", 0)
+	intent, err := s.runOneControlCommand("TCW1", callsign, "FC13560", 0, false)
 	if err != nil {
 		t.Fatalf("Conventional unknown-freq FC: got error %v, want nil", err)
 	}
@@ -591,7 +591,7 @@ func TestFC_UnknownFreq_Conventional_RoutesToTrackingController(t *testing.T) {
 func TestFC_UnknownFreq_Realistic_UnknownFrequencyIntent(t *testing.T) {
 	s, callsign := makeBareFCSim(t, true /* realistic */)
 
-	intent, err := s.runOneControlCommand("TCW1", callsign, "FC13560", 0)
+	intent, err := s.runOneControlCommand("TCW1", callsign, "FC13560", 0, false)
 	if err != nil {
 		t.Fatalf("Realistic unknown-freq FC: got error %v, want nil", err)
 	}
