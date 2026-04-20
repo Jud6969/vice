@@ -251,25 +251,55 @@ func New(config *Config, lg *log.Logger) (Platform, error) {
 	return platform, nil
 }
 
-// SetMainWindowSquare toggles "square scope pane" mode. When enabled, the
-// application window gets a minimum-size floor (so it cannot shrink below
-// the scope pane) but is otherwise free to be any aspect ratio. The
-// squaring of the scope itself is performed at draw time by clamping
-// the pane's allocated extent to a centered square — see
-// panes.DrawPanes and Platform.SquareScopePane.
+// SetMainWindowSquare toggles "scope-square" mode. When enabled, the
+// radar window is aspect-locked to 1:1 via GLFW's SetAspectRatio and
+// snapped to a target size from WindowScaleTargets clamped to the
+// current monitor. A minimum-size floor (SquareScopePaneMinWindow) is
+// also installed so the user cannot shrink the window below a usable
+// size. When disabled, both the aspect lock and the floor are cleared;
+// the window keeps its current size until the user resizes.
 func (g *glfwPlatform) SetMainWindowSquare(square bool) {
 	g.config.MainWindowSquare = square
 	if !square {
 		g.config.WindowScaleMode = ""
-	}
-	if square {
-		g.window.SetSizeLimits(SquareScopePaneMinWindow, SquareScopePaneMinWindow,
-			glfw.DontCare, glfw.DontCare)
-		// If the current window is below the new floor, GLFW will resize
-		// it to satisfy the limits. No explicit resize needed here.
-	} else {
+		g.window.SetAspectRatio(glfw.DontCare, glfw.DontCare)
 		g.window.SetSizeLimits(glfw.DontCare, glfw.DontCare, glfw.DontCare, glfw.DontCare)
+		return
 	}
+
+	g.window.SetSizeLimits(SquareScopePaneMinWindow, SquareScopePaneMinWindow,
+		glfw.DontCare, glfw.DontCare)
+	g.window.SetAspectRatio(1, 1)
+
+	// Snap the window to the target square size based on the monitor it
+	// currently overlaps. MainWindowMonitorWorkArea returns the work
+	// area rather than the full monitor rect; that's fine — the work
+	// area's shorter dimension is the correct clamp for a visible window.
+	_, _, mw, mh := g.MainWindowMonitorWorkArea()
+	target := computeSquareSnapSize(g.config.WindowScaleMode, mw, mh)
+	cw, ch := g.window.GetSize()
+	if cw != target || ch != target {
+		g.window.SetSize(target, target)
+	}
+
+	// After resizing, make sure the window is still on-screen. If the
+	// new size pushes the bottom/right edge past the monitor work area,
+	// move the window so it fits.
+	wx, wy, ww, wh := g.MainWindowMonitorWorkArea()
+	px, py := g.window.GetPos()
+	if px+target > wx+ww {
+		px = wx + ww - target
+	}
+	if py+target > wy+wh {
+		py = wy + wh - target
+	}
+	if px < wx {
+		px = wx
+	}
+	if py < wy {
+		py = wy
+	}
+	g.window.SetPos(px, py)
 }
 
 // SquareScopePane reports whether the scope pane should be rendered into
