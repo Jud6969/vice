@@ -275,17 +275,15 @@ func (g *glfwPlatform) SetMainWindowSquare(square bool) {
 	// currently overlaps. MainWindowMonitorWorkArea returns the work
 	// area rather than the full monitor rect; that's fine — the work
 	// area's shorter dimension is the correct clamp for a visible window.
-	_, _, mw, mh := g.MainWindowMonitorWorkArea()
-	target := computeSquareSnapSize(g.config.WindowScaleMode, mw, mh)
+	wx, wy, ww, wh := g.MainWindowMonitorWorkArea()
+	target := computeSquareSnapSize(g.config.WindowScaleMode, ww, wh)
 	cw, ch := g.window.GetSize()
 	if cw != target || ch != target {
 		g.window.SetSize(target, target)
 	}
 
-	// After resizing, make sure the window is still on-screen. If the
-	// new size pushes the bottom/right edge past the monitor work area,
-	// move the window so it fits.
-	wx, wy, ww, wh := g.MainWindowMonitorWorkArea()
+	// Keep the window on-screen. If the new size pushes the bottom/right
+	// edge past the monitor work area, move the window so it fits.
 	px, py := g.window.GetPos()
 	if px+target > wx+ww {
 		px = wx + ww - target
