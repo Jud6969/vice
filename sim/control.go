@@ -3234,7 +3234,6 @@ func (s *Sim) GenerateContactTransmission(pc *PendingContact) (spokenText, writt
 			return "", ""
 		}
 		rt = pc.PrebuiltTransmission
-		rt.Type = av.RadioTransmissionUnexpected
 
 	case PendingTransmissionRequestVisual:
 		runway := ""
