@@ -999,27 +999,40 @@ func (p *frequencyParser) parse(tokens []Token, pos int, ac Aircraft) (any, int,
 	consumed := 0
 	for i := 0; i < maxLookahead; i++ {
 		t := tokens[pos+i]
-		if t.Type == TokenNumber && t.Value >= 0 && t.Value <= 9 {
-			digits = append(digits, t.Value)
-			consumed = i + 1
-			continue
-		}
 		if t.Type == TokenWord && strings.ToLower(t.Text) == "point" && !sawPoint {
 			sawPoint = true
 			pointAt = len(digits)
 			consumed = i + 1
 			continue
 		}
-		// Also accept multi-digit number tokens like "127" or "75" as a
-		// sequence of digits (the tokenizer may aggregate some spoken numbers).
-		if t.Type == TokenNumber && t.Value >= 10 {
-			v := t.Value
-			var tmp []int
-			for v > 0 {
-				tmp = append([]int{v % 10}, tmp...)
-				v /= 10
+		if t.Type == TokenNumber && t.Value >= 0 {
+			// Prefer the textual form so leading zeros are preserved
+			// ("05" -> [0,5], not just [5]). Fall back to the numeric
+			// Value when the text isn't a pure digit string.
+			allDigits := t.Text != ""
+			for _, r := range t.Text {
+				if r < '0' || r > '9' {
+					allDigits = false
+					break
+				}
 			}
-			digits = append(digits, tmp...)
+			if allDigits {
+				for _, r := range t.Text {
+					digits = append(digits, int(r-'0'))
+				}
+			} else {
+				v := t.Value
+				if v == 0 {
+					digits = append(digits, 0)
+				} else {
+					var tmp []int
+					for v > 0 {
+						tmp = append([]int{v % 10}, tmp...)
+						v /= 10
+					}
+					digits = append(digits, tmp...)
+				}
+			}
 			consumed = i + 1
 			continue
 		}

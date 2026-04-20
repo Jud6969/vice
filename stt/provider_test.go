@@ -826,6 +826,19 @@ func TestSTTContactFrequencyE2E(t *testing.T) {
 			expected: "DAL500 FC127750",
 		},
 		{
+			// Regression lock: the normalizer emits a token with Text "05"
+			// for the spoken pair "zero five" (Value=5). The frequency
+			// parser must read the textual form so the leading zero is
+			// preserved; otherwise "one three four point zero five"
+			// collapses to [1,3,4,5] and fails the 5-digit minimum.
+			name:       "leading zero in decimal portion",
+			transcript: "Spirit Wings Eleven Eighty Nine contact orlando approach one three four point zero five",
+			aircraft: map[string]Aircraft{
+				"Spirit Wings 1189": {Callsign: "NKS1189", State: "overflight"},
+			},
+			expected: "NKS1189 FC134050:orlando_approach",
+		},
+		{
 			// Out-of-band frequency (105.00 MHz is below the 118 MHz floor):
 			// the frequency parser rejects, the FC pattern fails to match,
 			// and the pipeline emits AGAIN as the fallback.
