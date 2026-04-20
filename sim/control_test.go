@@ -777,3 +777,35 @@ func TestGuard_SuppressesPilotTransmissions(t *testing.T) {
 		t.Error("Guard+ID: IdentStartTime is zero — Ident command did not run")
 	}
 }
+
+// TestRunOneControlCommand_GuardPrefix_RoutesToGuard verifies that a bare "GUARD"
+// command dispatched through runOneControlCommand switches the aircraft's frequency.
+func TestRunOneControlCommand_GuardPrefix_RoutesToGuard(t *testing.T) {
+	s, callsign := makeGuardSim(t)
+	origFreq := s.Aircraft[callsign].ControllerFrequency
+
+	_, err := s.runOneControlCommand("TCW1", callsign, "GUARD", 0, false)
+	if err != nil {
+		t.Fatalf("runOneControlCommand GUARD: got error %v, want nil", err)
+	}
+	if s.Aircraft[callsign].ControllerFrequency == origFreq {
+		t.Errorf("GUARD should change frequency, but ControllerFrequency is still %q", origFreq)
+	}
+}
+
+// TestRunOneControlCommand_GuardWithTrailing_DispatchesTrailing verifies that
+// "GUARD ID" routes through Guard and executes the trailing "ID" command,
+// causing the aircraft to ident (IdentStartTime becomes non-zero).
+func TestRunOneControlCommand_GuardWithTrailing_DispatchesTrailing(t *testing.T) {
+	s, callsign := makeGuardSim(t)
+
+	_, err := s.runOneControlCommand("TCW1", callsign, "GUARD ID", 0, false)
+	if err != nil {
+		t.Fatalf("runOneControlCommand GUARD ID: got error %v, want nil", err)
+	}
+
+	ac := s.Aircraft[callsign]
+	if ac.IdentStartTime.IsZero() {
+		t.Error("GUARD ID: IdentStartTime is zero — trailing Ident command did not run")
+	}
+}

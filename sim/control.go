@@ -4208,6 +4208,17 @@ func (s *Sim) runOneControlCommand(tcw TCW, callsign av.ADSBCallsign, command st
 		return s.AssignAltitude(tcw, callsign, 100*alt, false, delayReduction)
 	}
 
+	// GUARD prefix: deliver the trailing command (or bare freq switch) via
+	// guard-broadcast semantics. Must be detected before the single-char
+	// dispatch switch so it doesn't collide with 'G' (GA/GR*).
+	const guardTok = "GUARD"
+	if command == guardTok {
+		return s.Guard(tcw, callsign, "")
+	}
+	if strings.HasPrefix(command, guardTok+" ") {
+		return s.Guard(tcw, callsign, command[len(guardTok)+1:])
+	}
+
 	switch command[0] {
 	case 'A':
 		if command == "A" {
