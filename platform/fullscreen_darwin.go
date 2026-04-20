@@ -27,6 +27,11 @@ int isNativeFullscreen(void *window) {
 import "C"
 
 func (g *glfwPlatform) EnableFullScreen(fullscreen bool) {
+	// Scope-square mode locks the radar window to a 1:1 aspect ratio,
+	// which is incompatible with fullscreen on any non-square monitor.
+	// Honor the user's only-one-at-a-time contract by refusing to enter
+	// fullscreen while that mode is active. Settings UI disables the
+	// checkbox; this is the belt-and-braces guard.
 	if fullscreen && g.config.WindowScaleMode != "" {
 		return
 	}
