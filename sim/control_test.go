@@ -431,3 +431,80 @@ func TestResolveControllerByFrequency_OutOfBandError(t *testing.T) {
 		t.Errorf("want err for out-of-band freq, got nil")
 	}
 }
+
+// makeFreqChangeSim builds a minimal Sim for FrequencyChange tests.
+// fromCtrl and target are placed on the same facility so that same-facility
+// logic can fire when RealisticFrequencyManagement is true.
+func makeFreqChangeSim(t *testing.T, realistic bool) (*Sim, av.ADSBCallsign) {
+	t.Helper()
+	lg := log.New(true, "error", t.TempDir())
+
+	const (
+		callsign  av.ADSBCallsign = "UAL123"
+		fromTCP   TCP             = "NYC_APP"
+		targetTCP TCP             = "NYC_CTR"
+		facility                  = "ZNY"
+		targetFreq av.Frequency  = 127750
+	)
+
+	fromCtrl := &av.Controller{Callsign: string(fromTCP), Frequency: 121500, Facility: facility}
+	targetCtrl := &av.Controller{Callsign: string(targetTCP), Frequency: targetFreq, Facility: facility}
+
+	const tcw TCW = "TCW1"
+	s := &Sim{
+		State: &CommonState{
+			RealisticFrequencyManagement: realistic,
+			Controllers: map[TCP]*av.Controller{
+				fromTCP:   fromCtrl,
+				targetTCP: targetCtrl,
+			},
+			DynamicState: DynamicState{
+				CurrentConsolidation: map[TCW]*TCPConsolidation{
+					tcw: {PrimaryTCP: fromTCP},
+				},
+			},
+		},
+		Aircraft: map[av.ADSBCallsign]*Aircraft{
+			callsign: {
+				ADSBCallsign:        callsign,
+				ControllerFrequency: ControlPosition(fromTCP),
+			},
+		},
+		PrivilegedTCWs:  map[TCW]bool{tcw: true},
+		PendingContacts: map[TCP][]PendingContact{},
+		lg:              lg,
+	}
+	return s, callsign
+}
+
+func TestFrequencyChange_ConventionalMode_ForcesPositionReadback(t *testing.T) {
+	s, callsign := makeFreqChangeSim(t, false /* conventional */)
+
+	intent, err := s.FrequencyChange("TCW1", callsign, 127750, "", false)
+	if err != nil {
+		t.Fatalf("FrequencyChange returned error: %v", err)
+	}
+	ci, ok := intent.(av.ContactIntent)
+	if !ok {
+		t.Fatalf("expected av.ContactIntent, got %T", intent)
+	}
+	if ci.SameFacility {
+		t.Errorf("Conventional mode: SameFacility = true, want false")
+	}
+}
+
+func TestFrequencyChange_RealisticMode_AllowsSameFacility(t *testing.T) {
+	s, callsign := makeFreqChangeSim(t, true /* realistic */)
+
+	intent, err := s.FrequencyChange("TCW1", callsign, 127750, "", false)
+	if err != nil {
+		t.Fatalf("FrequencyChange returned error: %v", err)
+	}
+	ci, ok := intent.(av.ContactIntent)
+	if !ok {
+		t.Fatalf("expected av.ContactIntent, got %T", intent)
+	}
+	if !ci.SameFacility {
+		t.Errorf("Realistic mode: SameFacility = false, want true")
+	}
+}

@@ -2346,7 +2346,8 @@ func (s *Sim) FrequencyChange(tcw TCW, callsign av.ADSBCallsign, freq av.Frequen
 	}
 
 	fromCtrl := s.controllerForAircraft(ac)
-	sameFacility := !fromTypedCommand && fromCtrl != nil && fromCtrl.Facility == target.Facility
+	sameFacility := s.State.RealisticFrequencyManagement &&
+		!fromTypedCommand && fromCtrl != nil && fromCtrl.Facility == target.Facility
 
 	s.cancelPendingUnknownFrequencyCallback(callsign)
 	return s.dispatchControlledAircraftCommand(tcw, callsign,
