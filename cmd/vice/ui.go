@@ -1005,22 +1005,18 @@ func uiDrawSettingsWindow(c *client.ControlClient, config *Config, activeRadarPa
 				}, p), true)
 		}
 
-		// Mutually-exclusive scope-square toggles. For now both behave
-		// identically: render the active scope pane into a centered
-		// square sub-region of its allocated extent and install a
-		// minimum-size floor on the application window. The application
-		// window itself is NOT forced square — only the scope pane is, so
-		// fullscreen and other free aspect ratios still work. The
-		// selected mode is recorded in WindowScaleMode for the upcoming
-		// logical-resolution work (STARS 2075, ERAM 2160) which will
-		// distinguish them. Selecting one clears the other.
+		// Mutually-exclusive scope-square toggles. Enabling either locks
+		// the application window to a 1:1 aspect ratio (see
+		// SetMainWindowSquare). Fullscreen is incompatible with a
+		// square window on any non-square monitor, so enabling either
+		// toggle drops out of fullscreen and clears the persisted
+		// StartInFullScreen flag. The selected mode is recorded in
+		// WindowScaleMode and drives the per-mode target size
+		// (STARS 2075, ERAM 2160). Selecting one clears the other.
 		starsOn := config.WindowScaleMode == "stars"
 		eramOn := config.WindowScaleMode == "eram"
 		if imgui.Checkbox("Force STARS scope square", &starsOn) {
 			if starsOn {
-				// Square mode locks the window 1:1; fullscreen is not
-				// compatible. Drop out if currently fullscreen and clear
-				// the "Start in full-screen" persisted flag.
 				if p.IsFullScreen() {
 					p.EnableFullScreen(false)
 				}
