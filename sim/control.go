@@ -2101,8 +2101,7 @@ func (s *Sim) tunePilotAltimToATISAirport(ac *Aircraft) {
 			continue
 		}
 		if m, ok := s.State.METAR[icao]; ok {
-			ac.PilotAltim = m.Altimeter_inHg()
-			ac.PilotAltimSetAt = s.State.SimTime
+			ac.setPilotAltim(s.State.SimTime, m.Altimeter_inHg())
 			return
 		}
 	}
@@ -3041,8 +3040,7 @@ func (s *Sim) enqueueEmergencyTransmission(callsign av.ADSBCallsign, tcp TCP, rt
 // intent so the acknowledgment joins any other readbacks from the same
 // transmission.
 func (s *Sim) handleAltimeterSetting(ac *Aircraft, settingHundredths int) av.CommandIntent {
-	ac.PilotAltim = float32(settingHundredths) / 100
-	ac.PilotAltimSetAt = s.State.SimTime
+	ac.setPilotAltim(s.State.SimTime, float32(settingHundredths)/100)
 	return av.AltimeterReadbackIntent{SettingHundredths: settingHundredths}
 }
 
