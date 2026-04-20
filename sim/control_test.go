@@ -631,3 +631,149 @@ func TestFrequencyChange_RealisticMode_AllowsSameFacility(t *testing.T) {
 		t.Errorf("Realistic mode: SameFacility = false, want true")
 	}
 }
+
+// makeGuardSim builds a minimal Sim for Guard tests.
+// The aircraft starts on "OTHER_POS" (not the user's frequency), giving Guard
+// room to switch it to the user's controller (NYC_APP) or to a redirect target.
+// A second controller (NYC_CTR at 127750) is available for redirect tests.
+func makeGuardSim(t *testing.T) (*Sim, av.ADSBCallsign) {
+	t.Helper()
+	lg := log.New(true, "error", t.TempDir())
+
+	const (
+		callsign    av.ADSBCallsign = "DAL789"
+		userTCP     TCP             = "NYC_APP"
+		redirectTCP TCP             = "NYC_CTR"
+		otherTCP    TCP             = "OTHER_POS"
+		facility                   = "ZNY"
+		redirectFreq av.Frequency  = 127750
+	)
+
+	userCtrl := &av.Controller{Callsign: string(userTCP), Frequency: 121500, Facility: facility}
+	redirectCtrl := &av.Controller{Callsign: string(redirectTCP), Frequency: redirectFreq, Facility: facility}
+	otherCtrl := &av.Controller{Callsign: string(otherTCP), Frequency: 135000, Facility: facility}
+
+	const tcw TCW = "TCW1"
+	s := &Sim{
+		State: &CommonState{
+			RealisticFrequencyManagement: false,
+			Controllers: map[TCP]*av.Controller{
+				userTCP:     userCtrl,
+				redirectTCP: redirectCtrl,
+				otherTCP:    otherCtrl,
+			},
+			DynamicState: DynamicState{
+				CurrentConsolidation: map[TCW]*TCPConsolidation{
+					tcw: {PrimaryTCP: userTCP},
+				},
+			},
+		},
+		Aircraft: map[av.ADSBCallsign]*Aircraft{
+			callsign: {
+				ADSBCallsign:        callsign,
+				ControllerFrequency: ControlPosition(otherTCP),
+				Nav:                 nav.Nav{Rand: rand.Make()},
+			},
+		},
+		STARSComputer:   &STARSComputer{},
+		PrivilegedTCWs:  map[TCW]bool{tcw: true},
+		PendingContacts: map[TCP][]PendingContact{},
+		Rand:            rand.Make(),
+		lg:              lg,
+	}
+	return s, callsign
+}
+
+// TestGuard_Bare_SwitchesToUserFrequency verifies that a bare Guard (no trailing
+// command) switches the aircraft to the user's own controller position.
+func TestGuard_Bare_SwitchesToUserFrequency(t *testing.T) {
+	s, callsign := makeGuardSim(t)
+
+	intent, err := s.Guard("TCW1", callsign, "")
+	if err != nil {
+		t.Fatalf("Guard bare: got error %v, want nil", err)
+	}
+	if intent != nil {
+		t.Fatalf("Guard bare: got intent %v, want nil", intent)
+	}
+
+	ac := s.Aircraft[callsign]
+	if ac.ControllerFrequency != ControlPosition("NYC_APP") {
+		t.Errorf("Guard bare: ControllerFrequency = %q, want %q", ac.ControllerFrequency, "NYC_APP")
+	}
+}
+
+// TestGuard_AlreadyOnFrequency_Rejects verifies that Guard rejects when the
+// aircraft is already on the target controller's frequency.
+func TestGuard_AlreadyOnFrequency_Rejects(t *testing.T) {
+	s, callsign := makeGuardSim(t)
+
+	// Move the aircraft onto the user's frequency first.
+	s.Aircraft[callsign].ControllerFrequency = ControlPosition("NYC_APP")
+
+	_, err := s.Guard("TCW1", callsign, "")
+	if err == nil {
+		t.Fatal("Guard already-on-freq: got nil error, want ErrAlreadyOnFrequency")
+	}
+	if err != ErrAlreadyOnFrequency {
+		t.Fatalf("Guard already-on-freq: got %v, want ErrAlreadyOnFrequency", err)
+	}
+}
+
+// TestGuard_UnknownAircraft_Rejects verifies that Guard rejects unknown callsigns.
+func TestGuard_UnknownAircraft_Rejects(t *testing.T) {
+	s, _ := makeGuardSim(t)
+
+	_, err := s.Guard("TCW1", av.ADSBCallsign("ZZZ999"), "")
+	if err == nil {
+		t.Fatal("Guard unknown aircraft: got nil error, want ErrNoMatchingFlight")
+	}
+	if err != ErrNoMatchingFlight {
+		t.Fatalf("Guard unknown aircraft: got %v, want ErrNoMatchingFlight", err)
+	}
+}
+
+// TestGuard_Redirect_SwitchesToTargetController verifies that a Guard with a
+// trailing "FC<digits>" redirects the aircraft to the specified controller.
+func TestGuard_Redirect_SwitchesToTargetController(t *testing.T) {
+	s, callsign := makeGuardSim(t)
+
+	// 12775 (5-digit form of 127.75 MHz) maps to NYC_CTR in our test sim.
+	intent, err := s.Guard("TCW1", callsign, "FC12775")
+	if err != nil {
+		t.Fatalf("Guard redirect: got error %v, want nil", err)
+	}
+	if intent != nil {
+		t.Fatalf("Guard redirect: got intent %v, want nil", intent)
+	}
+
+	ac := s.Aircraft[callsign]
+	if ac.ControllerFrequency != ControlPosition("NYC_CTR") {
+		t.Errorf("Guard redirect: ControllerFrequency = %q, want %q", ac.ControllerFrequency, "NYC_CTR")
+	}
+}
+
+// TestGuard_SuppressesPilotTransmissions verifies that pilot transmissions are
+// suppressed when Guard runs a trailing command.
+func TestGuard_SuppressesPilotTransmissions(t *testing.T) {
+	s, callsign := makeGuardSim(t)
+
+	// ID (ident) triggers a pilot readback in normal operation; Guard should
+	// suppress it. After the call, PendingContacts should be empty and the
+	// aircraft's IdentStartTime should be non-zero (proving Ident ran).
+	_, err := s.Guard("TCW1", callsign, "ID")
+	if err != nil {
+		t.Fatalf("Guard+ID: got error %v, want nil", err)
+	}
+
+	for tcp, contacts := range s.PendingContacts {
+		if len(contacts) > 0 {
+			t.Errorf("Guard+ID: expected no pilot transmissions, got %d on %q", len(contacts), tcp)
+		}
+	}
+
+	ac := s.Aircraft[callsign]
+	if ac.IdentStartTime.IsZero() {
+		t.Error("Guard+ID: IdentStartTime is zero — Ident command did not run")
+	}
+}

@@ -2382,6 +2382,94 @@ func (s *Sim) FrequencyChange(tcw TCW, callsign av.ADSBCallsign, freq av.Frequen
 		})
 }
 
+// resolveGuardTarget returns the controller to which a GUARD dispatch should
+// switch the aircraft. Parses the trailing command:
+//   - Leading "FC<digits>[:<hint>]" → resolve via resolveControllerByFrequency.
+//     On match: return that controller.
+//     On no match, Realistic mode → ErrInvalidFrequency.
+//     On no match, Conventional mode → fall back to aircraft's current
+//     tracking controller.
+//   - Otherwise (bare GUARD or non-FC trailing) → user's own controller.
+func (s *Sim) resolveGuardTarget(tcw TCW, ac *Aircraft, trailing string) (*av.Controller, error) {
+	trimmed := strings.TrimSpace(trailing)
+	if strings.HasPrefix(trimmed, "FC") && len(trimmed) > 2 {
+		fields := strings.Fields(trimmed)
+		first := fields[0]
+		rest := first[2:]
+		var hint string
+		if idx := strings.Index(rest, ":"); idx >= 0 {
+			hint = rest[idx+1:]
+			rest = rest[:idx]
+		}
+		freq, err := parseFrequencyDigits(rest)
+		if err == nil {
+			target, rerr := s.resolveControllerByFrequency(ac, freq, hint)
+			if rerr == nil {
+				return target, nil
+			}
+			if s.State.RealisticFrequencyManagement {
+				return nil, ErrInvalidFrequency
+			}
+			// Conventional: fall back to tracking controller.
+			if tc, ok := s.State.Controllers[TCP(ac.ControllerFrequency)]; ok {
+				return tc, nil
+			}
+			return nil, ErrInvalidFrequency
+		}
+	}
+	if myCtrl, ok := s.State.Controllers[TCP(s.State.PrimaryPositionForTCW(tcw))]; ok {
+		return myCtrl, nil
+	}
+	return nil, ErrInvalidFrequency
+}
+
+// Guard dispatches a command via guard-broadcast semantics: the aircraft is
+// force-switched to a specified frequency, then the trailing command (if any)
+// is executed silently. No pilot transmissions are emitted.
+func (s *Sim) Guard(tcw TCW, callsign av.ADSBCallsign, trailing string) (av.CommandIntent, error) {
+	s.mu.Lock(s.lg)
+
+	ac, ok := s.Aircraft[callsign]
+	if !ok {
+		s.mu.Unlock(s.lg)
+		return nil, ErrNoMatchingFlight
+	}
+
+	target, err := s.resolveGuardTarget(tcw, ac, trailing)
+	if err != nil {
+		s.mu.Unlock(s.lg)
+		return nil, err
+	}
+	targetPos := ControlPosition(target.Callsign)
+	if ac.ControllerFrequency == targetPos {
+		s.mu.Unlock(s.lg)
+		return nil, ErrAlreadyOnFrequency
+	}
+	ac.ControllerFrequency = targetPos
+
+	if strings.TrimSpace(trailing) == "" {
+		s.mu.Unlock(s.lg)
+		return nil, nil
+	}
+
+	// Suppress all pilot transmissions for the bundled command.
+	// Must set this before releasing the lock so the flag is visible to
+	// enqueuePilotTransmission when the trailing command runs.
+	s.suppressPilotTx = true
+	s.mu.Unlock(s.lg)
+
+	// runOneControlCommand calls methods that acquire s.mu, so we must not
+	// hold it here. Drop the returned intent — guard doesn't produce a
+	// verbal readback.
+	_, rerr := s.runOneControlCommand(tcw, callsign, trailing, 0, true)
+
+	s.mu.Lock(s.lg)
+	s.suppressPilotTx = false
+	s.mu.Unlock(s.lg)
+
+	return nil, rerr
+}
+
 // ATISCommand handles the controller telling a pilot the current ATIS letter.
 // If the aircraft already reported the correct ATIS, no readback is needed.
 // Otherwise the pilot responds with "we'll pick up (letter)".
