@@ -2341,6 +2341,25 @@ func (s *Sim) FrequencyChange(tcw TCW, callsign av.ADSBCallsign, freq av.Frequen
 
 	target, err := s.resolveControllerByFrequency(ac, freq, positionHint)
 	if err != nil {
+		if !s.State.RealisticFrequencyManagement {
+			// Conventional mode: silently route to the tracking controller.
+			// We are already holding s.mu so call dispatchFlightPlanCommand
+			// directly instead of going through ContactTrackingController
+			// (which would re-acquire the mutex and deadlock).
+			return s.dispatchFlightPlanCommand(tcw, ACID(callsign),
+				func(tcw TCW, sfp *NASFlightPlan, ac *Aircraft) error {
+					if ac == nil {
+						return av.ErrNoAircraftForCallsign
+					}
+					if !s.TCWCanCommandAircraft(tcw, ac) {
+						return av.ErrOtherControllerHasTrack
+					}
+					return nil
+				},
+				func(tcw TCW, sfp *NASFlightPlan, ac *Aircraft) av.CommandIntent {
+					return s.contactController(s.State.PrimaryPositionForTCW(tcw), sfp, ac, sfp.TrackingController)
+				})
+		}
 		s.enqueueUnknownFrequencyCallback(callsign, TCP(ac.ControllerFrequency), freq)
 		return av.UnknownFrequencyIntent{Frequency: freq}, nil
 	}
@@ -4330,6 +4349,11 @@ func (s *Sim) runOneControlCommand(tcw TCW, callsign av.ADSBCallsign, command st
 			// layer sometimes emits bare FC for "contact tower").
 			if ac, ok := s.Aircraft[callsign]; ok && ac.Nav.Approach.Cleared {
 				return s.ContactTower(tcw, callsign, 0, "", true)
+			}
+			if s.State.RealisticFrequencyManagement {
+				// Realistic mode: bare FC on a non-cleared aircraft has no
+				// unambiguous target — require explicit FC<freq>.
+				return nil, ErrInvalidCommandSyntax
 			}
 			return s.ContactTrackingController(tcw, ACID(callsign))
 		}

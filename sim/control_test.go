@@ -10,6 +10,7 @@ import (
 	"github.com/mmp/vice/log"
 	"github.com/mmp/vice/math"
 	"github.com/mmp/vice/nav"
+	"github.com/mmp/vice/rand"
 )
 
 func TestParseHold(t *testing.T) {
@@ -475,6 +476,128 @@ func makeFreqChangeSim(t *testing.T, realistic bool) (*Sim, av.ADSBCallsign) {
 		lg:              lg,
 	}
 	return s, callsign
+}
+
+// makeBareFCSim builds a minimal Sim for bare-FC and unknown-freq FC tests.
+// It includes a NASFlightPlan so that ContactTrackingController can succeed.
+// trackingTCP is used as the aircraft's TrackingController so contactController
+// can find it in State.Controllers.
+func makeBareFCSim(t *testing.T, realistic bool) (*Sim, av.ADSBCallsign) {
+	t.Helper()
+	lg := log.New(true, "error", t.TempDir())
+
+	const (
+		callsign    av.ADSBCallsign = "UAL456"
+		fromTCP     TCP             = "NYC_APP"
+		trackingTCP TCP             = "NYC_CTR" // distinct so ContactTrackingController doesn't see "already on freq"
+		facility                   = "ZNY"
+	)
+
+	fromCtrl := &av.Controller{Callsign: string(fromTCP), Frequency: 121500, Facility: facility}
+	trackingCtrl := &av.Controller{Callsign: string(trackingTCP), Frequency: 132100, Facility: facility}
+
+	fp := &NASFlightPlan{
+		ACID:               ACID(callsign),
+		CID:                "1",
+		TrackingController: ControlPosition(trackingTCP),
+		OwningTCW:          "TCW1",
+	}
+	ac := &Aircraft{
+		ADSBCallsign:        callsign,
+		ControllerFrequency: ControlPosition(fromTCP),
+		NASFlightPlan:       fp,
+	}
+
+	const tcw TCW = "TCW1"
+	s := &Sim{
+		State: &CommonState{
+			RealisticFrequencyManagement: realistic,
+			Controllers: map[TCP]*av.Controller{
+				fromTCP:     fromCtrl,
+				trackingTCP: trackingCtrl,
+			},
+			DynamicState: DynamicState{
+				CurrentConsolidation: map[TCW]*TCPConsolidation{
+					tcw: {PrimaryTCP: fromTCP},
+				},
+			},
+		},
+		Aircraft: map[av.ADSBCallsign]*Aircraft{
+			callsign: ac,
+		},
+		STARSComputer:   &STARSComputer{},
+		PrivilegedTCWs:  map[TCW]bool{tcw: true},
+		PendingContacts: map[TCP][]PendingContact{},
+		Rand:            rand.Make(),
+		lg:              lg,
+	}
+	return s, callsign
+}
+
+// TestFC_Bare_Conventional_FallsBackToTrackingController verifies that a bare
+// "FC" command in Conventional mode on a non-cleared aircraft falls through to
+// ContactTrackingController (no error, ContactIntent returned).
+func TestFC_Bare_Conventional_FallsBackToTrackingController(t *testing.T) {
+	s, callsign := makeBareFCSim(t, false /* conventional */)
+
+	intent, err := s.runOneControlCommand("TCW1", callsign, "FC", 0)
+	if err != nil {
+		t.Fatalf("Conventional bare FC: got error %v, want nil", err)
+	}
+	if intent == nil {
+		t.Fatal("Conventional bare FC: got nil intent, want non-nil ContactIntent")
+	}
+	if _, ok := intent.(av.ContactIntent); !ok {
+		t.Fatalf("Conventional bare FC: got %T, want av.ContactIntent", intent)
+	}
+}
+
+// TestFC_Bare_Realistic_Rejects verifies that a bare "FC" command in Realistic
+// mode on a non-cleared aircraft is rejected with ErrInvalidCommandSyntax.
+func TestFC_Bare_Realistic_Rejects(t *testing.T) {
+	s, callsign := makeBareFCSim(t, true /* realistic */)
+
+	_, err := s.runOneControlCommand("TCW1", callsign, "FC", 0)
+	if err == nil {
+		t.Fatal("Realistic bare FC: got nil error, want ErrInvalidCommandSyntax")
+	}
+	if err != ErrInvalidCommandSyntax {
+		t.Fatalf("Realistic bare FC: got error %v, want ErrInvalidCommandSyntax", err)
+	}
+}
+
+// TestFC_UnknownFreq_Conventional_RoutesToTrackingController verifies that
+// FC<digits> with an unknown frequency in Conventional mode silently routes to
+// ContactTrackingController (no error, ContactIntent returned).
+func TestFC_UnknownFreq_Conventional_RoutesToTrackingController(t *testing.T) {
+	s, callsign := makeBareFCSim(t, false /* conventional */)
+
+	// 13560 (135.60 MHz) is not assigned to any controller in the test sim.
+	intent, err := s.runOneControlCommand("TCW1", callsign, "FC13560", 0)
+	if err != nil {
+		t.Fatalf("Conventional unknown-freq FC: got error %v, want nil", err)
+	}
+	if intent == nil {
+		t.Fatal("Conventional unknown-freq FC: got nil intent, want ContactIntent")
+	}
+	if _, ok := intent.(av.ContactIntent); !ok {
+		t.Fatalf("Conventional unknown-freq FC: got %T, want av.ContactIntent", intent)
+	}
+}
+
+// TestFC_UnknownFreq_Realistic_UnknownFrequencyIntent verifies that
+// FC<digits> with an unknown frequency in Realistic mode returns an
+// UnknownFrequencyIntent (no error).
+func TestFC_UnknownFreq_Realistic_UnknownFrequencyIntent(t *testing.T) {
+	s, callsign := makeBareFCSim(t, true /* realistic */)
+
+	intent, err := s.runOneControlCommand("TCW1", callsign, "FC13560", 0)
+	if err != nil {
+		t.Fatalf("Realistic unknown-freq FC: got error %v, want nil", err)
+	}
+	if _, ok := intent.(av.UnknownFrequencyIntent); !ok {
+		t.Fatalf("Realistic unknown-freq FC: got %T, want av.UnknownFrequencyIntent", intent)
+	}
 }
 
 func TestFrequencyChange_ConventionalMode_ForcesPositionReadback(t *testing.T) {
