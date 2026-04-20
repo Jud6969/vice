@@ -251,6 +251,8 @@ type NewSimConfiguration struct {
 
 	PilotErrorInterval float32
 
+	RealisticFrequencyManagement bool
+
 	WXProvider *wx.Provider
 
 	Emergencies []Emergency

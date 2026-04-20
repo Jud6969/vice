@@ -137,6 +137,8 @@ type NewSimRequest struct {
 
 	PilotErrorInterval float32
 
+	RealisticFrequencyManagement bool
+
 	Initials   string // Controller initials (e.g., "XX")
 	Privileged bool
 }
@@ -218,8 +220,9 @@ func (sm *SimManager) makeSimConfiguration(req *NewSimRequest, lg *log.Logger) *
 		LaunchConfig:                req.ScenarioSpec.LaunchConfig,
 		FacilityAdaptation:          deep.MustCopy(sg.FacilityConfig.FacilityAdaptation),
 		DisableTFRRestrictionAreas:  sg.FacilityConfig.DisableTFRRestrictionAreas,
-		EnforceUniqueCallsignSuffix: req.EnforceUniqueCallsignSuffix,
-		PilotErrorInterval:          req.PilotErrorInterval,
+		EnforceUniqueCallsignSuffix:  req.EnforceUniqueCallsignSuffix,
+		PilotErrorInterval:           req.PilotErrorInterval,
+		RealisticFrequencyManagement: req.RealisticFrequencyManagement,
 		DepartureRunways:            sc.DepartureRunways,
 		ArrivalRunways:              sc.ArrivalRunways,
 		VFRReportingPoints:          sg.VFRReportingPoints,

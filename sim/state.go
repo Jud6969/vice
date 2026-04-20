@@ -88,6 +88,10 @@ type CommonState struct {
 	TFRs []av.TFR
 
 	HandoffIDs []HandoffID
+
+	// RealisticFrequencyManagement controls strictness of the FC handler,
+	// readback style, and STT grammar. false (default) = Conventional mode.
+	RealisticFrequencyManagement bool
 }
 
 // DerivedState collects state used on the client-side that is derived from Sim state that is not
@@ -269,6 +273,8 @@ func newCommonState(config NewSimConfiguration, startTime time.Time, model *wx.M
 		TFRs: config.TFRs,
 
 		HandoffIDs: config.HandoffIDs,
+
+		RealisticFrequencyManagement: config.RealisticFrequencyManagement,
 	}
 
 	// Grab initial METAR for each airport and assign initial ATIS letters
