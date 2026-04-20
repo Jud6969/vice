@@ -1028,6 +1028,7 @@ func uiDrawSettingsWindow(c *client.ControlClient, config *Config, activeRadarPa
 		// one clears the other.
 		starsOn := config.WindowScaleMode == "stars"
 		eramOn := config.WindowScaleMode == "eram"
+		imgui.BeginDisabledV(eramOn)
 		if imgui.Checkbox("Force STARS scope square", &starsOn) {
 			if starsOn {
 				if p.IsFullScreen() {
@@ -1040,6 +1041,11 @@ func uiDrawSettingsWindow(c *client.ControlClient, config *Config, activeRadarPa
 				p.SetMainWindowSquare(false)
 			}
 		}
+		imgui.EndDisabled()
+		if eramOn && imgui.IsItemHovered() {
+			imgui.SetTooltip("Disable ERAM scope square first")
+		}
+		imgui.BeginDisabledV(starsOn)
 		if imgui.Checkbox("Force ERAM scope square", &eramOn) {
 			if eramOn {
 				if p.IsFullScreen() {
@@ -1051,6 +1057,10 @@ func uiDrawSettingsWindow(c *client.ControlClient, config *Config, activeRadarPa
 			} else {
 				p.SetMainWindowSquare(false)
 			}
+		}
+		imgui.EndDisabled()
+		if starsOn && imgui.IsItemHovered() {
+			imgui.SetTooltip("Disable STARS scope square first")
 		}
 
 		imgui.BeginDisabledV(config.WindowScaleMode != "")
