@@ -41,6 +41,7 @@ var (
 		eventsSubscription *sim.EventsSubscription
 
 		menuBarHeight float32
+		menuBarHidden bool
 
 		// Custom title bar window-drag state. The OS title bar is disabled
 		// (glfw.Decorated=false); we drag the window ourselves when the user
@@ -178,13 +179,19 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 	}
 
 	ui.font.ImguiPush()
+	// Ctrl+B toggles the main menu bar for a chromeless view. When
+	// hidden, ui.menuBarHeight is forced to zero so the drag/caption
+	// handlers stop treating the top strip as a title bar.
+	if imgui.IsKeyChordPressed(imgui.KeyChord(imgui.ModCtrl | imgui.KeyB)) {
+		ui.menuBarHidden = !ui.menuBarHidden
+	}
 	// dragStartX / dragEndX bracket the empty strip between the left-cluster
 	// menu buttons and the right-cluster app/window-control buttons. They're
 	// reported to the platform layer as the draggable caption region so
 	// Windows' Aero Snap / macOS tiling / Linux WM snap kicks in when the
 	// user drags there.
 	var dragStartX, dragEndX float32
-	if imgui.BeginMainMenuBar() {
+	if !ui.menuBarHidden && imgui.BeginMainMenuBar() {
 		menuBarCursorY := imgui.CursorPosY()
 		imgui.PushStyleColorVec4(imgui.ColButton, imgui.Vec4{})
 
@@ -398,7 +405,11 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 
 		imgui.EndMainMenuBar()
 	}
-	ui.menuBarHeight = imgui.CursorPos().Y - 1
+	if ui.menuBarHidden {
+		ui.menuBarHeight = 0
+	} else {
+		ui.menuBarHeight = imgui.CursorPos().Y - 1
+	}
 
 	// Publish the draggable strip as the OS caption region. On Windows
 	// this is what enables Aero Snap (the WM_NCHITTEST hook returns
