@@ -340,8 +340,8 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 
 		// Window controls (minimize, maximize/restore, close) — these are
 		// the custom title bar's replacement for the OS-supplied buttons.
-		// Minimize and maximize are disabled while Force Real Aspect Ratio
-		// is active so the 1:1 window geometry is preserved.
+		// Minimize and maximize are disabled while scope-square mode is
+		// active so the 1:1 window geometry is preserved.
 		squareLocked := config.WindowScaleMode != ""
 		imgui.SetCursorPos(imgui.Vec2{X: windowCtrlX, Y: menuBarCursorY})
 		imgui.BeginDisabledV(squareLocked)
@@ -352,7 +352,7 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 		if imgui.IsItemHovered() {
 			tip := "Minimize"
 			if squareLocked {
-				tip = "Disabled while Force Real Aspect Ratio is active"
+				tip = "Disabled while scope-square mode is active"
 			}
 			imgui.SetTooltip(tip)
 		}
@@ -375,7 +375,7 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 		if imgui.IsItemHovered() {
 			tip := "Maximize"
 			if squareLocked {
-				tip = "Disabled while Force Real Aspect Ratio is active"
+				tip = "Disabled while scope-square mode is active"
 			} else if p.IsFullScreen() {
 				tip = "Exit full-screen"
 			} else if p.IsWindowMaximized() {
@@ -1018,20 +1018,35 @@ func uiDrawSettingsWindow(c *client.ControlClient, config *Config, activeRadarPa
 				}, p), true)
 		}
 
-		// "Force Real Aspect Ratio" locks the application window to a
-		// 1:1 aspect ratio at a 2048x2048 target size (see
-		// SetMainWindowSquare), matching real-world ATC displays.
-		// Fullscreen is incompatible with a square window on any
-		// non-square monitor, so enabling the toggle drops out of
-		// fullscreen and clears the persisted StartInFullScreen flag.
-		realOn := config.WindowScaleMode == "real"
-		if imgui.Checkbox("Force Real Aspect Ratio", &realOn) {
-			if realOn {
+		// Mutually-exclusive scope-square toggles. Enabling either locks
+		// the application window to a 1:1 aspect ratio (see
+		// SetMainWindowSquare) sized to match a real-world ATC display:
+		// STARS targets 2075x2075, ERAM targets 2160x2160. Fullscreen
+		// is incompatible with a square window on any non-square
+		// monitor, so enabling either toggle drops out of fullscreen
+		// and clears the persisted StartInFullScreen flag. Selecting
+		// one clears the other.
+		starsOn := config.WindowScaleMode == "stars"
+		eramOn := config.WindowScaleMode == "eram"
+		if imgui.Checkbox("Force STARS scope square", &starsOn) {
+			if starsOn {
 				if p.IsFullScreen() {
 					p.EnableFullScreen(false)
 				}
 				config.StartInFullScreen = false
-				config.WindowScaleMode = "real"
+				config.WindowScaleMode = "stars"
+				p.SetMainWindowSquare(true)
+			} else {
+				p.SetMainWindowSquare(false)
+			}
+		}
+		if imgui.Checkbox("Force ERAM scope square", &eramOn) {
+			if eramOn {
+				if p.IsFullScreen() {
+					p.EnableFullScreen(false)
+				}
+				config.StartInFullScreen = false
+				config.WindowScaleMode = "eram"
 				p.SetMainWindowSquare(true)
 			} else {
 				p.SetMainWindowSquare(false)
@@ -1041,7 +1056,7 @@ func uiDrawSettingsWindow(c *client.ControlClient, config *Config, activeRadarPa
 		imgui.BeginDisabledV(config.WindowScaleMode != "")
 		imgui.Checkbox("Start in full-screen", &config.StartInFullScreen)
 		if config.WindowScaleMode != "" && imgui.IsItemHovered() {
-			imgui.SetTooltip("Disabled while Force Real Aspect Ratio is active")
+			imgui.SetTooltip("Disabled while scope-square mode is active")
 		}
 		imgui.EndDisabled()
 

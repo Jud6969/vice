@@ -15,23 +15,20 @@ func TestComputeSquareSnapSize(t *testing.T) {
 		want      int
 	}{
 		// Mode target smaller than monitor's shorter dim → use target.
-		{"real on 4K", "real", 3840, 2160, 2048},
+		{"stars on 4K", "stars", 3840, 2160, 2075},
+		{"eram on 4K", "eram", 3840, 2160, 2160},
 
 		// Mode target larger than monitor's shorter dim → clamp to monitor.
-		{"real on 1080p", "real", 1920, 1080, 1080},
-		{"real on 1440p", "real", 2560, 1440, 1440},
+		{"stars on 1080p", "stars", 1920, 1080, 1080},
+		{"eram on 1080p", "eram", 1920, 1080, 1080},
+		{"stars on 1440p", "stars", 2560, 1440, 1440},
+		{"eram on 1440p", "eram", 2560, 1440, 1440},
 
 		// Portrait monitor: clamp to the shorter dim (width here).
-		{"real portrait", "real", 1080, 1920, 1080},
+		{"stars portrait", "stars", 1080, 1920, 1080},
 
 		// Monitor smaller than floor → clamp up to floor.
-		{"real tiny monitor", "real", 800, 600, SquareScopePaneMinWindow},
-
-		// Legacy mode values that persisted configs may still contain
-		// should migrate upstream before this function is called; if
-		// they somehow reach it, they're treated as unknown.
-		{"legacy stars treated as unknown", "stars", 1920, 1080, SquareScopePaneMinWindow},
-		{"legacy eram treated as unknown", "eram", 1920, 1080, SquareScopePaneMinWindow},
+		{"stars tiny monitor", "stars", 800, 600, SquareScopePaneMinWindow},
 
 		// Unknown mode → floor (corrupted config fallback).
 		{"unknown mode", "xyz", 1920, 1080, SquareScopePaneMinWindow},
