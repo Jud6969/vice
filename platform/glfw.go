@@ -206,6 +206,12 @@ func New(config *Config, lg *log.Logger) (Platform, error) {
 		// Monitor saved in config not found, fallback to default
 		config.FullScreenMonitor = 0
 	}
+	if config.MainWindowSquare {
+		// A fullscreen 1:1 window is impossible on any non-square
+		// monitor; force the windowed path on startup as a migration
+		// safety net for configs that have both flags set.
+		config.StartInFullScreen = false
+	}
 	if config.StartInFullScreen {
 		vm := monitors[config.FullScreenMonitor].GetVideoMode()
 		window, err = glfw.CreateWindow(vm.Width, vm.Height, "vice", monitors[config.FullScreenMonitor], nil)
