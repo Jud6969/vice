@@ -1322,6 +1322,34 @@ func registerAllCommands() {
 		WithPriority(9),
 	)
 
+	// Conventional-mode-only freq-less contact patterns.
+	// In Realistic mode these are suppressed (Aircraft.RealisticFrequencyManagement == true)
+	// because the pilot must provide a frequency. In Conventional mode they route to
+	// bare FC so the sim can decide the next frequency automatically.
+	// Uses explicit facility-type literals (not {text}) to avoid greedily consuming
+	// subsequent command keywords like "climb" or "maintain".
+	// Priority 3 — lower than all freq-bearing patterns so stricter matches win.
+	registerSTTCommand(
+		"contact approach|departure|center|ground|clearance|ramp",
+		func() string { return "FC" },
+		WithName("contact_facilitytype_bare"),
+		WithPriority(3),
+		WithConventionalOnly(),
+		WithNoSlack(), // facility-type keyword must be the immediate next token — no slack
+	)
+	// NOTE: "over to {facilitytype}" is kept for registry completeness but is
+	// currently unreachable: "to" is a filler word (stripped before matching) and
+	// "over" is not in commandKeywords, so the literal "over" never matches.
+	// Kept per spec; revisit if the normalizer gains per-template filler rules.
+	registerSTTCommand(
+		"over to approach|departure|center|ground|clearance|ramp",
+		func() string { return "FC" },
+		WithName("over_to_facilitytype_bare"),
+		WithPriority(3),
+		WithConventionalOnly(),
+		WithNoSlack(),
+	)
+
 	registerSTTCommand(
 		"frequency change approved",
 		func() string { return "" },

@@ -71,7 +71,8 @@ type Aircraft struct {
 	ControllerFrequency       string                     // Current controller position the aircraft is tuned to
 	TrackingController        string                     // Controller tracking this aircraft (from flight plan)
 	AddressingForm            sim.CallsignAddressingForm // How this aircraft was addressed (based on which key matched)
-	LAHSORunways              []string                   // Runways that intersect the approach runway (for LAHSO matching)
+	LAHSORunways                   []string                   // Runways that intersect the approach runway (for LAHSO matching)
+	RealisticFrequencyManagement   bool                       // If true, freq-less "contact {facility}" patterns are not accepted
 }
 
 // findWeightClassTokenIndex checks the early tokens (callsign region) for "heavy" or "super".

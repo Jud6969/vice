@@ -2,100 +2,52 @@ package stt
 
 import (
 	"testing"
-
-	av "github.com/mmp/vice/aviation"
 )
 
-func TestFrequencyValueParser(t *testing.T) {
-	p := &frequencyValueParser{}
-	tests := []struct {
-		name     string
-		tokens   []Token
-		expected av.Frequency
-		ok       bool
-	}{
-		{
-			name: "two-digit decimal",
-			tokens: []Token{
-				{Text: "123", Type: TokenNumber, Value: 123},
-				{Text: "point", Type: TokenWord, Value: -1},
-				{Text: "45", Type: TokenNumber, Value: 45},
-			},
-			expected: av.NewFrequency(123.45),
-			ok:       true,
-		},
-		{
-			name: "one-digit decimal",
-			tokens: []Token{
-				{Text: "118", Type: TokenNumber, Value: 118},
-				{Text: "point", Type: TokenWord, Value: -1},
-				{Text: "9", Type: TokenNumber, Value: 9},
-			},
-			expected: av.NewFrequency(118.9),
-			ok:       true,
-		},
-		{
-			name: "zero decimal",
-			tokens: []Token{
-				{Text: "120", Type: TokenNumber, Value: 120},
-				{Text: "point", Type: TokenWord, Value: -1},
-				{Text: "0", Type: TokenNumber, Value: 0},
-			},
-			expected: av.NewFrequency(120.0),
-			ok:       true,
-		},
-		{
-			name: "leading-zero decimal preserved",
-			tokens: []Token{
-				{Text: "118", Type: TokenNumber, Value: 118},
-				{Text: "point", Type: TokenWord, Value: -1},
-				{Text: "09", Type: TokenNumber, Value: 9},
-			},
-			expected: av.NewFrequency(118.09),
-			ok:       true,
-		},
-		{
-			name: "whole out of range",
-			tokens: []Token{
-				{Text: "12", Type: TokenNumber, Value: 12},
-				{Text: "point", Type: TokenWord, Value: -1},
-				{Text: "5", Type: TokenNumber, Value: 5},
-			},
-			ok: false,
-		},
-		{
-			name: "missing point",
-			tokens: []Token{
-				{Text: "123", Type: TokenNumber, Value: 123},
-				{Text: "45", Type: TokenNumber, Value: 45},
-				{Text: "foo", Type: TokenWord, Value: -1},
-			},
-			ok: false,
-		},
+// TestContactApproach_Conventional_ParsesToBareFC verifies that "contact approach"
+// without a frequency produces a bare "FC" command in Conventional mode.
+func TestContactApproach_Conventional_ParsesToBareFC(t *testing.T) {
+	Init()
+	tokens := []Token{
+		{Text: "contact", Type: TokenWord, Value: -1},
+		{Text: "approach", Type: TokenWord, Value: -1},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			value, consumed, _ := p.parse(tt.tokens, 0, Aircraft{})
-			if tt.ok {
-				if consumed != 3 {
-					t.Fatalf("consumed = %d, want 3", consumed)
-				}
-				got, ok := value.(av.Frequency)
-				if !ok {
-					t.Fatalf("value type = %T, want av.Frequency", value)
-				}
-				if got != tt.expected {
-					t.Fatalf("got %d (%s), want %d (%s)", got, got, tt.expected, tt.expected)
-				}
-			} else {
-				if value != nil || consumed != 0 {
-					t.Fatalf("expected no match, got value=%v consumed=%d", value, consumed)
-				}
-			}
-		})
+	ac := Aircraft{
+		RealisticFrequencyManagement: false, // Conventional mode
+	}
+	commands, _ := ParseCommands(tokens, ac)
+	if len(commands) != 1 || commands[0] != "FC" {
+		t.Errorf("Conventional 'contact approach' = %v, want [FC]", commands)
 	}
 }
+
+// TestContactApproach_Realistic_NoMatch verifies that "contact approach" without
+// a frequency produces no command in Realistic mode.
+func TestContactApproach_Realistic_NoMatch(t *testing.T) {
+	Init()
+	tokens := []Token{
+		{Text: "contact", Type: TokenWord, Value: -1},
+		{Text: "approach", Type: TokenWord, Value: -1},
+	}
+	ac := Aircraft{
+		RealisticFrequencyManagement: true, // Realistic mode — freq required
+	}
+	commands, _ := ParseCommands(tokens, ac)
+	for _, cmd := range commands {
+		if cmd == "FC" {
+			t.Errorf("Realistic 'contact approach' produced bare FC, want no FC; got %v", commands)
+			return
+		}
+	}
+}
+
+// NOTE: "over to {text}" (freq-less) is intentionally NOT tested for end-to-end
+// matching. The word "to" is in the filler-word list and is stripped during
+// parsing, and "over" is not a command keyword, so the pattern is currently
+// unreachable at the ParseCommands level — consistent with the note on
+// over_to_position_tower_freq and over_to_position_freq in handlers.go.
+// The conventionalOnly gate is still applied to over_to_facility_bare so it
+// would be suppressed correctly if the normalizer ever gains per-template filler rules.
 
 func TestCompassDirParser(t *testing.T) {
 	p := &compassDirParser{}

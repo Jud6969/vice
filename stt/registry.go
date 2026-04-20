@@ -16,6 +16,8 @@ type sttCommand struct {
 	thenVariant       string    // Output format for "then" variant (e.g., "TD%d")
 	sayAgainOnFail    bool      // If true, emit SAYAGAIN when type parser fails
 	sayAgainMinTokens int       // Minimum tokens consumed before SAYAGAIN triggers (0 = use default)
+	conventionalOnly  bool      // If true, pattern is suppressed in RealisticFrequencyManagement mode
+	noSlack           bool      // If true, disable the slack mechanism for all matchers in this command
 }
 
 // sttCommands holds all registered commands.
@@ -71,6 +73,28 @@ func WithSayAgainOnFail() CommandOption {
 func WithSayAgainMinTokens(n int) CommandOption {
 	return func(c *sttCommand) {
 		c.sayAgainMinTokens = n
+	}
+}
+
+// WithConventionalOnly marks a command as valid only in Conventional
+// (non-Realistic) frequency management mode. Patterns tagged with this
+// option are skipped when Aircraft.RealisticFrequencyManagement is true,
+// so "contact approach" (no frequency) is accepted in Conventional mode
+// but silently ignored in Realistic mode.
+func WithConventionalOnly() CommandOption {
+	return func(c *sttCommand) {
+		c.conventionalOnly = true
+	}
+}
+
+// WithNoSlack disables the slack mechanism for all matchers in this command.
+// Use this for patterns whose keywords must appear immediately (no intervening
+// garbage tokens allowed) — e.g., "contact approach" where "approach" must
+// be the very next non-filler token after "contact", not skipped past proper
+// nouns like "contact Providence approach".
+func WithNoSlack() CommandOption {
+	return func(c *sttCommand) {
+		c.noSlack = true
 	}
 }
 

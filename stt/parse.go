@@ -182,6 +182,11 @@ func matchCommandNew(tokens []Token, startPos int, ac Aircraft, isThen bool, exc
 	var bestSayAgainPriority int
 
 	for _, cmd := range sttCommands {
+		// Skip Conventional-only patterns when in Realistic mode.
+		if cmd.conventionalOnly && ac.RealisticFrequencyManagement {
+			continue
+		}
+
 		match, endPos := tryMatchCommand(tokens, startPos, cmd, ac, isThen)
 		consumed := endPos - startPos
 		if consumed > 0 {
@@ -223,7 +228,8 @@ func tryMatchCommand(tokens []Token, startPos int, cmd sttCommand, ac Aircraft, 
 	for i, m := range cmd.matchers {
 		// Only allow slack for non-first matchers in the template.
 		// The first keyword must match at or near the current position.
-		allowSlack := i > 0
+		// Commands with noSlack disable the slack mechanism entirely.
+		allowSlack := i > 0 && !cmd.noSlack
 		res := m.match(tokens, pos, ac, skipWords, allowSlack)
 
 		if res.consumed == 0 {
