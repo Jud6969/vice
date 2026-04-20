@@ -66,10 +66,9 @@ type Config struct {
 	MainWindowSquare bool
 
 	// WindowScaleMode locks the window to a 1:1 aspect with a target
-	// pixel size matching a real-world ATC display. Empty = off; "stars"
-	// targets STARS (2075x2075); "eram" targets ERAM (2160x2160). The
-	// target is clamped to the monitor's smaller dimension so the window
-	// always fits on screen.
+	// pixel size matching a real-world ATC display. Empty = off; "real"
+	// targets 2048x2048. The target is clamped to the monitor's smaller
+	// dimension so the window always fits on screen.
 	WindowScaleMode string
 
 	EnableMSAA bool
@@ -79,12 +78,10 @@ type Config struct {
 }
 
 // WindowScaleTargets maps WindowScaleMode values to their target square
-// pixel size. Reserved for the Phase 2 logical-resolution rendering work;
-// in the current Phase 1 scope-square mode, both modes behave identically
-// (square the scope pane, install the same window-size floor).
+// pixel size. The "real" mode targets 2048x2048, matching the native
+// resolution of real-world ATC displays.
 var WindowScaleTargets = map[string]int{
-	"stars": 2075,
-	"eram":  2160,
+	"real": 2048,
 }
 
 // SquareScopePaneMinWindow is the minimum window dimension (in pixels)
@@ -95,9 +92,9 @@ const SquareScopePaneMinWindow = 1000
 
 // computeSquareSnapSize returns the target side length for the radar
 // window when scope-square mode is active. It picks WindowScaleTargets[mode]
-// (STARS=2075, ERAM=2160) clamped to the monitor's shorter dimension, and
-// floored at SquareScopePaneMinWindow so the window is never usable-but-
-// smaller-than-the-floor. Unknown or empty modes fall back to the floor.
+// ("real"=2048) clamped to the monitor's shorter dimension, and floored
+// at SquareScopePaneMinWindow so the window is never usable-but-smaller-
+// than-the-floor. Unknown or empty modes fall back to the floor.
 func computeSquareSnapSize(mode string, monitorW, monitorH int) int {
 	target, ok := WindowScaleTargets[mode]
 	if !ok {
@@ -165,10 +162,14 @@ func New(config *Config, lg *log.Logger) (Platform, error) {
 			config.InitialWindowPosition = [2]int{75, 75}
 		}
 	}
-	// Migrate legacy MainWindowSquare to the new WindowScaleMode field.
-	// Default former square users into "stars" mode.
+	// Migrate legacy scope-square configs to the unified "real" mode.
+	// Both the old MainWindowSquare bool and the per-scope "stars"/"eram"
+	// values collapse into the single "real" target (2048x2048).
+	if config.WindowScaleMode == "stars" || config.WindowScaleMode == "eram" {
+		config.WindowScaleMode = "real"
+	}
 	if config.WindowScaleMode == "" && config.MainWindowSquare {
-		config.WindowScaleMode = "stars"
+		config.WindowScaleMode = "real"
 	}
 	if config.WindowScaleMode != "" {
 		config.MainWindowSquare = true

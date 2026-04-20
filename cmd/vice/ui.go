@@ -1005,35 +1005,20 @@ func uiDrawSettingsWindow(c *client.ControlClient, config *Config, activeRadarPa
 				}, p), true)
 		}
 
-		// Mutually-exclusive scope-square toggles. Enabling either locks
-		// the application window to a 1:1 aspect ratio (see
-		// SetMainWindowSquare). Fullscreen is incompatible with a
-		// square window on any non-square monitor, so enabling either
-		// toggle drops out of fullscreen and clears the persisted
-		// StartInFullScreen flag. The selected mode is recorded in
-		// WindowScaleMode and drives the per-mode target size
-		// (STARS 2075, ERAM 2160). Selecting one clears the other.
-		starsOn := config.WindowScaleMode == "stars"
-		eramOn := config.WindowScaleMode == "eram"
-		if imgui.Checkbox("Force STARS scope square", &starsOn) {
-			if starsOn {
+		// "Force Real Aspect Ratio" locks the application window to a
+		// 1:1 aspect ratio at a 2048x2048 target size (see
+		// SetMainWindowSquare), matching real-world ATC displays.
+		// Fullscreen is incompatible with a square window on any
+		// non-square monitor, so enabling the toggle drops out of
+		// fullscreen and clears the persisted StartInFullScreen flag.
+		realOn := config.WindowScaleMode == "real"
+		if imgui.Checkbox("Force Real Aspect Ratio", &realOn) {
+			if realOn {
 				if p.IsFullScreen() {
 					p.EnableFullScreen(false)
 				}
 				config.StartInFullScreen = false
-				config.WindowScaleMode = "stars"
-				p.SetMainWindowSquare(true)
-			} else {
-				p.SetMainWindowSquare(false)
-			}
-		}
-		if imgui.Checkbox("Force ERAM scope square", &eramOn) {
-			if eramOn {
-				if p.IsFullScreen() {
-					p.EnableFullScreen(false)
-				}
-				config.StartInFullScreen = false
-				config.WindowScaleMode = "eram"
+				config.WindowScaleMode = "real"
 				p.SetMainWindowSquare(true)
 			} else {
 				p.SetMainWindowSquare(false)
@@ -1043,7 +1028,7 @@ func uiDrawSettingsWindow(c *client.ControlClient, config *Config, activeRadarPa
 		imgui.BeginDisabledV(config.WindowScaleMode != "")
 		imgui.Checkbox("Start in full-screen", &config.StartInFullScreen)
 		if config.WindowScaleMode != "" && imgui.IsItemHovered() {
-			imgui.SetTooltip("Disabled while scope-square mode is active")
+			imgui.SetTooltip("Disabled while Force Real Aspect Ratio is active")
 		}
 		imgui.EndDisabled()
 
