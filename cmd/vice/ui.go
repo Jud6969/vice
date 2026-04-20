@@ -951,6 +951,22 @@ func uiDrawSettingsWindow(c *client.ControlClient, config *Config, activeRadarPa
 			imgui.EndCombo()
 		}
 
+		// Frequency Management mode — cycleable button.
+		imgui.Text("Mode:")
+		imgui.SameLine()
+		modeLabel := "Conventional###freqMode"
+		if config.RealisticFrequencyManagement {
+			modeLabel = "Realistic###freqMode"
+		}
+		if imgui.Button(modeLabel) {
+			config.RealisticFrequencyManagement = !config.RealisticFrequencyManagement
+		}
+		if imgui.IsItemHovered() {
+			imgui.SetTooltip("Click to toggle.\n" +
+				"Conventional: bare FC works; unknown frequencies still route; readback always full position+freq.\n" +
+				"Realistic: frequencies required and strict; readback varies by facility.")
+		}
+
 		// Test PTT button
 		if ui.testPTTActive {
 			imgui.PushStyleColorVec4(imgui.ColButton, imgui.Vec4{0.8, 0.2, 0.2, 1})
