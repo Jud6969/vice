@@ -4362,6 +4362,24 @@ func TestGuard(t *testing.T) {
 			// so the result should not contain GUARD.
 			expected: "SWA123 AGAIN",
 		},
+		{
+			name: "acknowledge with ident appends ID",
+			transcript: "this is orlando approach on guard southwest one two three " +
+				"switch to my frequency one two eight point three seven five acknowledge with ident",
+			aircraft: map[string]Aircraft{
+				"Southwest 123": {Callsign: "SWA123", State: "arrival"},
+			},
+			expected: "SWA123 GUARD FC128375 ID",
+		},
+		{
+			name: "no ident tail does not append ID",
+			transcript: "this is orlando approach on guard southwest one two three " +
+				"switch to my frequency one two eight point three seven five",
+			aircraft: map[string]Aircraft{
+				"Southwest 123": {Callsign: "SWA123", State: "arrival"},
+			},
+			expected: "SWA123 GUARD FC128375",
+		},
 	}
 
 	provider := NewTranscriber(nil)
