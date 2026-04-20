@@ -186,6 +186,10 @@ func matchCommandNew(tokens []Token, startPos int, ac Aircraft, isThen bool, exc
 		if cmd.conventionalOnly && ac.RealisticFrequencyManagement {
 			continue
 		}
+		// Skip guard-only patterns unless we're in a guard transmission context.
+		if cmd.guardOnly && !ac.InGuardContext {
+			continue
+		}
 
 		match, endPos := tryMatchCommand(tokens, startPos, cmd, ac, isThen)
 		consumed := endPos - startPos

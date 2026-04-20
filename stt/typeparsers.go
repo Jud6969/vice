@@ -793,11 +793,14 @@ func (p *textParser) parse(tokens []Token, pos int, ac Aircraft) (value any, con
 		return nil, 0, ""
 	}
 	// Stop words that must not be swallowed: the word "tower" is a literal in
-	// "contact {text} tower ...", and "point" signals the interior of a spoken
-	// frequency. Without these the greedy run would eat them.
+	// "contact {text} tower ...", "point" signals the interior of a spoken
+	// frequency, and "on" is a preposition that separates a position name from
+	// a frequency in guard-redirect patterns like "contact {text} on {frequency}".
+	// Without these the greedy run would eat them.
 	stopWords := map[string]struct{}{
 		"tower": {},
 		"point": {},
+		"on":    {},
 	}
 	// Collect consecutive word tokens.
 	end := pos

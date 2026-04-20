@@ -18,6 +18,7 @@ type sttCommand struct {
 	sayAgainMinTokens int       // Minimum tokens consumed before SAYAGAIN triggers (0 = use default)
 	conventionalOnly  bool      // If true, pattern is suppressed in RealisticFrequencyManagement mode
 	noSlack           bool      // If true, disable the slack mechanism for all matchers in this command
+	guardOnly         bool      // If true, pattern is only eligible when Aircraft.InGuardContext is set
 }
 
 // sttCommands holds all registered commands.
@@ -84,6 +85,16 @@ func WithSayAgainMinTokens(n int) CommandOption {
 func WithConventionalOnly() CommandOption {
 	return func(c *sttCommand) {
 		c.conventionalOnly = true
+	}
+}
+
+// WithGuardOnly marks a command as valid only when the parse context is a guard
+// transmission (Aircraft.InGuardContext == true). Patterns tagged with this
+// option are skipped during normal command parsing and only fire when the STT
+// dispatcher has detected the "guard" keyword in the raw transcription.
+func WithGuardOnly() CommandOption {
+	return func(c *sttCommand) {
+		c.guardOnly = true
 	}
 }
 

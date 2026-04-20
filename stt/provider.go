@@ -103,6 +103,19 @@ func (p *Transcriber) decodeInternal(
 		return "", nil
 	}
 
+	// Guard keyword pre-pass: if the transcription contains "guard" (word boundary),
+	// attempt a dedicated guard-transmission decode before the normal callsign path.
+	// In a guard broadcast the callsign is embedded mid-sentence (after "on guard …"),
+	// so we search for it starting from just after the "guard" token.
+	if !isFallback && tokensContainGuard(tokens) {
+		result, handled := p.tryDecodeGuard(tokens, aircraft, transcript, start)
+		if handled {
+			return result, nil
+		}
+		// Guard keyword present but no callsign matched — fall through to normal path.
+		// (Normal path will almost certainly fail too, but it keeps the log complete.)
+	}
+
 	var callsign string
 	var ac Aircraft
 	var commandTokens []Token
@@ -1111,6 +1124,108 @@ func stripAltimeterSuffix(tokens []Token) []Token {
 		return tokens[:start]
 	}
 	return tokens
+}
+
+// tokensContainGuard returns true if any token in the stream is the word "guard"
+// (case-insensitive). This is a fast pre-check before the heavier guard decode path.
+func tokensContainGuard(tokens []Token) bool {
+	for _, t := range tokens {
+		if strings.ToLower(t.Text) == "guard" {
+			return true
+		}
+	}
+	return false
+}
+
+// tryDecodeGuard attempts to decode a guard broadcast transmission.
+//
+// A guard broadcast looks like: "… on guard <callsign> contact me immediately on <freq>"
+// The callsign is embedded after the "guard" keyword, not at the start of the
+// transcript. We find the guard token, then search for a matching callsign in
+// the tokens that follow it.
+//
+// Returns (result, true) if the guard decode produced a definitive result (even "").
+// Returns ("", false) if no callsign was found and the caller should fall through
+// to the normal decode path.
+func (p *Transcriber) tryDecodeGuard(
+	tokens []Token,
+	aircraft map[string]Aircraft,
+	transcript string,
+	start time.Time,
+) (string, bool) {
+	logLocalStt("guard pre-pass: scanning for callsign after 'guard' keyword")
+
+	// Find the position of the "guard" token.
+	guardIdx := -1
+	for i, t := range tokens {
+		if strings.ToLower(t.Text) == "guard" {
+			guardIdx = i
+			break
+		}
+	}
+	if guardIdx < 0 {
+		return "", false
+	}
+
+	// Try to match a callsign in the tokens following the guard keyword.
+	// We start the search at skip offsets starting right after "guard".
+	afterGuard := tokens[guardIdx+1:]
+	if len(afterGuard) == 0 {
+		logLocalStt("guard pre-pass: no tokens after 'guard' keyword")
+		return "", false
+	}
+
+	// MatchCallsign supports an internal skip up to 3 tokens at the start.
+	// Iterate over starting offsets so the callsign can be found even if
+	// there are a few words between "guard" and the callsign.
+	var callsignMatch CallsignMatch
+	var afterCallsign []Token
+	for offset := 0; offset <= min(3, len(afterGuard)-1); offset++ {
+		cm, remaining := MatchCallsign(afterGuard[offset:], aircraft)
+		if cm.Callsign != "" {
+			callsignMatch = cm
+			afterCallsign = remaining
+			break
+		}
+	}
+
+	if callsignMatch.Callsign == "" {
+		logLocalStt("guard pre-pass: no callsign match after 'guard'")
+		return "", false
+	}
+
+	logLocalStt("guard pre-pass: callsign=%q (conf=%.2f) after guard", callsignMatch.Callsign, callsignMatch.Confidence)
+
+	// Retrieve the aircraft context.
+	var ac Aircraft
+	if callsignMatch.SpokenKey != "" {
+		ac = aircraft[callsignMatch.SpokenKey]
+	}
+
+	// Mark guard context so ParseCommands will apply guard-only patterns.
+	ac.InGuardContext = true
+
+	// Parse commands from the tokens that follow the callsign.
+	commands, cmdConf := ParseCommands(afterCallsign, ac)
+	logLocalStt("guard pre-pass: parsed commands=%v (conf=%.2f)", commands, cmdConf)
+
+	// Validate.
+	validation := ValidateCommands(commands, ac)
+	logLocalStt("guard pre-pass: validated=%v", validation.ValidCommands)
+
+	elapsed := time.Since(start)
+
+	if len(validation.ValidCommands) == 0 {
+		logLocalStt("guard pre-pass: no valid guard commands (callsign=%q)", callsignMatch.Callsign)
+		// We found a callsign but no guard command — return handled=false so the
+		// normal path can try (it will also likely fail, but keeps semantics clean).
+		return "", false
+	}
+
+	output := strings.TrimSpace(callsignMatch.Callsign + " " + strings.Join(validation.ValidCommands, " "))
+	logLocalStt(`=== DecodeTranscript END (guard): %q (time=%s) ===`, output, elapsed)
+	p.logInfo(`local STT (guard): %q -> %q (time=%s)`, transcript, output, elapsed)
+	return output, true
 }
 
 // logging helpers

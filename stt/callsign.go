@@ -73,6 +73,7 @@ type Aircraft struct {
 	AddressingForm            sim.CallsignAddressingForm // How this aircraft was addressed (based on which key matched)
 	LAHSORunways                   []string                   // Runways that intersect the approach runway (for LAHSO matching)
 	RealisticFrequencyManagement   bool                       // If true, freq-less "contact {facility}" patterns are not accepted
+	InGuardContext                 bool                       // If true, guard-only patterns are eligible for matching
 }
 
 // findWeightClassTokenIndex checks the early tokens (callsign region) for "heavy" or "super".

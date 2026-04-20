@@ -1498,6 +1498,59 @@ func registerAllCommands() {
 		WithName("airport_in_sight_inquiry"),
 		WithPriority(10),
 	)
+
+	// === GUARD PATTERNS (guard context only, priority 38-40) ===
+	// These patterns only fire when Aircraft.InGuardContext is set (i.e. the raw
+	// transcription contained the keyword "guard"). They emit "GUARD FC<digits>"
+	// or "GUARD FC<digits>:<position-hint>" so the sim-side GUARD dispatcher can
+	// apply the frequency switch without any pilot readback.
+	//
+	// Callsign extraction happens before ParseCommands is called; these patterns
+	// match against the tokens that follow the identified callsign.
+	//
+	// Priority 40: contact-me-immediately / switch-to-my-frequency.
+	registerSTTCommand(
+		"contact me immediately [on] {frequency}",
+		func(f av.Frequency) string {
+			return "GUARD FC" + frequencyToDigits(f)
+		},
+		WithName("guard_contact_me_immediately"),
+		WithPriority(40),
+		WithGuardOnly(),
+	)
+	// "to" is in the filler-word list and is stripped before matching,
+	// so we omit it from the template.
+	registerSTTCommand(
+		"switch my frequency {frequency}",
+		func(f av.Frequency) string {
+			return "GUARD FC" + frequencyToDigits(f)
+		},
+		WithName("guard_switch_to_my_frequency"),
+		WithPriority(40),
+		WithGuardOnly(),
+	)
+
+	// Priority 39: redirect with explicit "on".
+	registerSTTCommand(
+		"contact {text} on {frequency}",
+		func(pos string, f av.Frequency) string {
+			return "GUARD FC" + frequencyToDigits(f) + ":" + pos
+		},
+		WithName("guard_contact_position_on_freq"),
+		WithPriority(39),
+		WithGuardOnly(),
+	)
+
+	// Priority 38: redirect without "on" (elided preposition).
+	registerSTTCommand(
+		"contact {text} {frequency}",
+		func(pos string, f av.Frequency) string {
+			return "GUARD FC" + frequencyToDigits(f) + ":" + pos
+		},
+		WithName("guard_contact_position_freq"),
+		WithPriority(38),
+		WithGuardOnly(),
+	)
 }
 
 // frequencyToDigits renders a Frequency as a 6-digit string for the command

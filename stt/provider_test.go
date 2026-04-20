@@ -4315,3 +4315,67 @@ func TestNegativeWithoutCallsign(t *testing.T) {
 		})
 	}
 }
+
+// TestGuard tests guard broadcast pattern recognition.
+func TestGuard(t *testing.T) {
+	tests := []struct {
+		name       string
+		transcript string
+		aircraft   map[string]Aircraft
+		expected   string
+	}{
+		{
+			name: "contact me immediately on frequency",
+			transcript: "attention all aircraft this is orlando approach on guard southwest one two three " +
+				"contact me immediately on one two eight point three seven five",
+			aircraft: map[string]Aircraft{
+				"Southwest 123": {Callsign: "SWA123", State: "arrival"},
+			},
+			expected: "SWA123 GUARD FC128375",
+		},
+		{
+			name: "switch to my frequency",
+			transcript: "this is orlando approach on guard southwest one two three " +
+				"switch to my frequency one two eight point three seven five",
+			aircraft: map[string]Aircraft{
+				"Southwest 123": {Callsign: "SWA123", State: "arrival"},
+			},
+			expected: "SWA123 GUARD FC128375",
+		},
+		{
+			name: "contact position on frequency (redirect)",
+			transcript: "this is orlando approach on guard southwest one two three " +
+				"contact orlando approach on one three four point zero five zero",
+			aircraft: map[string]Aircraft{
+				"Southwest 123": {Callsign: "SWA123", State: "arrival"},
+			},
+			expected: "SWA123 GUARD FC134050:orlando_approach",
+		},
+		{
+			name: "no guard keyword does not produce GUARD command",
+			transcript: "southwest one two three switch to my frequency one two eight point three seven five",
+			aircraft: map[string]Aircraft{
+				"Southwest 123": {Callsign: "SWA123", State: "arrival"},
+			},
+			// Without "guard" keyword the guard patterns must not fire.
+			// The non-guard patterns don't match "switch to my frequency",
+			// so the result should not contain GUARD.
+			expected: "SWA123 AGAIN",
+		},
+	}
+
+	provider := NewTranscriber(nil)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := provider.DecodeTranscript(tt.aircraft, tt.transcript, "")
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+				return
+			}
+			if result != tt.expected {
+				t.Errorf("got %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
