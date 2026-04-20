@@ -2291,6 +2291,7 @@ func (s *Sim) ContactTower(tcw TCW, callsign av.ADSBCallsign, freq av.Frequency,
 	} else {
 		resolved, err := s.resolveControllerByFrequency(ac, freq, positionHint)
 		if err != nil {
+			s.enqueueUnknownFrequencyCallback(callsign, TCP(ac.ControllerFrequency), freq)
 			return av.UnknownFrequencyIntent{Frequency: freq}, nil
 		}
 		isTower := isAirportTowerCallsign(resolved.Callsign, airport)
@@ -2308,9 +2309,14 @@ func (s *Sim) ContactTower(tcw TCW, callsign av.ADSBCallsign, freq av.Frequency,
 		target = resolved
 	}
 
+	s.cancelPendingUnknownFrequencyCallback(callsign)
+	readbackFreq := freq
+	if target != nil {
+		readbackFreq = target.Frequency
+	}
 	return s.dispatchControlledAircraftCommand(tcw, callsign,
 		func(tcw TCW, ac *Aircraft) av.CommandIntent {
-			result, ok := ac.ContactTower(target, freq, positionOnly, s.lg)
+			result, ok := ac.ContactTower(target, readbackFreq, positionOnly, s.lg)
 			if ok {
 				if target != nil {
 					ac.ControllerFrequency = ControlPosition(target.Callsign)
@@ -2335,18 +2341,20 @@ func (s *Sim) FrequencyChange(tcw TCW, callsign av.ADSBCallsign, freq av.Frequen
 
 	target, err := s.resolveControllerByFrequency(ac, freq, positionHint)
 	if err != nil {
+		s.enqueueUnknownFrequencyCallback(callsign, TCP(ac.ControllerFrequency), freq)
 		return av.UnknownFrequencyIntent{Frequency: freq}, nil
 	}
 
 	fromCtrl := s.controllerForAircraft(ac)
 	sameFacility := !fromTypedCommand && fromCtrl != nil && fromCtrl.Facility == target.Facility
 
+	s.cancelPendingUnknownFrequencyCallback(callsign)
 	return s.dispatchControlledAircraftCommand(tcw, callsign,
 		func(tcw TCW, ac *Aircraft) av.CommandIntent {
 			intent := av.ContactIntent{
 				Type:         av.ContactController,
 				ToController: target,
-				Frequency:    freq,
+				Frequency:    target.Frequency,
 				SameFacility: sameFacility,
 			}
 			ac.ControllerFrequency = ControlPosition(target.Callsign)
@@ -3025,6 +3033,7 @@ const (
 	PendingTransmissionFieldNegativeContact                                    // "Negative contact" after looking timer expires
 	PendingTransmissionRequestVisual                                           // Spontaneous "field in sight, requesting visual"
 	PendingTransmissionRequestVectors                                          // Pilot requesting vectors (overshot localizer)
+	PendingTransmissionUnknownFrequencyCallback                                // Deferred "nothing heard on {freq}" after unresolved handoff
 )
 
 // PendingFrequencyChange represents a pilot switching to a new frequency.
@@ -3046,6 +3055,7 @@ type PendingContact struct {
 	HasQueuedEmergency     bool                    // For departures: trigger emergency after contact
 	PrebuiltTransmission   *av.RadioTransmission   // For emergency transmissions: pre-built message
 	FirstInFacility        bool                    // For arrivals: first contact in this TRACON facility
+	UnknownFreq            av.Frequency            // For PendingTransmissionUnknownFrequencyCallback: the unresolved frequency
 }
 
 // hasPendingCheckIn reports whether the aircraft has a pending arrival or
@@ -3288,6 +3298,36 @@ func (s *Sim) enqueuePilotTransmission(callsign av.ADSBCallsign, tcp TCP, txType
 	})
 }
 
+// enqueueUnknownFrequencyCallback queues a deferred "nothing heard on {freq}"
+// transmission to fire ~5 s after the controller issued an unresolved
+// frequency handoff. The pilot stays on the current controller's frequency;
+// the callback is addressed to that controller.
+func (s *Sim) enqueueUnknownFrequencyCallback(callsign av.ADSBCallsign, tcp TCP, freq av.Frequency) {
+	s.cancelPendingUnknownFrequencyCallback(callsign)
+	delay := time.Duration(5) * time.Second
+	s.addPendingContact(PendingContact{
+		ADSBCallsign: callsign,
+		TCP:          tcp,
+		ReadyTime:    s.State.SimTime.Add(delay),
+		Type:         PendingTransmissionUnknownFrequencyCallback,
+		UnknownFreq:  freq,
+	})
+}
+
+// cancelPendingUnknownFrequencyCallback removes any queued unknown-frequency
+// callback for the aircraft. Called when a later handoff command resolves
+// successfully, so the stale callback doesn't fire after the issue is fixed.
+func (s *Sim) cancelPendingUnknownFrequencyCallback(callsign av.ADSBCallsign) {
+	if s.PendingContacts == nil {
+		return
+	}
+	for tcp, pcs := range s.PendingContacts {
+		s.PendingContacts[tcp] = slices.DeleteFunc(pcs, func(pc PendingContact) bool {
+			return pc.ADSBCallsign == callsign && pc.Type == PendingTransmissionUnknownFrequencyCallback
+		})
+	}
+}
+
 // enqueueEmergencyTransmission adds an emergency transmission to the pending queue.
 // Emergency transmissions have a pre-built message since they're generated at trigger time.
 func (s *Sim) enqueueEmergencyTransmission(callsign av.ADSBCallsign, tcp TCP, rt *av.RadioTransmission) {
@@ -3452,6 +3492,15 @@ func (s *Sim) GenerateContactTransmission(pc *PendingContact) (spokenText, writt
 		rt = av.MakeContactTransmission(
 			"[field in sight|we have the airport in sight], [requesting the visual|can we get the visual] [approach |]runway {rwy}",
 			runway)
+
+	case PendingTransmissionUnknownFrequencyCallback:
+		rt = av.MakeContactTransmission(
+			"[nothing heard on {freq}, say again?|"+
+				"we hear nothing on {freq}, what was the frequency?|"+
+				"say again the frequency?|"+
+				"negative contact on {freq}, say again?]",
+			pc.UnknownFreq)
+		rt.Type = av.RadioTransmissionUnexpected
 
 	default:
 		return "", ""

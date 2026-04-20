@@ -189,10 +189,15 @@ func TestCompoundSpeedReadbackIncludesQualifiers(t *testing.T) {
 }
 
 func TestUnknownFrequencyIntentRenders(t *testing.T) {
+	// The initial readback is a frequency acknowledgment; the deferred
+	// "nothing heard" callback is rendered separately by the Sim pending
+	// transmission path.
 	intent := UnknownFrequencyIntent{Frequency: 127750}
 	for seed := uint64(1); seed <= 20; seed++ {
 		readback := renderIntentForTest(intent, seed)
-		assertContainsAny(t, readback, "frequency", "say again", "nothing")
+		if !strings.Contains(readback, "127.75") {
+			t.Errorf("seed %d: want '127.75' in readback, got %q", seed, readback)
+		}
 	}
 }
 
