@@ -340,12 +340,21 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 
 		// Window controls (minimize, maximize/restore, close) — these are
 		// the custom title bar's replacement for the OS-supplied buttons.
+		// Minimize and maximize are disabled while Force Real Aspect Ratio
+		// is active so the 1:1 window geometry is preserved.
+		squareLocked := config.WindowScaleMode != ""
 		imgui.SetCursorPos(imgui.Vec2{X: windowCtrlX, Y: menuBarCursorY})
+		imgui.BeginDisabledV(squareLocked)
 		if imgui.Button(renderer.FontAwesomeIconWindowMinimize) {
 			p.IconifyWindow()
 		}
+		imgui.EndDisabled()
 		if imgui.IsItemHovered() {
-			imgui.SetTooltip("Minimize")
+			tip := "Minimize"
+			if squareLocked {
+				tip = "Disabled while Force Real Aspect Ratio is active"
+			}
+			imgui.SetTooltip(tip)
 		}
 		// The maximize/restore button also serves as the only way out of
 		// true GLFW fullscreen now that the dedicated fullscreen toggle
@@ -354,6 +363,7 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 		// EnableFullScreen(false) instead.
 		maxRestore := p.IsWindowMaximized() || p.IsFullScreen()
 		maxIcon := util.Select(maxRestore, renderer.FontAwesomeIconWindowRestore, renderer.FontAwesomeIconWindowMaximize)
+		imgui.BeginDisabledV(squareLocked)
 		if imgui.Button(maxIcon) {
 			if p.IsFullScreen() {
 				p.EnableFullScreen(false)
@@ -361,9 +371,12 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 				p.ToggleMaximizeWindow()
 			}
 		}
+		imgui.EndDisabled()
 		if imgui.IsItemHovered() {
 			tip := "Maximize"
-			if p.IsFullScreen() {
+			if squareLocked {
+				tip = "Disabled while Force Real Aspect Ratio is active"
+			} else if p.IsFullScreen() {
 				tip = "Exit full-screen"
 			} else if p.IsWindowMaximized() {
 				tip = "Restore"
@@ -1492,6 +1505,11 @@ func uiHandleTitleBarDrag(p platform.Platform) {
 			return
 		}
 		if mouse.DoubleClicked[platform.MouseButtonPrimary] {
+			// Square mode keeps the window 1:1; maximizing would break
+			// that invariant, so ignore the double-click.
+			if p.SquareScopePane() {
+				return
+			}
 			p.ToggleMaximizeWindow()
 			return
 		}

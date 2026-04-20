@@ -274,6 +274,13 @@ func (g *glfwPlatform) SetMainWindowSquare(square bool) {
 		return
 	}
 
+	// If the window is currently maximized, drop the maximized attribute
+	// before resizing; otherwise the OS may preserve the maximized state
+	// and the explicit SetSize below silently no-ops on some platforms.
+	if g.window.GetAttrib(glfw.Maximized) == glfw.True {
+		g.window.Restore()
+	}
+
 	g.window.SetSizeLimits(SquareScopePaneMinWindow, SquareScopePaneMinWindow,
 		glfw.DontCare, glfw.DontCare)
 	g.window.SetAspectRatio(1, 1)
