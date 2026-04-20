@@ -10,6 +10,7 @@ import (
 
 var (
 	ErrAircraftAlreadyReleased         = errors.New("Aircraft already released")
+	ErrAlreadyOnFrequency              = errors.New("Aircraft is already on that frequency")
 	ErrAmbiguousTower                  = errors.New("Multiple towers serve this airport; specify frequency")
 	ErrATPADisabled                    = errors.New("ATPA is disabled system-wide")
 	ErrBeaconMismatch                  = errors.New("Beacon code mismatch")
