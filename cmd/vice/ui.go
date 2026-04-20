@@ -1018,6 +1018,13 @@ func uiDrawSettingsWindow(c *client.ControlClient, config *Config, activeRadarPa
 		eramOn := config.WindowScaleMode == "eram"
 		if imgui.Checkbox("Force STARS scope square", &starsOn) {
 			if starsOn {
+				// Square mode locks the window 1:1; fullscreen is not
+				// compatible. Drop out if currently fullscreen and clear
+				// the "Start in full-screen" persisted flag.
+				if p.IsFullScreen() {
+					p.EnableFullScreen(false)
+				}
+				config.StartInFullScreen = false
 				config.WindowScaleMode = "stars"
 				p.SetMainWindowSquare(true)
 			} else {
@@ -1026,6 +1033,10 @@ func uiDrawSettingsWindow(c *client.ControlClient, config *Config, activeRadarPa
 		}
 		if imgui.Checkbox("Force ERAM scope square", &eramOn) {
 			if eramOn {
+				if p.IsFullScreen() {
+					p.EnableFullScreen(false)
+				}
+				config.StartInFullScreen = false
 				config.WindowScaleMode = "eram"
 				p.SetMainWindowSquare(true)
 			} else {
@@ -1033,7 +1044,12 @@ func uiDrawSettingsWindow(c *client.ControlClient, config *Config, activeRadarPa
 			}
 		}
 
+		imgui.BeginDisabledV(config.WindowScaleMode != "")
 		imgui.Checkbox("Start in full-screen", &config.StartInFullScreen)
+		if config.WindowScaleMode != "" && imgui.IsItemHovered() {
+			imgui.SetTooltip("Disabled while scope-square mode is active")
+		}
+		imgui.EndDisabled()
 
 		monitorNames := p.GetAllMonitorNames()
 		if len(monitorNames) == 0 {
