@@ -979,6 +979,9 @@ func (p *standaloneAltitudeParser) parse(tokens []Token, pos int, ac Aircraft) (
 //   - "N N N N N"         → 5 digits, trailing zero implicit → Frequency(127750)
 //   - "N N N N N N"       → 6 digits explicit → Frequency(127750)
 //
+// The result is snapped to the nearest US NAS 25 kHz grid value, so a
+// spoken "128 point 37" (parsed as 128370) resolves to 128375 — the
+// canonical controller frequency — rather than the non-existent .370.
 // Rejects values outside 118000..137000.
 type frequencyParser struct{}
 
@@ -1062,6 +1065,17 @@ func (p *frequencyParser) parse(tokens []Token, pos int, ac Aircraft) (any, int,
 	}
 	if len(digits) == 5 {
 		khz *= 10
+	}
+
+	// Snap to the nearest 25 kHz slot. US NAS VHF frequencies are spaced
+	// every 25 kHz, so values like 128370 (spoken "128 point 37") must
+	// resolve to 128375. Half-up rounding on the kHz remainder.
+	if rem := khz % 25; rem != 0 {
+		if rem <= 12 {
+			khz -= rem
+		} else {
+			khz += 25 - rem
+		}
 	}
 
 	if khz < 118000 || khz > 137000 {

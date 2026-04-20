@@ -15,7 +15,7 @@
   "processor": "GPU: Apple M2, 8 CPU / 10 GPU cores, 8GB",
   "whisper_model": "ggml-small.en-jlvatc-q5_0.bin",
   "callsign": "CHH721",
-  "command": "FC128134:boston_center",
+  "command": "FC128125:boston_center",
   "stt_aircraft": {
     "Air Portugal four 93 alpha": {
       "Callsign": "TAP493A",

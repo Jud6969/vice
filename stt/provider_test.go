@@ -839,6 +839,28 @@ func TestSTTContactFrequencyE2E(t *testing.T) {
 			expected: "NKS1189 FC134050:orlando_approach",
 		},
 		{
+			// NAS 25 kHz grid snap: spoken "one two eight point three seven"
+			// parses to 128370, but .370 is not a valid US NAS frequency.
+			// The parser rounds to the nearest 25 kHz slot so the emitted
+			// FC command matches the canonical controller frequency.
+			name:       "25 kHz grid snap rounds up",
+			transcript: "Delta 500 contact one two eight point three seven",
+			aircraft: map[string]Aircraft{
+				"Delta 500": {Callsign: "DAL500", State: "overflight"},
+			},
+			expected: "DAL500 FC128375",
+		},
+		{
+			// NAS 25 kHz grid snap (rounds down): "128 point 38" parses to
+			// 128380; nearest 25 kHz slot is 128375, not 128400.
+			name:       "25 kHz grid snap rounds down",
+			transcript: "Delta 500 contact one two eight point three eight",
+			aircraft: map[string]Aircraft{
+				"Delta 500": {Callsign: "DAL500", State: "overflight"},
+			},
+			expected: "DAL500 FC128375",
+		},
+		{
 			// Out-of-band frequency (105.00 MHz is below the 118 MHz floor):
 			// the frequency parser rejects, the FC pattern fails to match,
 			// and the pipeline emits AGAIN as the fallback.
