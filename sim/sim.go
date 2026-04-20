@@ -1488,6 +1488,21 @@ func (s *Sim) updateState() {
 				s.enqueuePilotTransmission(callsign, TCP(ac.ControllerFrequency), PendingTransmissionRequestVectors)
 			}
 
+			// "Report reaching {altitude}" — fire the unsolicited pilot call
+			// when the aircraft has leveled off within tolerance of the
+			// requested altitude. AltitudeRate is clamped to 0 once the nav
+			// system settles on level flight, so an exact-zero check plus a
+			// loose altitude tolerance catches the level-off.
+			if ac.Nav.ReportReachingAltitude != nil && ac.IsAssociated() {
+				target := *ac.Nav.ReportReachingAltitude
+				if ac.Nav.FlightState.AltitudeRate == 0 && math.Abs(ac.Altitude()-target) < 100 {
+					ac.Nav.ReportReachingAltitude = nil
+					rt := av.MakeContactTransmission("")
+					av.ReachingAltitudeIntent{Altitude: target}.Render(rt, s.Rand)
+					s.enqueueReachingAltitudeTransmission(callsign, TCP(ac.ControllerFrequency), rt)
+				}
+			}
+
 			if ac.FirstSeen.IsZero() && s.isRadarVisible(ac) {
 				ac.FirstSeen = s.State.SimTime
 			}

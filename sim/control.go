@@ -304,6 +304,36 @@ func (s *Sim) ChangeTransponderMode(tcw TCW, callsign av.ADSBCallsign, mode av.T
 		})
 }
 
+// StopAltitudeSquawk handles the "stop altitude squawk" command. Aircraft
+// switches from Mode C to Mode A; readback uses the specific phraseology
+// rather than the generic "squawk on".
+func (s *Sim) StopAltitudeSquawk(tcw TCW, callsign av.ADSBCallsign) (av.CommandIntent, error) {
+	s.mu.Lock(s.lg)
+	defer s.mu.Unlock(s.lg)
+
+	return s.dispatchControlledAircraftCommand(tcw, callsign,
+		func(tcw TCW, ac *Aircraft) av.CommandIntent {
+			s.enqueueTransponderChange(ac.ADSBCallsign, ac.Squawk, av.TransponderModeOn)
+			return av.StopAltitudeSquawkIntent{}
+		})
+}
+
+// ReportReaching handles the "report reaching {altitude}" command. The
+// pilot acknowledges immediately; the actual "reaching" call is fired
+// later by the per-tick nav update when the aircraft levels off at the
+// target. Only one pending target is tracked; a new request replaces it,
+// as does any new altitude assignment.
+func (s *Sim) ReportReaching(tcw TCW, callsign av.ADSBCallsign, altitude float32) (av.CommandIntent, error) {
+	s.mu.Lock(s.lg)
+	defer s.mu.Unlock(s.lg)
+
+	return s.dispatchControlledAircraftCommand(tcw, callsign,
+		func(tcw TCW, ac *Aircraft) av.CommandIntent {
+			ac.Nav.ReportReachingAltitude = &altitude
+			return av.ReportReachingIntent{Altitude: altitude}
+		})
+}
+
 func (s *Sim) Ident(tcw TCW, callsign av.ADSBCallsign) (av.CommandIntent, error) {
 	s.mu.Lock(s.lg)
 	defer s.mu.Unlock(s.lg)
@@ -2761,6 +2791,7 @@ const (
 	PendingTransmissionFieldNegativeContact                                    // "Negative contact" after looking timer expires
 	PendingTransmissionRequestVisual                                           // Spontaneous "field in sight, requesting visual"
 	PendingTransmissionRequestVectors                                          // Pilot requesting vectors (overshot localizer)
+	PendingTransmissionReachingAltitude                                        // Pilot reporting reaching a previously requested altitude
 )
 
 // PendingFrequencyChange represents a pilot switching to a new frequency.
@@ -3035,6 +3066,19 @@ func (s *Sim) enqueueEmergencyTransmission(callsign av.ADSBCallsign, tcp TCP, rt
 	})
 }
 
+// enqueueReachingAltitudeTransmission enqueues the unsolicited "reaching
+// NNNN" pilot call fired when an aircraft levels off at a previously
+// requested "report reaching" altitude. The message is built at trigger
+// time since the exact altitude is captured when we detect level-off.
+func (s *Sim) enqueueReachingAltitudeTransmission(callsign av.ADSBCallsign, tcp TCP, rt *av.RadioTransmission) {
+	s.addPendingContact(PendingContact{
+		ADSBCallsign:         callsign,
+		TCP:                  tcp,
+		Type:                 PendingTransmissionReachingAltitude,
+		PrebuiltTransmission: rt,
+	})
+}
+
 // handleAltimeterSetting processes an "altimeter X.XX" command issued by a
 // controller. Mutates the pilot's altimeter setting and returns a readback
 // intent so the acknowledgment joins any other readbacks from the same
@@ -3184,6 +3228,13 @@ func (s *Sim) GenerateContactTransmission(pc *PendingContact) (spokenText, writt
 		}
 		rt = pc.PrebuiltTransmission
 		rt.Type = av.RadioTransmissionUnexpected // Mark as urgent for display
+
+	case PendingTransmissionReachingAltitude:
+		if pc.PrebuiltTransmission == nil {
+			return "", ""
+		}
+		rt = pc.PrebuiltTransmission
+		rt.Type = av.RadioTransmissionUnexpected
 
 	case PendingTransmissionRequestVisual:
 		runway := ""
@@ -4139,6 +4190,14 @@ func (s *Sim) runOneControlCommand(tcw TCW, callsign av.ADSBCallsign, command st
 			return s.ChangeTransponderMode(tcw, callsign, av.TransponderModeAltitude)
 		} else if command == "SQON" {
 			return s.ChangeTransponderMode(tcw, callsign, av.TransponderModeOn)
+		} else if command == "SQSTOP" {
+			return s.StopAltitudeSquawk(tcw, callsign)
+		} else if strings.HasPrefix(command, "RR") {
+			alt, err := strconv.Atoi(command[2:])
+			if err != nil {
+				return nil, err
+			}
+			return s.ReportReaching(tcw, callsign, float32(alt))
 		} else if len(command) == 6 && command[:2] == "SQ" {
 			sq, err := av.ParseSquawk(command[2:])
 			if err != nil {
