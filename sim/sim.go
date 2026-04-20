@@ -79,7 +79,8 @@ type Sim struct {
 	FDAMSystemInhibited         bool
 	DisabledFDAMRegions         map[string]struct{} // keyed by region ID
 	EnforceUniqueCallsignSuffix bool
-	SimulateIncorrectAltimeters bool
+	IncorrectAltimeterChance    float32 // 0-100% chance a non-departure spawns with a nearby-but-wrong altimeter
+	FaultyTransponderChance     float32 // 0-100% chance an aircraft spawns with a persistent Mode C offset
 
 	PendingContacts         map[TCP][]PendingContact
 	PendingFrequencyChanges []PendingFrequencyChange
@@ -238,7 +239,8 @@ type NewSimConfiguration struct {
 	DisableTFRRestrictionAreas bool
 
 	EnforceUniqueCallsignSuffix bool
-	SimulateIncorrectAltimeters bool
+	IncorrectAltimeterChance    float32
+	FaultyTransponderChance     float32
 
 	ReportingPoints   []av.ReportingPoint
 	MagneticVariation float32
@@ -294,7 +296,8 @@ func NewSim(config NewSimConfiguration, lg *log.Logger) *Sim {
 		ReportingPoints: config.ReportingPoints,
 
 		EnforceUniqueCallsignSuffix: config.EnforceUniqueCallsignSuffix,
-		SimulateIncorrectAltimeters: config.SimulateIncorrectAltimeters,
+		IncorrectAltimeterChance:    config.IncorrectAltimeterChance,
+		FaultyTransponderChance:     config.FaultyTransponderChance,
 
 		PilotErrorInterval: time.Duration(config.PilotErrorInterval * float32(time.Minute)),
 		LastPilotError:     NewSimTime(config.StartTime),
@@ -2204,6 +2207,9 @@ func (s *Sim) GetAircraftDisplayState(callsign av.ADSBCallsign) (AircraftDisplay
 			indicated := ac.Altitude() - bias
 			summary += fmt.Sprintf("\nPilot altimeter %.2f inHg, indicated altitude %.0f",
 				ac.PilotAltim, indicated)
+		}
+		if ac.TransponderAltOffset != 0 {
+			summary += fmt.Sprintf("\nTransponder encoder offset %+.0f ft", ac.TransponderAltOffset)
 		}
 		return AircraftDisplayState{
 			Spew:        godump.DumpStr(ac),
