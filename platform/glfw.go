@@ -93,6 +93,29 @@ var WindowScaleTargets = map[string]int{
 // square scope pane becomes unusable.
 const SquareScopePaneMinWindow = 1000
 
+// computeSquareSnapSize returns the target side length for the radar
+// window when scope-square mode is active. It picks WindowScaleTargets[mode]
+// (STARS=2075, ERAM=2160) clamped to the monitor's shorter dimension, and
+// floored at SquareScopePaneMinWindow so the window is never usable-but-
+// smaller-than-the-floor. Unknown or empty modes fall back to the floor.
+func computeSquareSnapSize(mode string, monitorW, monitorH int) int {
+	target, ok := WindowScaleTargets[mode]
+	if !ok {
+		return SquareScopePaneMinWindow
+	}
+	shorter := monitorW
+	if monitorH < shorter {
+		shorter = monitorH
+	}
+	if target > shorter {
+		target = shorter
+	}
+	if target < SquareScopePaneMinWindow {
+		target = SquareScopePaneMinWindow
+	}
+	return target
+}
+
 // New returns a new instance of a Platform implemented with a window
 // of the specified size open at the specified position on the screen.
 func New(config *Config, lg *log.Logger) (Platform, error) {
