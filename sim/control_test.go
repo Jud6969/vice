@@ -561,3 +561,41 @@ func TestParseConditionalAction(t *testing.T) {
 		})
 	}
 }
+
+func TestRunControlCommandLV(t *testing.T) {
+	s, callsign, tcw := setupTestSimWithAircraftAt(t, 2000, 7000)
+	intent, err := s.runOneControlCommand(tcw, callsign, "LV30/H010", 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := intent.(av.ConditionalCommandIntent); !ok {
+		t.Fatalf("expected ConditionalCommandIntent, got %T", intent)
+	}
+	ac := s.Aircraft[callsign]
+	if ac.Nav.PendingConditionalCommand == nil {
+		t.Fatalf("slot not installed")
+	}
+	if ac.Nav.PendingConditionalCommand.Altitude != 3000 {
+		t.Fatalf("wrong altitude %v", ac.Nav.PendingConditionalCommand.Altitude)
+	}
+}
+
+func TestRunControlCommandLVRejectsMalformed(t *testing.T) {
+	cases := []string{
+		"LV30H010",   // missing slash
+		"LV/H010",    // empty altitude
+		"LV30/",      // empty inner
+		"LVABC/H010", // non-numeric altitude
+		"LV30/C50",   // altitude-changing inner (C50 means descent — rejected by parseConditionalAction)
+		"LV30/X010",  // unknown inner
+	}
+	for _, cmd := range cases {
+		t.Run(cmd, func(t *testing.T) {
+			s, callsign, tcw := setupTestSimWithAircraftAt(t, 2000, 7000)
+			_, err := s.runOneControlCommand(tcw, callsign, cmd, 0)
+			if err == nil {
+				t.Fatalf("expected error for %q, got nil", cmd)
+			}
+		})
+	}
+}
