@@ -12,6 +12,7 @@ import (
 	"github.com/mmp/vice/log"
 	"github.com/mmp/vice/math"
 	"github.com/mmp/vice/nav"
+	"github.com/mmp/vice/rand"
 )
 
 func TestParseHold(t *testing.T) {
@@ -653,5 +654,72 @@ func TestRunOneControlCommandRCRejectsMalformed(t *testing.T) {
 				t.Fatalf("expected ErrInvalidCommandSyntax for %q, got %v", tc.cmd, err)
 			}
 		})
+	}
+}
+
+func TestFireConditionalIfTriggeredFiresAndClearsSlot(t *testing.T) {
+	// Aircraft climbing through 3000 with a pending LV 3000/H010 command.
+	s, callsign, _ := setupTestSimWithAircraftAt(t, 3100, 7000)
+	ac := s.Aircraft[callsign]
+	ac.NASFlightPlan = &NASFlightPlan{} // make IsAssociated() return true
+	ac.Nav.Rand = rand.Make()           // needed by EnqueueHeading for pilot-delay jitter
+	ac.Nav.FlightState.AltitudeRate = 500 // climbing
+	ac.Nav.PendingConditionalCommand = &nav.PendingConditionalCommand{
+		Kind:     nav.ConditionalLeaving,
+		Altitude: 3000,
+		Action:   nav.ConditionalHeading{Heading: 10, Turn: av.TurnClosest},
+	}
+
+	s.fireConditionalIfTriggered(ac, av.Temperature{})
+
+	if ac.Nav.PendingConditionalCommand != nil {
+		t.Fatalf("expected slot cleared after firing, still got %+v", ac.Nav.PendingConditionalCommand)
+	}
+	if hdg, ok := ac.Nav.AssignedHeading(); !ok || hdg != 10 {
+		t.Fatalf("expected assigned heading 10, got ok=%v hdg=%v", ok, hdg)
+	}
+}
+
+func TestFireConditionalIfTriggeredHoldsSlotWhenNotTriggered(t *testing.T) {
+	// Aircraft at 2000 climbing — has not yet reached 3000 trigger.
+	s, callsign, _ := setupTestSimWithAircraftAt(t, 2000, 7000)
+	ac := s.Aircraft[callsign]
+	ac.NASFlightPlan = &NASFlightPlan{} // make IsAssociated() return true
+	ac.Nav.FlightState.AltitudeRate = 500
+	pc := &nav.PendingConditionalCommand{
+		Kind:     nav.ConditionalLeaving,
+		Altitude: 3000,
+		Action:   nav.ConditionalHeading{Heading: 10, Turn: av.TurnClosest},
+	}
+	ac.Nav.PendingConditionalCommand = pc
+
+	s.fireConditionalIfTriggered(ac, av.Temperature{})
+
+	if ac.Nav.PendingConditionalCommand != pc {
+		t.Fatalf("expected slot still installed (not triggered yet)")
+	}
+	if _, ok := ac.Nav.AssignedHeading(); ok {
+		t.Fatalf("expected no heading assigned before trigger fires")
+	}
+}
+
+func TestFireConditionalIfTriggeredSkipsWhenUnassociated(t *testing.T) {
+	// Setup sim and aircraft state that WOULD trigger, but aircraft has no
+	// NASFlightPlan so IsAssociated() returns false.
+	s, callsign, _ := setupTestSimWithAircraftAt(t, 3100, 7000)
+	ac := s.Aircraft[callsign]
+	// NASFlightPlan is nil by default from setupTestSimWithAircraftAt — unassociated.
+	ac.Nav.FlightState.AltitudeRate = 500
+	pc := &nav.PendingConditionalCommand{
+		Kind:     nav.ConditionalLeaving,
+		Altitude: 3000,
+		Action:   nav.ConditionalHeading{Heading: 10, Turn: av.TurnClosest},
+	}
+	ac.Nav.PendingConditionalCommand = pc
+
+	s.fireConditionalIfTriggered(ac, av.Temperature{})
+
+	if ac.Nav.PendingConditionalCommand != pc {
+		t.Fatalf("expected slot preserved when unassociated")
 	}
 }
