@@ -4188,6 +4188,23 @@ func (s *Sim) runOneControlCommand(tcw TCW, callsign av.ADSBCallsign, command st
 			return s.ResumeOwnNavigation(tcw, callsign)
 		} else if command == "RST" {
 			return s.RadarServicesTerminated(tcw, callsign)
+		} else if strings.HasPrefix(command, "RC") {
+			if len(command) <= 2 {
+				return nil, ErrInvalidCommandSyntax
+			}
+			altStr, inner, ok := strings.Cut(command[2:], "/")
+			if !ok || altStr == "" || inner == "" {
+				return nil, ErrInvalidCommandSyntax
+			}
+			alt, err := parseConditionalAltitude(altStr)
+			if err != nil {
+				return nil, err
+			}
+			action, err := parseConditionalAction(inner)
+			if err != nil {
+				return nil, err
+			}
+			return s.AssignConditional(tcw, callsign, nav.ConditionalReaching, alt, action)
 		} else if len(command) >= 5 && command[1] == 'D' {
 			return s.DirectFix(tcw, callsign, command[2:], av.TurnRight, delayReduction)
 		} else if l := len(command); l > 2 && command[l-1] == 'D' {

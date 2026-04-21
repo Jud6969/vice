@@ -607,3 +607,51 @@ func TestRunOneControlCommandLVRejectsMalformed(t *testing.T) {
 		})
 	}
 }
+
+func TestRunOneControlCommandRC(t *testing.T) {
+	s, callsign, tcw := setupTestSimWithAircraftAt(t, 5000, 10000)
+	intent, err := s.runOneControlCommand(tcw, callsign, "RC100/DAAC", 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := intent.(av.ConditionalCommandIntent); !ok {
+		t.Fatalf("expected ConditionalCommandIntent, got %T", intent)
+	}
+	ac := s.Aircraft[callsign]
+	if ac.Nav.PendingConditionalCommand == nil {
+		t.Fatalf("slot not installed")
+	}
+	if ac.Nav.PendingConditionalCommand.Altitude != 10000 {
+		t.Fatalf("wrong altitude %v", ac.Nav.PendingConditionalCommand.Altitude)
+	}
+	if ac.Nav.PendingConditionalCommand.Kind != nav.ConditionalReaching {
+		t.Fatalf("wrong kind %v", ac.Nav.PendingConditionalCommand.Kind)
+	}
+}
+
+func TestRunOneControlCommandRCRejectsMalformed(t *testing.T) {
+	cases := []struct {
+		cmd        string
+		wantSyntax bool
+	}{
+		{"RC", true},          // bare command, too short
+		{"RC100H010", true},   // missing slash
+		{"RC/H010", true},     // empty altitude
+		{"RC100/", true},      // empty inner
+		{"RCABC/H010", false}, // non-numeric altitude (strconv error)
+		{"RC100/X010", true},  // unknown inner command
+		{"RC100/C50", true},   // altitude-changing inner rejected by parseConditionalAction
+	}
+	for _, tc := range cases {
+		t.Run(tc.cmd, func(t *testing.T) {
+			s, callsign, tcw := setupTestSimWithAircraftAt(t, 5000, 10000)
+			_, err := s.runOneControlCommand(tcw, callsign, tc.cmd, 0)
+			if err == nil {
+				t.Fatalf("expected error for %q, got nil", tc.cmd)
+			}
+			if tc.wantSyntax && !errors.Is(err, ErrInvalidCommandSyntax) {
+				t.Fatalf("expected ErrInvalidCommandSyntax for %q, got %v", tc.cmd, err)
+			}
+		})
+	}
+}
