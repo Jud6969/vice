@@ -4193,6 +4193,26 @@ func TestSTTLeavingPatterns(t *testing.T) {
 			transcript: "Delta 43 leaving five thousand reduce speed to two one zero",
 			expected:   "DAL43 LV50/S210",
 		},
+		{
+			name:       "leaving thousand left direct fix",
+			transcript: "Delta 43 leaving three thousand left direct alpha alpha charlie",
+			expected:   "DAL43 LV30/LDAAC",
+		},
+		{
+			name:       "leaving thousand right direct fix",
+			transcript: "Delta 43 leaving three thousand right direct alpha alpha charlie",
+			expected:   "DAL43 LV30/RDAAC",
+		},
+		{
+			name:       "leaving thousand maintain speed",
+			transcript: "Delta 43 leaving five thousand maintain speed two five zero",
+			expected:   "DAL43 LV50/S250",
+		},
+		{
+			name:       "leaving flight level maintain mach",
+			transcript: "American 17 leaving flight level three zero zero maintain mach point seven eight",
+			expected:   "AAL17 LV300/M78",
+		},
 	}
 
 	aircraft := map[string]Aircraft{
