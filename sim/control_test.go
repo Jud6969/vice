@@ -382,3 +382,29 @@ func TestTriggerReachable(t *testing.T) {
 		})
 	}
 }
+
+func TestParseConditionalAltitude(t *testing.T) {
+	cases := []struct {
+		in      string
+		want    float32
+		wantErr bool
+	}{
+		{"30", 3000, false},       // hundreds-of-feet
+		{"130", 13000, false},
+		{"100", 10000, false},
+		{"1000", 1000, false},     // >600 && %100==0 → already feet
+		{"13000", 13000, false},   // ditto
+		{"", 0, true},
+		{"abc", 0, true},
+	}
+	for _, tc := range cases {
+		got, err := parseConditionalAltitude(tc.in)
+		if (err != nil) != tc.wantErr {
+			t.Errorf("parseConditionalAltitude(%q) err=%v wantErr=%v", tc.in, err, tc.wantErr)
+			continue
+		}
+		if !tc.wantErr && got != tc.want {
+			t.Errorf("parseConditionalAltitude(%q) = %v, want %v", tc.in, got, tc.want)
+		}
+	}
+}

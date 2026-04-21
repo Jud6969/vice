@@ -3522,6 +3522,23 @@ func betweenAlt(v, a, b float32) bool {
 	return v >= lo && v <= hi
 }
 
+// parseConditionalAltitude parses the altitude-encoding convention used
+// by LV/RC commands: number × 100, with a carve-out for values that look
+// like feet already (>600 and evenly divisible by 100).
+func parseConditionalAltitude(s string) (float32, error) {
+	if s == "" {
+		return 0, ErrInvalidCommandSyntax
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0, err
+	}
+	if n > 600 && n%100 == 0 {
+		return float32(n), nil
+	}
+	return float32(n * 100), nil
+}
+
 // parseCompoundSpeed parses a compound speed command string like
 // "250+/UFIX1/210-/UFIX2/180+" into CompoundSpeedSegments.
 // The input is the part after 'S' (e.g., "250+/UFIX1/210-/UFIX2/180+").
