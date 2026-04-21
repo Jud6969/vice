@@ -496,7 +496,13 @@ func TestAssignConditionalSupersedes(t *testing.T) {
 		t.Fatalf("second assign: %v", err)
 	}
 	pc := s.Aircraft[callsign].Nav.PendingConditionalCommand
-	if pc == nil || pc.Kind != nav.ConditionalReaching || pc.Altitude != 6000 {
+	if pc == nil {
+		t.Fatalf("expected superseded slot, got nil")
+	}
+	if pc.Kind == nav.ConditionalLeaving {
+		t.Fatalf("old Leaving kind not replaced")
+	}
+	if pc.Kind != nav.ConditionalReaching || pc.Altitude != 6000 {
 		t.Fatalf("expected superseded slot: reaching 6000, got %+v", pc)
 	}
 }
