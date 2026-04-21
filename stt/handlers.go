@@ -1510,23 +1510,35 @@ func registerAllCommands() {
 	)
 
 	// LV{alt}/D{fix}, LV{alt}/LD{fix}, LV{alt}/RD{fix}
+	// SayAgainOnFail: when "leaving|passing {alt} direct|proceed" matches but
+	// {fix} can't be resolved, emit SAYAGAIN instead of silently falling through
+	// to the standalone_altitude handler (which would produce a misleading
+	// A{alt}). MinTokens(3) requires keyword+altitude+direct/proceed to all
+	// match before triggering — prevents false positives where "leave" or
+	// "passing" fuzzy-matches unrelated words.
 	registerSTTCommand(
 		"leaving|passing {altitude} direct|proceed [direct] [to] [at] {fix}",
 		func(alt int, fix string) string { return fmt.Sprintf("LV%d/D%s", alt, fix) },
 		WithName("conditional_lv_direct"),
 		WithPriority(13),
+		WithSayAgainOnFail(),
+		WithSayAgainMinTokens(3),
 	)
 	registerSTTCommand(
 		"leaving|passing {altitude} [proceed] left [turn] direct [to] [at] {fix}",
 		func(alt int, fix string) string { return fmt.Sprintf("LV%d/LD%s", alt, fix) },
 		WithName("conditional_lv_left_direct"),
 		WithPriority(14),
+		WithSayAgainOnFail(),
+		WithSayAgainMinTokens(3),
 	)
 	registerSTTCommand(
 		"leaving|passing {altitude} [proceed] right [turn] direct [to] [at] {fix}",
 		func(alt int, fix string) string { return fmt.Sprintf("LV%d/RD%s", alt, fix) },
 		WithName("conditional_lv_right_direct"),
 		WithPriority(14),
+		WithSayAgainOnFail(),
+		WithSayAgainMinTokens(3),
 	)
 
 	// LV{alt}/S{spd}: "leaving five thousand reduce speed to 210"
@@ -1646,41 +1658,58 @@ func registerAllCommands() {
 	)
 
 	// RC{alt}/D{fix}, RC{alt}/LD{fix}, RC{alt}/RD{fix}
+	// SayAgainOnFail: when "reaching|level at {alt} direct|proceed" matches but
+	// {fix} can't be resolved, emit SAYAGAIN instead of silently falling
+	// through to the standalone_altitude handler (which would produce a
+	// misleading A{alt}). MinTokens(3) requires keyword+altitude+direct/proceed
+	// to all match before triggering.
 	registerSTTCommand(
 		"[on] reaching {altitude} direct|proceed [direct] [to] [at] {fix}",
 		func(alt int, fix string) string { return fmt.Sprintf("RC%d/D%s", alt, fix) },
 		WithName("conditional_rc_direct"),
 		WithPriority(13),
+		WithSayAgainOnFail(),
+		WithSayAgainMinTokens(3),
 	)
 	registerSTTCommand(
 		"level [at] {altitude} direct|proceed [direct] [to] [at] {fix}",
 		func(alt int, fix string) string { return fmt.Sprintf("RC%d/D%s", alt, fix) },
 		WithName("conditional_rc_direct_level"),
 		WithPriority(13),
+		WithSayAgainOnFail(),
+		WithSayAgainMinTokens(3),
 	)
 	registerSTTCommand(
 		"[on] reaching {altitude} [proceed] left [turn] direct [to] [at] {fix}",
 		func(alt int, fix string) string { return fmt.Sprintf("RC%d/LD%s", alt, fix) },
 		WithName("conditional_rc_left_direct"),
 		WithPriority(14),
+		WithSayAgainOnFail(),
+		WithSayAgainMinTokens(3),
 	)
 	registerSTTCommand(
 		"level [at] {altitude} [proceed] left [turn] direct [to] [at] {fix}",
 		func(alt int, fix string) string { return fmt.Sprintf("RC%d/LD%s", alt, fix) },
 		WithName("conditional_rc_left_direct_level"),
 		WithPriority(14),
+		WithSayAgainOnFail(),
+		WithSayAgainMinTokens(3),
 	)
 	registerSTTCommand(
 		"[on] reaching {altitude} [proceed] right [turn] direct [to] [at] {fix}",
 		func(alt int, fix string) string { return fmt.Sprintf("RC%d/RD%s", alt, fix) },
 		WithName("conditional_rc_right_direct"),
 		WithPriority(14),
+		WithSayAgainOnFail(),
+		WithSayAgainMinTokens(3),
 	)
 	registerSTTCommand(
 		"level [at] {altitude} [proceed] right [turn] direct [to] [at] {fix}",
 		func(alt int, fix string) string { return fmt.Sprintf("RC%d/RD%s", alt, fix) },
 		WithName("conditional_rc_right_direct_level"),
 		WithPriority(14),
+		WithSayAgainOnFail(),
+		WithSayAgainMinTokens(3),
 	)
 
 	// RC{alt}/S{spd}: "reaching five thousand reduce speed to 210"
