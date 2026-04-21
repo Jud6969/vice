@@ -410,6 +410,97 @@ func TestParseConditionalAltitude(t *testing.T) {
 	}
 }
 
+func setupTestSimWithAircraftAt(t *testing.T, altitude, assigned float32) (*Sim, av.ADSBCallsign, TCW) {
+	t.Helper()
+	lg := log.New(true, "error", t.TempDir())
+	callsign := av.ADSBCallsign("TEST123")
+	tcw := TCW("TCW1")
+	s := &Sim{
+		State: &CommonState{
+			DynamicState: DynamicState{
+				CurrentConsolidation: map[TCW]*TCPConsolidation{
+					tcw: {PrimaryTCP: "1A"},
+				},
+			},
+		},
+		Aircraft: map[av.ADSBCallsign]*Aircraft{
+			callsign: {
+				ADSBCallsign:        callsign,
+				ControllerFrequency: "1A",
+				Nav: nav.Nav{
+					FlightState: nav.FlightState{
+						Altitude: altitude,
+					},
+					Altitude: nav.NavAltitude{
+						Assigned: ptr[float32](assigned),
+					},
+				},
+			},
+		},
+		PendingContacts: map[TCP][]PendingContact{},
+		PrivilegedTCWs:  map[TCW]bool{tcw: true},
+		lg:              lg,
+	}
+	return s, callsign, tcw
+}
+
+func TestAssignConditionalInstallsSlot(t *testing.T) {
+	s, callsign, tcw := setupTestSimWithAircraftAt(t, 2000, 7000)
+	action := nav.ConditionalHeading{Heading: 10, Turn: av.TurnClosest}
+	intent, err := s.AssignConditional(tcw, callsign, nav.ConditionalLeaving, 3000, action)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if intent == nil {
+		t.Fatalf("expected non-nil intent")
+	}
+	if _, ok := intent.(av.ConditionalCommandIntent); !ok {
+		t.Fatalf("expected ConditionalCommandIntent, got %T", intent)
+	}
+	pc := s.Aircraft[callsign].Nav.PendingConditionalCommand
+	if pc == nil {
+		t.Fatalf("expected PendingConditionalCommand installed")
+	}
+	if pc.Altitude != 3000 {
+		t.Fatalf("wrong altitude: %v", pc.Altitude)
+	}
+	if pc.Kind != nav.ConditionalLeaving {
+		t.Fatalf("wrong kind: %v", pc.Kind)
+	}
+}
+
+func TestAssignConditionalRejectsUnreachable(t *testing.T) {
+	// Aircraft at 5000 level (assigned also 5000); trigger 3000 -> unreachable.
+	s, callsign, tcw := setupTestSimWithAircraftAt(t, 5000, 5000)
+	action := nav.ConditionalHeading{Heading: 10, Turn: av.TurnClosest}
+	intent, err := s.AssignConditional(tcw, callsign, nav.ConditionalLeaving, 3000, action)
+	if err != nil {
+		t.Fatalf("unexpected dispatch error: %v", err)
+	}
+	if _, ok := intent.(av.UnableIntent); !ok {
+		t.Fatalf("expected UnableIntent for unreachable trigger, got %T", intent)
+	}
+	if s.Aircraft[callsign].Nav.PendingConditionalCommand != nil {
+		t.Fatalf("expected no slot installed after unable")
+	}
+}
+
+func TestAssignConditionalSupersedes(t *testing.T) {
+	s, callsign, tcw := setupTestSimWithAircraftAt(t, 2000, 7000)
+	first := nav.ConditionalHeading{Heading: 10, Turn: av.TurnClosest}
+	second := nav.ConditionalDirectFix{Fix: "AAC", Turn: av.TurnClosest}
+	if _, err := s.AssignConditional(tcw, callsign, nav.ConditionalLeaving, 3000, first); err != nil {
+		t.Fatalf("first assign: %v", err)
+	}
+	if _, err := s.AssignConditional(tcw, callsign, nav.ConditionalReaching, 6000, second); err != nil {
+		t.Fatalf("second assign: %v", err)
+	}
+	pc := s.Aircraft[callsign].Nav.PendingConditionalCommand
+	if pc == nil || pc.Kind != nav.ConditionalReaching || pc.Altitude != 6000 {
+		t.Fatalf("expected superseded slot: reaching 6000, got %+v", pc)
+	}
+}
+
 func TestParseConditionalAction(t *testing.T) {
 	cases := []struct {
 		in        string

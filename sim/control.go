@@ -3512,6 +3512,32 @@ func triggerReachable(ac *Aircraft, kind nav.ConditionalKind, trigger float32) b
 	return false
 }
 
+// AssignConditional installs a deferred LV/RC action on the aircraft's
+// nav state. Fires silently when sim.updateState observes the altitude
+// trigger. Returns an UnableIntent if the trigger is not reachable from
+// the aircraft's current vertical state; the outer error is reserved for
+// lookup/authorization failures.
+func (s *Sim) AssignConditional(tcw TCW, callsign av.ADSBCallsign,
+	kind nav.ConditionalKind, altitude float32, action nav.ConditionalAction) (av.CommandIntent, error) {
+	return s.dispatchControlledAircraftCommand(tcw, callsign,
+		func(tcw TCW, ac *Aircraft) av.CommandIntent {
+			if !triggerReachable(ac, kind, altitude) {
+				return av.MakeUnableIntent("unable. %s is out of our climb/descent path.",
+					av.FormatAltitude(altitude))
+			}
+			ac.Nav.PendingConditionalCommand = &nav.PendingConditionalCommand{
+				Kind:     kind,
+				Altitude: altitude,
+				Action:   action,
+			}
+			return av.ConditionalCommandIntent{
+				Kind:     kind,
+				Altitude: altitude,
+				Action:   action,
+			}
+		})
+}
+
 // betweenAlt reports whether v lies between a and b (inclusive), in
 // either ordering.
 func betweenAlt(v, a, b float32) bool {
