@@ -2430,9 +2430,9 @@ func (s *Sim) AnnotateFlightStrip(tcw TCW, acid ACID, annotations [9]string) err
 
 // fireConditionalIfTriggered executes and clears the aircraft's pending
 // conditional command if the trigger condition is now met. The slot is
-// cleared BEFORE Execute runs so a mis-parsed inner command that installs
-// another conditional cannot loop. temp is only consulted by the Mach
-// variant; other actions ignore it.
+// cleared BEFORE Execute runs so a follow-on conditional installed by
+// Execute cannot fire on the same tick. temp is only consulted by the
+// Mach variant; other actions ignore it.
 func (s *Sim) fireConditionalIfTriggered(ac *Aircraft, temp av.Temperature) {
 	pc := ac.Nav.PendingConditionalCommand
 	if pc == nil || !ac.IsAssociated() {
