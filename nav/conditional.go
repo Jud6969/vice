@@ -30,7 +30,9 @@ const (
 type ConditionalAction interface {
 	// Execute mutates nav to carry out the deferred action. Called with the
 	// PendingConditionalCommand slot already cleared, so re-entry is safe.
-	Execute(nav *Nav, simTime Time)
+	// temp is the outside air temperature at the aircraft's current altitude,
+	// required by mach-speed conversions; other actions ignore it.
+	Execute(nav *Nav, simTime Time, temp av.Temperature)
 
 	// Render emits the action-specific readback fragment (e.g., "fly heading
 	// 010") used inside ConditionalCommandIntent.
@@ -57,7 +59,7 @@ type ConditionalHeading struct {
 	ByDegrees int              // nonzero for LnnD / RnnD
 }
 
-func (c ConditionalHeading) Execute(nav *Nav, simTime Time) {
+func (c ConditionalHeading) Execute(nav *Nav, simTime Time, temp av.Temperature) {
 	if c.ByDegrees != 0 {
 		switch c.Turn {
 		case av.TurnLeft:
@@ -100,7 +102,7 @@ type ConditionalDirectFix struct {
 	Turn av.TurnDirection // TurnClosest, TurnLeft, TurnRight
 }
 
-func (c ConditionalDirectFix) Execute(nav *Nav, simTime Time) {
+func (c ConditionalDirectFix) Execute(nav *Nav, simTime Time, temp av.Temperature) {
 	// Silent fire path — discard the intent because conditional actions
 	// don't produce a readback when they fire.
 	_ = nav.DirectFix(c.Fix, c.Turn, simTime, 0)
@@ -115,4 +117,33 @@ func (c ConditionalDirectFix) Render(rt *av.RadioTransmission, r *rand.Rand) {
 	default:
 		rt.Add("[direct|proceed direct] {fix}", c.Fix)
 	}
+}
+
+// ConditionalSpeed is a deferred speed assignment.
+type ConditionalSpeed struct {
+	Restriction av.SpeedRestriction
+}
+
+func (c ConditionalSpeed) Execute(nav *Nav, simTime Time, temp av.Temperature) {
+	sr := c.Restriction
+	_ = nav.AssignSpeed(&sr, false)
+}
+
+func (c ConditionalSpeed) Render(rt *av.RadioTransmission, r *rand.Rand) {
+	if spd, ok := c.Restriction.ExactValue(); ok {
+		rt.Add("[reduce speed to|maintain|slowing to] {spd}", int(spd))
+	}
+}
+
+// ConditionalMach is a deferred mach-speed assignment.
+type ConditionalMach struct {
+	Mach float32
+}
+
+func (c ConditionalMach) Execute(nav *Nav, simTime Time, temp av.Temperature) {
+	_ = nav.AssignMach(c.Mach, false, temp)
+}
+
+func (c ConditionalMach) Render(rt *av.RadioTransmission, r *rand.Rand) {
+	rt.Add("[mach|maintain mach] {mach}", c.Mach)
 }
