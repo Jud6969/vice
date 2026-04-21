@@ -350,3 +350,35 @@ func TestRunOneControlCommandAtFixClearedStraightInApproach(t *testing.T) {
 		t.Fatal("AtFixClearedRoute was not populated")
 	}
 }
+
+func TestTriggerReachable(t *testing.T) {
+	cases := []struct {
+		name     string
+		kind     nav.ConditionalKind
+		trigger  float32
+		current  float32
+		assigned *float32
+		want     bool
+	}{
+		// LV: within 500ft slack even if direction is wrong
+		{"LV aircraft at 3050 climbing past", nav.ConditionalLeaving, 3000, 3050, ptr[float32](5000), true},
+		{"LV aircraft far past", nav.ConditionalLeaving, 3000, 5000, ptr[float32](7000), false},
+		{"LV trigger in path", nav.ConditionalLeaving, 3000, 1000, ptr[float32](5000), true},
+		{"LV no target, far from trigger", nav.ConditionalLeaving, 3000, 8000, nil, false},
+		// RC: trigger must be between current and assigned target
+		{"RC target is trigger", nav.ConditionalReaching, 10000, 5000, ptr[float32](10000), true},
+		{"RC trigger above target", nav.ConditionalReaching, 12000, 5000, ptr[float32](10000), false},
+		{"RC no target but close", nav.ConditionalReaching, 10000, 9900, nil, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ac := &Aircraft{}
+			ac.Nav.FlightState.Altitude = tc.current
+			ac.Nav.Altitude.Assigned = tc.assigned
+			got := triggerReachable(ac, tc.kind, tc.trigger)
+			if got != tc.want {
+				t.Errorf("want %v got %v", tc.want, got)
+			}
+		})
+	}
+}

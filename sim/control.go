@@ -3479,6 +3479,49 @@ func parseSpeedUntil(untilStr string) *av.SpeedUntil {
 	return &av.SpeedUntil{Fix: untilStr}
 }
 
+// triggerReachable reports whether a LV/RC trigger altitude is
+// reasonably reachable from the aircraft's current vertical state,
+// allowing the controller command to be accepted.
+//
+// For ConditionalLeaving: accepted if the aircraft is within 500 ft of
+// the trigger (so "leaving 3,000" works even for an aircraft at 3,050),
+// or if the trigger lies between current altitude and assigned target.
+//
+// For ConditionalReaching: accepted if the trigger lies between current
+// altitude and assigned target, or (if no target assigned) the aircraft
+// is within 500 ft of the trigger.
+func triggerReachable(ac *Aircraft, kind nav.ConditionalKind, trigger float32) bool {
+	cur := ac.Nav.FlightState.Altitude
+	target := ac.Nav.Altitude.Assigned
+	diff := math.Abs(cur - trigger)
+	switch kind {
+	case nav.ConditionalLeaving:
+		if diff <= 500 {
+			return true
+		}
+		if target == nil {
+			return false
+		}
+		return betweenAlt(trigger, cur, *target)
+	case nav.ConditionalReaching:
+		if target == nil {
+			return diff <= 500
+		}
+		return betweenAlt(trigger, cur, *target)
+	}
+	return false
+}
+
+// betweenAlt reports whether v lies between a and b (inclusive), in
+// either ordering.
+func betweenAlt(v, a, b float32) bool {
+	lo, hi := a, b
+	if lo > hi {
+		lo, hi = hi, lo
+	}
+	return v >= lo && v <= hi
+}
+
 // parseCompoundSpeed parses a compound speed command string like
 // "250+/UFIX1/210-/UFIX2/180+" into CompoundSpeedSegments.
 // The input is the part after 'S' (e.g., "250+/UFIX1/210-/UFIX2/180+").
