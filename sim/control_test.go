@@ -4,6 +4,7 @@
 package sim
 
 import (
+	"reflect"
 	"testing"
 
 	av "github.com/mmp/vice/aviation"
@@ -406,5 +407,60 @@ func TestParseConditionalAltitude(t *testing.T) {
 		if !tc.wantErr && got != tc.want {
 			t.Errorf("parseConditionalAltitude(%q) = %v, want %v", tc.in, got, tc.want)
 		}
+	}
+}
+
+func TestParseConditionalAction(t *testing.T) {
+	cases := []struct {
+		in        string
+		wantType  string // type name of returned ConditionalAction
+		wantProps map[string]any
+		wantErr   bool
+	}{
+		{"H010", "ConditionalHeading", map[string]any{"Heading": 10, "Turn": av.TurnClosest}, false},
+		{"L100", "ConditionalHeading", map[string]any{"Heading": 100, "Turn": av.TurnLeft}, false},
+		{"R100", "ConditionalHeading", map[string]any{"Heading": 100, "Turn": av.TurnRight}, false},
+		{"L20D", "ConditionalHeading", map[string]any{"ByDegrees": 20, "Turn": av.TurnLeft}, false},
+		{"R30D", "ConditionalHeading", map[string]any{"ByDegrees": 30, "Turn": av.TurnRight}, false},
+		{"DAAC", "ConditionalDirectFix", map[string]any{"Fix": "AAC", "Turn": av.TurnClosest}, false},
+		{"LDAAC", "ConditionalDirectFix", map[string]any{"Fix": "AAC", "Turn": av.TurnLeft}, false},
+		{"RDAAC", "ConditionalDirectFix", map[string]any{"Fix": "AAC", "Turn": av.TurnRight}, false},
+		{"S210", "ConditionalSpeed", nil, false},
+		{"M78", "ConditionalMach", map[string]any{"Mach": float32(0.78)}, false},
+
+		// Rejections: altitude-changing inners, unknowns, malformed
+		{"C50", "", nil, true},
+		{"CVS", "", nil, true},
+		{"DVS", "", nil, true},
+		{"X010", "", nil, true},
+		{"", "", nil, true},
+		{"H", "", nil, true},
+		{"HXYZ", "", nil, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.in, func(t *testing.T) {
+			got, err := parseConditionalAction(tc.in)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("parseConditionalAction(%q) err=%v wantErr=%v", tc.in, err, tc.wantErr)
+			}
+			if tc.wantErr {
+				return
+			}
+			typeName := reflect.TypeOf(got).Name()
+			if typeName != tc.wantType {
+				t.Fatalf("parseConditionalAction(%q) type = %s, want %s", tc.in, typeName, tc.wantType)
+			}
+			v := reflect.ValueOf(got)
+			for k, want := range tc.wantProps {
+				field := v.FieldByName(k)
+				if !field.IsValid() {
+					t.Errorf("no field %s on %s", k, typeName)
+					continue
+				}
+				if !reflect.DeepEqual(field.Interface(), want) {
+					t.Errorf("%s.%s = %v, want %v", typeName, k, field.Interface(), want)
+				}
+			}
+		})
 	}
 }

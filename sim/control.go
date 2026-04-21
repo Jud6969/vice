@@ -3539,6 +3539,82 @@ func parseConditionalAltitude(s string) (float32, error) {
 	return float32(n * 100), nil
 }
 
+// parseConditionalAction parses an inner command string (the right-hand
+// side of LV/RC) into a typed ConditionalAction. Accepts only lateral and
+// speed/mach actions; altitude-changing and unknown inners return
+// ErrInvalidCommandSyntax.
+//
+// Grammar:
+//
+//	H{hdg}             → ConditionalHeading (closest turn)
+//	L{hdg} | R{hdg}    → ConditionalHeading (left/right turn to heading)
+//	L{deg}D | R{deg}D  → ConditionalHeading (turn N degrees)
+//	D{fix}             → ConditionalDirectFix (closest)
+//	LD{fix} | RD{fix}  → ConditionalDirectFix (left/right)
+//	S{spd}             → ConditionalSpeed
+//	M{mach}            → ConditionalMach (2-digit mach, e.g. M78 → 0.78)
+func parseConditionalAction(s string) (nav.ConditionalAction, error) {
+	if len(s) < 2 {
+		return nil, ErrInvalidCommandSyntax
+	}
+	switch s[0] {
+	case 'H':
+		hdg, err := strconv.Atoi(s[1:])
+		if err != nil {
+			return nil, ErrInvalidCommandSyntax
+		}
+		return nav.ConditionalHeading{Heading: hdg, Turn: av.TurnClosest}, nil
+
+	case 'L', 'R':
+		turn := av.TurnLeft
+		if s[0] == 'R' {
+			turn = av.TurnRight
+		}
+		// LD{fix} / RD{fix}
+		if len(s) >= 5 && s[1] == 'D' {
+			return nav.ConditionalDirectFix{Fix: strings.ToUpper(s[2:]), Turn: turn}, nil
+		}
+		// LnnD / RnnD
+		if l := len(s); l > 2 && s[l-1] == 'D' {
+			deg, err := strconv.Atoi(s[1 : l-1])
+			if err != nil {
+				return nil, ErrInvalidCommandSyntax
+			}
+			return nav.ConditionalHeading{ByDegrees: deg, Turn: turn}, nil
+		}
+		// L{hdg} / R{hdg}
+		hdg, err := strconv.Atoi(s[1:])
+		if err != nil {
+			return nil, ErrInvalidCommandSyntax
+		}
+		return nav.ConditionalHeading{Heading: hdg, Turn: turn}, nil
+
+	case 'D':
+		if len(s) < 4 {
+			return nil, ErrInvalidCommandSyntax
+		}
+		return nav.ConditionalDirectFix{Fix: strings.ToUpper(s[1:]), Turn: av.TurnClosest}, nil
+
+	case 'S':
+		sr, err := av.ParseSpeedRestriction(s[1:])
+		if err != nil {
+			return nil, ErrInvalidCommandSyntax
+		}
+		return nav.ConditionalSpeed{Restriction: *sr}, nil
+
+	case 'M':
+		if len(s) != 3 {
+			return nil, ErrInvalidCommandSyntax
+		}
+		mach, err := strconv.ParseFloat(s[1:], 32)
+		if err != nil {
+			return nil, ErrInvalidCommandSyntax
+		}
+		return nav.ConditionalMach{Mach: float32(mach) / 100.0}, nil
+	}
+	return nil, ErrInvalidCommandSyntax
+}
+
 // parseCompoundSpeed parses a compound speed command string like
 // "250+/UFIX1/210-/UFIX2/180+" into CompoundSpeedSegments.
 // The input is the part after 'S' (e.g., "250+/UFIX1/210-/UFIX2/180+").
