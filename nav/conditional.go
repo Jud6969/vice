@@ -93,3 +93,26 @@ func (c ConditionalHeading) Render(rt *av.RadioTransmission, r *rand.Rand) {
 		rt.Add("[fly heading|heading] {hdg}", c.Heading)
 	}
 }
+
+// ConditionalDirectFix is a deferred direct-to-fix instruction.
+type ConditionalDirectFix struct {
+	Fix  string
+	Turn av.TurnDirection // TurnClosest, TurnLeft, TurnRight
+}
+
+func (c ConditionalDirectFix) Execute(nav *Nav, simTime Time) {
+	// Silent fire path — discard the intent because conditional actions
+	// don't produce a readback when they fire.
+	_ = nav.DirectFix(c.Fix, c.Turn, simTime, 0)
+}
+
+func (c ConditionalDirectFix) Render(rt *av.RadioTransmission, r *rand.Rand) {
+	switch c.Turn {
+	case av.TurnLeft:
+		rt.Add("[left direct|turn left direct] {fix}", c.Fix)
+	case av.TurnRight:
+		rt.Add("[right direct|turn right direct] {fix}", c.Fix)
+	default:
+		rt.Add("[direct|proceed direct] {fix}", c.Fix)
+	}
+}

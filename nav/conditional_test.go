@@ -86,3 +86,48 @@ func makeTestNav(t *testing.T, heading vmath.MagneticHeading) Nav {
 	n.FlightState.Altitude = 2000
 	return n
 }
+
+func TestConditionalDirectFixExecute(t *testing.T) {
+	n := makeTestNavWithRoute(t, "SAJUL")
+	action := ConditionalDirectFix{Fix: "SAJUL", Turn: av.TurnClosest}
+	action.Execute(n, Time{})
+	// After direct-fix, the first waypoint should be the target fix.
+	if len(n.Waypoints) == 0 || n.Waypoints[0].Fix != "SAJUL" {
+		t.Fatalf("expected first waypoint SAJUL, got %+v", n.Waypoints)
+	}
+}
+
+func TestConditionalDirectFixRender(t *testing.T) {
+	cases := []struct {
+		action ConditionalDirectFix
+		want   string
+	}{
+		{ConditionalDirectFix{Fix: "SAJUL", Turn: av.TurnClosest}, "direct"},
+		{ConditionalDirectFix{Fix: "SAJUL", Turn: av.TurnLeft}, "left"},
+		{ConditionalDirectFix{Fix: "SAJUL", Turn: av.TurnRight}, "right"},
+	}
+	r := vrand.Make()
+	for _, tc := range cases {
+		rt := &av.RadioTransmission{}
+		tc.action.Render(rt, r)
+		written := strings.ToLower(rt.Written(r))
+		if !strings.Contains(written, strings.ToLower(tc.want)) {
+			t.Errorf("Render(%+v) = %q; want containing %q", tc.action, written, tc.want)
+		}
+	}
+}
+
+// makeTestNavWithRoute returns a *Nav whose Waypoints contains a waypoint
+// with the given fix name, suitable for calling DirectFix on it.
+func makeTestNavWithRoute(t *testing.T, fix string) *Nav {
+	t.Helper()
+	f := NewArrivalFlight(t, ArrivalConfig{
+		Waypoints:        fix + "/star DETGY/star HAUPT/star",
+		DepartureAirport: "KMCO",
+		ArrivalAirport:   "KJFK",
+		AircraftType:     "A320",
+		InitialAltitude:  11000,
+		InitialSpeed:     250,
+	})
+	return f.nav
+}
