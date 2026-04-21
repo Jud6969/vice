@@ -10,18 +10,20 @@ import (
 	"github.com/mmp/vice/rand"
 )
 
-// ConditionalKind identifies which altitude-event triggers the deferred action.
-type ConditionalKind uint8
+// ConditionalKind is an alias for av.ConditionalKind so that nav and
+// aviation share the same enum (aviation holds the canonical definition
+// because ConditionalCommandIntent lives there and nav cannot be imported
+// from aviation).
+//
+// ConditionalLeaving fires once the aircraft's altitude has passed the
+// trigger by more than a small tolerance in the direction of current
+// vertical motion. ConditionalReaching fires on first contact within
+// 100 ft of the trigger altitude, regardless of vertical rate.
+type ConditionalKind = av.ConditionalKind
 
 const (
-	// ConditionalLeaving fires once the aircraft's altitude has passed the
-	// trigger by more than a small tolerance in the direction of current
-	// vertical motion.
-	ConditionalLeaving ConditionalKind = iota
-
-	// ConditionalReaching fires on first contact within 100 ft of the trigger
-	// altitude, regardless of vertical rate.
-	ConditionalReaching
+	ConditionalLeaving  = av.ConditionalLeaving
+	ConditionalReaching = av.ConditionalReaching
 )
 
 // ConditionalAction is the deferred action to execute when a LV/RC trigger
