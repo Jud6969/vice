@@ -45,6 +45,16 @@ func TestConditionalHeadingExecuteByDegreesLeft(t *testing.T) {
 	}
 }
 
+func TestConditionalHeadingExecuteByDegreesRight(t *testing.T) {
+	n := makeTestNav(t, 180)
+	action := ConditionalHeading{ByDegrees: 30, Turn: av.TurnRight}
+	action.Execute(&n, Time{})
+	// TurnRight 30 from 180 -> 210
+	if assigned, ok := n.AssignedHeading(); !ok || assigned != 210 {
+		t.Fatalf("expected assigned heading 210, got ok=%v heading=%v", ok, assigned)
+	}
+}
+
 func TestConditionalHeadingRender(t *testing.T) {
 	cases := []struct {
 		action ConditionalHeading
@@ -54,6 +64,7 @@ func TestConditionalHeadingRender(t *testing.T) {
 		{ConditionalHeading{Heading: 100, Turn: av.TurnRight}, "right"},
 		{ConditionalHeading{Heading: 100, Turn: av.TurnLeft}, "left"},
 		{ConditionalHeading{ByDegrees: 20, Turn: av.TurnLeft}, "left 20"},
+		{ConditionalHeading{ByDegrees: 20, Turn: av.TurnRight}, "right 20"},
 	}
 	r := vrand.Make()
 	for _, tc := range cases {
