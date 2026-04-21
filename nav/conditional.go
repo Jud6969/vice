@@ -5,9 +5,9 @@
 package nav
 
 import (
-	"math/rand/v2"
-
 	av "github.com/mmp/vice/aviation"
+	vmath "github.com/mmp/vice/math"
+	"github.com/mmp/vice/rand"
 )
 
 // ConditionalKind identifies which altitude-event triggers the deferred action.
@@ -44,4 +44,52 @@ type PendingConditionalCommand struct {
 	Kind     ConditionalKind
 	Altitude float32 // feet MSL
 	Action   ConditionalAction
+}
+
+// ConditionalHeading is a deferred heading assignment. Exactly one of
+// Heading or ByDegrees is nonzero:
+//   - Heading != 0  → fly (or turn to) the absolute heading.
+//   - ByDegrees != 0 → turn N degrees from present heading in the given
+//     direction (Turn must be TurnLeft or TurnRight).
+type ConditionalHeading struct {
+	Heading   int              // 1..360, 0 if unused
+	Turn      av.TurnDirection // TurnClosest, TurnLeft, TurnRight
+	ByDegrees int              // nonzero for LnnD / RnnD
+}
+
+func (c ConditionalHeading) Execute(nav *Nav, simTime Time) {
+	if c.ByDegrees != 0 {
+		switch c.Turn {
+		case av.TurnLeft:
+			nav.assignHeading(
+				vmath.OffsetHeading(nav.FlightState.Heading, float32(-c.ByDegrees)),
+				av.TurnLeft, simTime, 0)
+		case av.TurnRight:
+			nav.assignHeading(
+				vmath.OffsetHeading(nav.FlightState.Heading, float32(c.ByDegrees)),
+				av.TurnRight, simTime, 0)
+		}
+		return
+	}
+	nav.assignHeading(vmath.MagneticHeading(c.Heading), c.Turn, simTime, 0)
+}
+
+func (c ConditionalHeading) Render(rt *av.RadioTransmission, r *rand.Rand) {
+	if c.ByDegrees != 0 {
+		switch c.Turn {
+		case av.TurnLeft:
+			rt.Add("[left|turn left] {num} degrees", c.ByDegrees)
+		case av.TurnRight:
+			rt.Add("[right|turn right] {num} degrees", c.ByDegrees)
+		}
+		return
+	}
+	switch c.Turn {
+	case av.TurnLeft:
+		rt.Add("[left heading|turn left heading] {hdg}", c.Heading)
+	case av.TurnRight:
+		rt.Add("[right heading|turn right heading] {hdg}", c.Heading)
+	default:
+		rt.Add("[fly heading|heading] {hdg}", c.Heading)
+	}
 }
