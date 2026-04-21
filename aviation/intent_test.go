@@ -181,10 +181,12 @@ func TestConditionalCommandIntentRender(t *testing.T) {
 			Altitude: 3000,
 			Action:   stubConditionalAction{text: "fly heading 010"},
 		}
-		readback := renderIntentForTest(intent, 1)
-		assertContainsAny(t, readback, "leaving", "passing")
-		if !strings.Contains(readback, "fly heading 010") {
-			t.Fatalf("leaving readback missing action text: %q", readback)
+		for seed := uint64(1); seed <= 20; seed++ {
+			readback := renderIntentForTest(intent, seed)
+			assertContainsAny(t, readback, "leaving", "passing")
+			if !strings.Contains(readback, "fly heading 010") {
+				t.Fatalf("leaving readback missing action text: %q", readback)
+			}
 		}
 	})
 
@@ -194,10 +196,12 @@ func TestConditionalCommandIntentRender(t *testing.T) {
 			Altitude: 10000,
 			Action:   stubConditionalAction{text: "fly heading 010"},
 		}
-		readback := renderIntentForTest(intent, 1)
-		assertContainsAny(t, readback, "reaching", "level at", "on reaching")
-		if !strings.Contains(readback, "fly heading 010") {
-			t.Fatalf("reaching readback missing action text: %q", readback)
+		for seed := uint64(1); seed <= 20; seed++ {
+			readback := renderIntentForTest(intent, seed)
+			assertContainsAny(t, readback, "reaching", "level at", "on reaching")
+			if !strings.Contains(readback, "fly heading 010") {
+				t.Fatalf("reaching readback missing action text: %q", readback)
+			}
 		}
 	})
 }
