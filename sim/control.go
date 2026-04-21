@@ -4123,7 +4123,10 @@ func (s *Sim) runOneControlCommand(tcw TCW, callsign av.ADSBCallsign, command st
 		}
 
 	case 'L':
-		if strings.HasPrefix(command, "LV") && len(command) > 2 {
+		if strings.HasPrefix(command, "LV") {
+			if len(command) <= 2 {
+				return nil, ErrInvalidCommandSyntax
+			}
 			altStr, inner, ok := strings.Cut(command[2:], "/")
 			if !ok || altStr == "" || inner == "" {
 				return nil, ErrInvalidCommandSyntax
