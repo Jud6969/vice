@@ -4151,3 +4151,74 @@ func TestNegativeWithoutCallsign(t *testing.T) {
 		})
 	}
 }
+
+func TestSTTLeavingPatterns(t *testing.T) {
+	tests := []struct {
+		name       string
+		transcript string
+		expected   string
+	}{
+		{
+			name:       "leaving thousand fly heading",
+			transcript: "Delta 43 leaving three thousand fly heading zero one zero",
+			expected:   "DAL43 LV30/H010",
+		},
+		{
+			name:       "passing thousand right heading",
+			transcript: "American 17 passing one three thousand right one zero zero",
+			expected:   "AAL17 LV130/R100",
+		},
+		{
+			name:       "leaving thousand turn left heading",
+			transcript: "Delta 43 leaving five thousand turn left two seven zero",
+			expected:   "DAL43 LV50/L270",
+		},
+		{
+			name:       "leaving thousand turn left degrees",
+			transcript: "Delta 43 leaving three thousand turn left twenty degrees",
+			expected:   "DAL43 LV30/L20D",
+		},
+		{
+			name:       "leaving thousand turn right degrees",
+			transcript: "Delta 43 leaving three thousand turn right thirty degrees",
+			expected:   "DAL43 LV30/R30D",
+		},
+		{
+			name:       "leaving thousand direct fix",
+			transcript: "Delta 43 leaving three thousand direct alpha alpha charlie",
+			expected:   "DAL43 LV30/DAAC",
+		},
+		{
+			name:       "leaving thousand reduce speed",
+			transcript: "Delta 43 leaving five thousand reduce speed to two one zero",
+			expected:   "DAL43 LV50/S210",
+		},
+	}
+
+	aircraft := map[string]Aircraft{
+		"Delta 43": {
+			Callsign: "DAL43",
+			Altitude: 2000,
+			State:    "departure",
+			Fixes:    map[string]string{"alpha alpha charlie": "AAC"},
+		},
+		"American 17": {
+			Callsign: "AAL17",
+			Altitude: 10000,
+			State:    "departure",
+		},
+	}
+
+	provider := NewTranscriber(nil)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := provider.DecodeTranscript(aircraft, tt.transcript, "")
+			if err != nil {
+				t.Fatalf("DecodeTranscript: %v", err)
+			}
+			if got != tt.expected {
+				t.Errorf("got %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
