@@ -147,3 +147,30 @@ func (c ConditionalMach) Execute(nav *Nav, simTime Time, temp av.Temperature) {
 func (c ConditionalMach) Render(rt *av.RadioTransmission, r *rand.Rand) {
 	rt.Add("[mach|maintain mach] {mach}", c.Mach)
 }
+
+// ConditionalTriggered reports whether the pending conditional command
+// should fire given the aircraft's current vertical state.
+//
+//	ConditionalLeaving: fires when altitude is >50 ft past trigger in the
+//	                    direction of current vertical motion.
+//	ConditionalReaching: fires when altitude is within 100 ft of trigger.
+func ConditionalTriggered(nav *Nav, pc *PendingConditionalCommand) bool {
+	alt := nav.FlightState.Altitude
+	diff := alt - pc.Altitude
+	switch pc.Kind {
+	case ConditionalLeaving:
+		const leavingTol = 50.0
+		if vmath.Abs(diff) <= leavingTol {
+			return false
+		}
+		rate := nav.FlightState.AltitudeRate
+		// Same-sign check: diff>0 (above trigger) requires rate>0 (climbing),
+		// diff<0 (below) requires rate<0 (descending). Zero rate with altitude
+		// drift outside tolerance (unusual but possible) is not a trigger.
+		return (diff > 0 && rate > 0) || (diff < 0 && rate < 0)
+	case ConditionalReaching:
+		const reachingTol = 100.0
+		return vmath.Abs(diff) <= reachingTol
+	}
+	return false
+}

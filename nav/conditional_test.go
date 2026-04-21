@@ -173,3 +173,41 @@ func TestConditionalMachExecute(t *testing.T) {
 		t.Fatalf("expected mach restriction, got speed")
 	}
 }
+
+func TestConditionalTriggered(t *testing.T) {
+	cases := []struct {
+		name     string
+		kind     ConditionalKind
+		trigger  float32
+		altitude float32
+		rate     float32 // vertical rate (positive = climb)
+		want     bool
+	}{
+		// --- ConditionalLeaving ---
+		{"LV climbing well past", ConditionalLeaving, 3000, 3200, +500, true},
+		{"LV descending well past", ConditionalLeaving, 3000, 2800, -500, true},
+		{"LV level at trigger", ConditionalLeaving, 3000, 3000, 0, false},
+		{"LV within tolerance climbing", ConditionalLeaving, 3000, 3020, +500, false}, // <50ft past
+		{"LV 60ft past climbing", ConditionalLeaving, 3000, 3060, +500, true},
+		{"LV 60ft below climbing (wrong dir)", ConditionalLeaving, 3000, 2940, +500, false},
+		// --- ConditionalReaching ---
+		{"RC within 100ft", ConditionalReaching, 10000, 9950, +500, true},
+		{"RC 50ft past still climbing", ConditionalReaching, 10000, 10050, +500, true},
+		{"RC 200ft short climbing", ConditionalReaching, 10000, 9800, +500, false},
+		{"RC leveled at target", ConditionalReaching, 10000, 10000, 0, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Build a minimal Nav — no need for full FlightTest here; only
+			// FlightState.{Altitude, AltitudeRate} are read.
+			var n Nav
+			n.FlightState.Altitude = tc.altitude
+			n.FlightState.AltitudeRate = tc.rate
+			pc := &PendingConditionalCommand{Kind: tc.kind, Altitude: tc.trigger}
+			if got := ConditionalTriggered(&n, pc); got != tc.want {
+				t.Errorf("want %v got %v (kind=%v trigger=%v alt=%v rate=%v)",
+					tc.want, got, tc.kind, tc.trigger, tc.altitude, tc.rate)
+			}
+		})
+	}
+}
