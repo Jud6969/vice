@@ -89,3 +89,14 @@ func (s *Sim) SetTCWRange(tcw TCW, r float32) uint64 {
 	d.SetRange(r)
 	return d.Rev
 }
+
+// SetTCWUserCenter mutates the shared scope center for the given TCW.
+// Locks the sim. Returns the new Rev.
+func (s *Sim) SetTCWUserCenter(tcw TCW, p math.Point2LL) uint64 {
+	s.mu.Lock(s.lg)
+	defer s.mu.Unlock(s.lg)
+
+	d := s.EnsureTCWDisplay(tcw, ScopeViewState{})
+	d.SetUserCenter(p)
+	return d.Rev
+}

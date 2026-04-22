@@ -1125,3 +1125,22 @@ func (sd *dispatcher) SetTCWRange(args *SetTCWRangeArgs, update *SimStateUpdate)
 	*update = c.GetStateUpdate()
 	return nil
 }
+
+type SetTCWUserCenterArgs struct {
+	ControllerToken string
+	Center          math.Point2LL
+}
+
+const SetTCWUserCenterRPC = "Sim.SetTCWUserCenter"
+
+func (sd *dispatcher) SetTCWUserCenter(args *SetTCWUserCenterArgs, update *SimStateUpdate) error {
+	defer sd.sm.lg.CatchAndReportCrash()
+
+	c := sd.sm.LookupController(args.ControllerToken)
+	if c == nil {
+		return ErrNoSimForControllerToken
+	}
+	c.sim.SetTCWUserCenter(c.tcw, args.Center)
+	*update = c.GetStateUpdate()
+	return nil
+}

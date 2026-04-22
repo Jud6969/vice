@@ -607,7 +607,8 @@ func (sp *STARSPane) consumeMouseEvents(ctx *panes.Context, ghosts []*av.GhostTr
 			delta := mouse.DragDelta
 			if delta[0] != 0 || delta[1] != 0 {
 				deltaLL := transforms.LatLongFromWindowV(delta)
-				ps.UserCenter = math.Sub2f(ps.UserCenter, deltaLL)
+				ctx.Client.SetTCWUserCenter(math.Sub2f(sp.syncedUserCenter(ctx), deltaLL),
+					func(err error) { sp.displayError(err, ctx, "") })
 				ps.UseUserCenter = true
 			}
 		}
@@ -636,7 +637,8 @@ func (sp *STARSPane) consumeMouseEvents(ctx *panes.Context, ghosts []*av.GhostTr
 				Scale(scale, scale).
 				Translate(-mouseLL[0], -mouseLL[1])
 
-			ps.UserCenter = centerTransform.TransformPoint(ps.UserCenter)
+			ctx.Client.SetTCWUserCenter(centerTransform.TransformPoint(sp.syncedUserCenter(ctx)),
+				func(err error) { sp.displayError(err, ctx, "") })
 			ps.UseUserCenter = true
 		}
 	}

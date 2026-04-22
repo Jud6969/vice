@@ -213,7 +213,8 @@ func (sp *STARSPane) drawDCB(ctx *panes.Context, transforms radar.ScopeTransform
 			},
 			func(delta [2]float32) { /* update */
 				deltaLL := transforms.LatLongFromWindowV(delta)
-				ps.UserCenter = math.Sub2f(ps.UserCenter, deltaLL)
+				ctx.Client.SetTCWUserCenter(math.Sub2f(sp.syncedUserCenter(ctx), deltaLL),
+					func(err error) { sp.displayError(err, ctx, "") })
 			})
 
 		sp.toggleButton(ctx, "OFF\nCNTR", &ps.UseUserCenter, maybeDisable(buttonHalfVertical), buttonScale)

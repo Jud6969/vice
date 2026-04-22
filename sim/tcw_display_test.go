@@ -129,6 +129,24 @@ func TestSimSetTCWRangeLocksAndBumpsRev(t *testing.T) {
 	}
 }
 
+func TestSimSetTCWUserCenterLocksAndBumpsRev(t *testing.T) {
+	lg := &log.Logger{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	s := NewTestSim(lg)
+	tcw := E2ETCW()
+	if _, _, err := s.SignOn(tcw, nil); err != nil {
+		t.Fatalf("SignOn: %v", err)
+	}
+	rev0 := s.GetTCWDisplay(tcw).Rev
+	p := math.Point2LL{-73.7, 40.6}
+	rev1 := s.SetTCWUserCenter(tcw, p)
+	if rev1 != rev0+1 {
+		t.Errorf("Rev = %d, want %d", rev1, rev0+1)
+	}
+	if got := s.GetTCWDisplay(tcw).ScopeView.UserCenter; got != p {
+		t.Errorf("UserCenter = %+v, want %+v", got, p)
+	}
+}
+
 func TestSimEnsureTCWDisplayIsLazy(t *testing.T) {
 	s := &Sim{}
 	if got := s.GetTCWDisplay("N01"); got != nil {

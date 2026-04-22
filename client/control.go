@@ -604,3 +604,12 @@ func (c *ControlClient) SetTCWRange(r float32, callback func(error)) {
 		Range:           r,
 	}, &update, nil), &update, callback))
 }
+
+// SetTCWUserCenter updates the shared scope center on the server.
+func (c *ControlClient) SetTCWUserCenter(p math.Point2LL, callback func(error)) {
+	var update server.SimStateUpdate
+	c.addCall(makeStateUpdateRPCCall(c.client.Go(server.SetTCWUserCenterRPC, &server.SetTCWUserCenterArgs{
+		ControllerToken: c.controllerToken,
+		Center:          p,
+	}, &update, nil), &update, callback))
+}
