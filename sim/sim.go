@@ -74,6 +74,11 @@ type Sim struct {
 
 	PrivilegedTCWs map[TCW]bool // TCWs with elevated privileges (can control any aircraft)
 
+	// TCWDisplay holds per-TCW shared display state for relief
+	// controllers; lazily created the first time a human signs in
+	// to a TCW. Not serialized to disk.
+	TCWDisplay map[TCW]*TCWDisplayState
+
 	ReportingPoints []av.ReportingPoint
 
 	FDAMSystemInhibited         bool

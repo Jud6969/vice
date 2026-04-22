@@ -53,3 +53,23 @@ func TestSetUserCenterAndRangeRingRadius(t *testing.T) {
 		t.Errorf("RangeRingRadius = %v, want 10", s.ScopeView.RangeRingRadius)
 	}
 }
+
+func TestSimEnsureTCWDisplayIsLazy(t *testing.T) {
+	s := &Sim{}
+	if got := s.GetTCWDisplay("N01"); got != nil {
+		t.Errorf("GetTCWDisplay before Ensure returned %+v, want nil", got)
+	}
+	seed := ScopeViewState{Range: 20, RangeRingRadius: 5}
+	d := s.EnsureTCWDisplay("N01", seed)
+	if d == nil || d.ScopeView != seed {
+		t.Errorf("EnsureTCWDisplay returned %+v, want seeded state", d)
+	}
+	// Second call must return the same instance (no reseeding).
+	d2 := s.EnsureTCWDisplay("N01", ScopeViewState{Range: 999})
+	if d2 != d {
+		t.Errorf("EnsureTCWDisplay returned new instance on second call")
+	}
+	if d2.ScopeView.Range != 20 {
+		t.Errorf("second EnsureTCWDisplay clobbered existing state: Range=%v", d2.ScopeView.Range)
+	}
+}

@@ -56,3 +56,24 @@ func (s *TCWDisplayState) SetRangeRingRadius(r int) {
 	s.ScopeView.RangeRingRadius = r
 	s.Rev++
 }
+
+// GetTCWDisplay returns the shared state for the given TCW or nil if
+// it has not been created yet. Caller must hold s.mu.
+func (s *Sim) GetTCWDisplay(tcw TCW) *TCWDisplayState {
+	return s.TCWDisplay[tcw]
+}
+
+// EnsureTCWDisplay returns the existing shared state for the TCW or
+// lazily creates one seeded from `seed` if none exists. Caller must
+// hold s.mu.
+func (s *Sim) EnsureTCWDisplay(tcw TCW, seed ScopeViewState) *TCWDisplayState {
+	if s.TCWDisplay == nil {
+		s.TCWDisplay = make(map[TCW]*TCWDisplayState)
+	}
+	if d, ok := s.TCWDisplay[tcw]; ok {
+		return d
+	}
+	d := NewTCWDisplayState(seed)
+	s.TCWDisplay[tcw] = d
+	return d
+}
