@@ -593,3 +593,14 @@ func (c *ControlClient) AnnotateFlightStrip(acid sim.ACID, annotations [9]string
 		Annotations:     annotations,
 	}, nil, nil), nil))
 }
+
+// SetTCWRange updates the shared TCW display range on the server. The echoed
+// SimStateUpdate carries the new TCWDisplay snapshot, which the call machinery
+// applies to the local State so subsequent reads see the new value immediately.
+func (c *ControlClient) SetTCWRange(r float32, callback func(error)) {
+	var update server.SimStateUpdate
+	c.addCall(makeStateUpdateRPCCall(c.client.Go(server.SetTCWRangeRPC, &server.SetTCWRangeArgs{
+		ControllerToken: c.controllerToken,
+		Range:           r,
+	}, &update, nil), &update, callback))
+}
