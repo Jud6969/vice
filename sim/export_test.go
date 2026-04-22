@@ -31,6 +31,7 @@ func NewTestSim(lg *log.Logger) *Sim {
 		Aircraft:        map[av.ADSBCallsign]*Aircraft{},
 		PendingContacts: make(map[TCP][]PendingContact),
 		PrivilegedTCWs:  map[TCW]bool{tcw: true},
+		STARSComputer:   &STARSComputer{},
 	}
 }
 

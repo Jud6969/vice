@@ -190,6 +190,15 @@ func (s *Sim) SignOn(tcw TCW, tcps []TCP) (*UserState, *EventsSubscription, erro
 		return nil, nil, av.ErrNoController
 	}
 
+	// Lazily create the shared TCWDisplay for this TCW the first time
+	// any human signs in. Subsequent signons (relief joiners) inherit
+	// whatever the current state is.
+	s.EnsureTCWDisplay(tcw, ScopeViewState{
+		Range:           s.State.GetInitialRangeForTCW(tcw),
+		UserCenter:      s.State.GetInitialCenterForTCW(tcw),
+		RangeRingRadius: 5, // matches Preferences.Reset default
+	})
+
 	s.mu.Unlock(s.lg)
 
 	for _, tcp := range tcps {

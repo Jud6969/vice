@@ -5,8 +5,11 @@
 package sim
 
 import (
+	"io"
+	"log/slog"
 	"testing"
 
+	"github.com/mmp/vice/log"
 	"github.com/mmp/vice/math"
 )
 
@@ -51,6 +54,37 @@ func TestSetUserCenterAndRangeRingRadius(t *testing.T) {
 	s.SetRangeRingRadius(10)
 	if s.ScopeView.RangeRingRadius != 10 {
 		t.Errorf("RangeRingRadius = %v, want 10", s.ScopeView.RangeRingRadius)
+	}
+}
+
+func TestSignOnSeedsTCWDisplay(t *testing.T) {
+	lg := &log.Logger{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	s := NewTestSim(lg)
+	tcw := E2ETCW()
+	s.State.Range = 25
+	s.State.Center = math.Point2LL{-73.7, 40.6}
+
+	if _, _, err := s.SignOn(tcw, nil); err != nil {
+		t.Fatalf("SignOn: %v", err)
+	}
+	d := s.GetTCWDisplay(tcw)
+	if d == nil {
+		t.Fatal("GetTCWDisplay returned nil after SignOn")
+	}
+	if d.ScopeView.Range != 25 {
+		t.Errorf("seeded Range = %v, want 25", d.ScopeView.Range)
+	}
+	if d.ScopeView.UserCenter != (math.Point2LL{-73.7, 40.6}) {
+		t.Errorf("seeded UserCenter = %+v, want {-73.7, 40.6}", d.ScopeView.UserCenter)
+	}
+
+	// Second SignOn (relief joiner) must not reseed.
+	s.TCWDisplay[tcw].SetRange(99)
+	if _, _, err := s.SignOn(tcw, nil); err != nil {
+		t.Fatalf("second SignOn: %v", err)
+	}
+	if got := s.GetTCWDisplay(tcw).ScopeView.Range; got != 99 {
+		t.Errorf("second SignOn reseeded Range to %v; should have left it at 99", got)
 	}
 }
 

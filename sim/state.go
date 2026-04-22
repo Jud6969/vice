@@ -122,6 +122,40 @@ type StateUpdate struct {
 	FlightStripACIDs []ACID
 }
 
+// GetInitialRangeForTCW returns the initial scope range for a TCW,
+// preferring controller-specific then area-level config from the
+// FacilityAdaptation, falling back to the scenario-default Range.
+// Mirrors client.SimState.GetInitialRange for use server-side where
+// no UserTCW is available.
+func (cs *CommonState) GetInitialRangeForTCW(tcw TCW) float32 {
+	tcp := cs.PrimaryPositionForTCW(tcw)
+	fa := &cs.FacilityAdaptation
+	if config, ok := fa.Controllers[tcp]; ok && config.Range != 0 {
+		return config.Range
+	}
+	if ctrl, ok := cs.Controllers[tcp]; ok && ctrl.Area != "" {
+		if ac, ok := fa.Areas[ctrl.Area]; ok && ac.Range != 0 {
+			return ac.Range
+		}
+	}
+	return cs.Range
+}
+
+// GetInitialCenterForTCW mirrors GetInitialRangeForTCW for the scope center.
+func (cs *CommonState) GetInitialCenterForTCW(tcw TCW) math.Point2LL {
+	tcp := cs.PrimaryPositionForTCW(tcw)
+	fa := &cs.FacilityAdaptation
+	if config, ok := fa.Controllers[tcp]; ok && !config.Center.IsZero() {
+		return config.Center
+	}
+	if ctrl, ok := cs.Controllers[tcp]; ok && ctrl.Area != "" {
+		if ac, ok := fa.Areas[ctrl.Area]; ok && !ac.Center.IsZero() {
+			return ac.Center
+		}
+	}
+	return cs.Center
+}
+
 ///////////////////////////////////////////////////////////////////////////
 
 // makeDerivedState creates a DerivedState from the current simulation state.  It builds Tracks from
