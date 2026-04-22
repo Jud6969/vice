@@ -613,3 +613,12 @@ func (c *ControlClient) SetTCWUserCenter(p math.Point2LL, callback func(error)) 
 		Center:          p,
 	}, &update, nil), &update, callback))
 }
+
+// SetTCWRangeRingRadius updates the shared range-ring radius (nm) on the server.
+func (c *ControlClient) SetTCWRangeRingRadius(r int, callback func(error)) {
+	var update server.SimStateUpdate
+	c.addCall(makeStateUpdateRPCCall(c.client.Go(server.SetTCWRangeRingRadiusRPC, &server.SetTCWRangeRingRadiusArgs{
+		ControllerToken: c.controllerToken,
+		Radius:          r,
+	}, &update, nil), &update, callback))
+}

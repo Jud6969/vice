@@ -218,8 +218,12 @@ func (sp *STARSPane) drawDCB(ctx *panes.Context, transforms radar.ScopeTransform
 			})
 
 		sp.toggleButton(ctx, "OFF\nCNTR", &ps.UseUserCenter, maybeDisable(buttonHalfVertical), buttonScale)
-		sp.drawDCBSpinner(ctx, makeRangeRingRadiusSpinner(&ps.RangeRingRadius), CommandModeRangeRings,
-			maybeDisable(buttonFull), buttonScale)
+		sp.drawDCBSpinner(ctx, makeRangeRingRadiusSpinner(
+			func() int { return sp.syncedRangeRingRadius(ctx) },
+			func(v int) {
+				ctx.Client.SetTCWRangeRingRadius(v, func(err error) { sp.displayError(err, ctx, "") })
+			},
+		), CommandModeRangeRings, maybeDisable(buttonFull), buttonScale)
 		if sp.drawDCBButton(ctx, "PLACE\nRR", maybeDisable(buttonHalfVertical), buttonScale,
 			sp.commandMode == CommandModePlaceRangeRings) {
 			if sp.commandMode == CommandModePlaceRangeRings { // disable
@@ -1555,42 +1559,48 @@ func (s *dcbDwellModeSpinner) ModeAfter() CommandMode {
 	return CommandModeNone
 }
 
+// dcbRangeRingRadiusSpinner reads/writes the range-ring radius via
+// callbacks; the value is server-owned (TCWDisplay) so writes go
+// through an RPC.
 type dcbRangeRingRadiusSpinner struct {
-	r *int
+	get func() int
+	set func(int)
 }
 
-func makeRangeRingRadiusSpinner(radius *int) dcbSpinner {
-	return &dcbRangeRingRadiusSpinner{radius}
+func makeRangeRingRadiusSpinner(get func() int, set func(int)) dcbSpinner {
+	return &dcbRangeRingRadiusSpinner{get: get, set: set}
 }
 
 func (s *dcbRangeRingRadiusSpinner) Label() string {
-	return "RR\n" + strconv.Itoa(*s.r)
+	return "RR\n" + strconv.Itoa(s.get())
 }
 
 func (s *dcbRangeRingRadiusSpinner) Equals(other dcbSpinner) bool {
-	r, ok := other.(*dcbRangeRingRadiusSpinner)
-	return ok && r.r == s.r
+	// Only one range-ring-radius spinner exists per pane; type identity is enough.
+	_, ok := other.(*dcbRangeRingRadiusSpinner)
+	return ok
 }
 
 func (s *dcbRangeRingRadiusSpinner) Delta(delta int) {
 	// Range rings have 2, 5, 10, or 20 miles radii..
+	cur := s.get()
 	if delta < 0 {
-		switch *s.r {
+		switch cur {
 		case 2:
-			*s.r = 5
+			s.set(5)
 		case 5:
-			*s.r = 10
+			s.set(10)
 		case 10:
-			*s.r = 20
+			s.set(20)
 		}
 	} else if delta > 0 {
-		switch *s.r {
+		switch cur {
 		case 5:
-			*s.r = 2
+			s.set(2)
 		case 10:
-			*s.r = 5
+			s.set(5)
 		case 20:
-			*s.r = 10
+			s.set(10)
 		}
 	}
 }
@@ -1605,7 +1615,7 @@ func (s *dcbRangeRingRadiusSpinner) KeyboardInput(text string) (CommandMode, err
 	} else if v != 2 && v != 5 && v != 10 && v != 20 {
 		return CommandModeNone, ErrSTARSIllegalValue
 	} else {
-		*s.r = v
+		s.set(v)
 		return CommandModeNone, nil
 	}
 }

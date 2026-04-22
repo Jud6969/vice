@@ -133,9 +133,10 @@ func (sp *STARSPane) drawRangeRings(ctx *panes.Context, transforms radar.ScopeTr
 	ld := renderer.GetLinesDrawBuilder()
 	defer renderer.ReturnLinesDrawBuilder(ld)
 
+	rrr := sp.syncedRangeRingRadius(ctx)
 	for i := 1; i < 40; i++ {
 		// Radius of this ring in pixels
-		r := float32(i) * float32(ps.RangeRingRadius) / pixelDistanceNm
+		r := float32(i) * float32(rrr) / pixelDistanceNm
 		ld.AddCircle(centerWindow, r, 360)
 	}
 

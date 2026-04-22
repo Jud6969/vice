@@ -147,6 +147,23 @@ func TestSimSetTCWUserCenterLocksAndBumpsRev(t *testing.T) {
 	}
 }
 
+func TestSimSetTCWRangeRingRadiusLocksAndBumpsRev(t *testing.T) {
+	lg := &log.Logger{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	s := NewTestSim(lg)
+	tcw := E2ETCW()
+	if _, _, err := s.SignOn(tcw, nil); err != nil {
+		t.Fatalf("SignOn: %v", err)
+	}
+	rev0 := s.GetTCWDisplay(tcw).Rev
+	rev1 := s.SetTCWRangeRingRadius(tcw, 10)
+	if rev1 != rev0+1 {
+		t.Errorf("Rev = %d, want %d", rev1, rev0+1)
+	}
+	if got := s.GetTCWDisplay(tcw).ScopeView.RangeRingRadius; got != 10 {
+		t.Errorf("RangeRingRadius = %v, want 10", got)
+	}
+}
+
 func TestSimEnsureTCWDisplayIsLazy(t *testing.T) {
 	s := &Sim{}
 	if got := s.GetTCWDisplay("N01"); got != nil {

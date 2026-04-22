@@ -1144,3 +1144,22 @@ func (sd *dispatcher) SetTCWUserCenter(args *SetTCWUserCenterArgs, update *SimSt
 	*update = c.GetStateUpdate()
 	return nil
 }
+
+type SetTCWRangeRingRadiusArgs struct {
+	ControllerToken string
+	Radius          int
+}
+
+const SetTCWRangeRingRadiusRPC = "Sim.SetTCWRangeRingRadius"
+
+func (sd *dispatcher) SetTCWRangeRingRadius(args *SetTCWRangeRingRadiusArgs, update *SimStateUpdate) error {
+	defer sd.sm.lg.CatchAndReportCrash()
+
+	c := sd.sm.LookupController(args.ControllerToken)
+	if c == nil {
+		return ErrNoSimForControllerToken
+	}
+	c.sim.SetTCWRangeRingRadius(c.tcw, args.Radius)
+	*update = c.GetStateUpdate()
+	return nil
+}

@@ -100,3 +100,14 @@ func (s *Sim) SetTCWUserCenter(tcw TCW, p math.Point2LL) uint64 {
 	d.SetUserCenter(p)
 	return d.Rev
 }
+
+// SetTCWRangeRingRadius mutates the shared range-ring radius (nm) for
+// the given TCW. Locks the sim. Returns the new Rev.
+func (s *Sim) SetTCWRangeRingRadius(tcw TCW, r int) uint64 {
+	s.mu.Lock(s.lg)
+	defer s.mu.Unlock(s.lg)
+
+	d := s.EnsureTCWDisplay(tcw, ScopeViewState{})
+	d.SetRangeRingRadius(r)
+	return d.Rev
+}
