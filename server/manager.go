@@ -169,6 +169,11 @@ type SimState struct {
 	UserIsPrivileged bool // Whether this user has elevated privileges (can control any aircraft)
 
 	FlightStripACIDs []sim.ACID
+
+	// TCWDisplay is the latest snapshot of shared display state for
+	// the user's TCW. Replaced wholesale on every poll-based update;
+	// nil until the first SimStateUpdate.Apply that carries one.
+	TCWDisplay *sim.TCWDisplayState
 }
 
 // TCWIsPrivileged returns whether the given TCW has elevated privileges.
@@ -683,6 +688,13 @@ func (su *SimStateUpdate) Apply(state *SimState, eventStream *sim.EventStream) {
 
 	state.ActiveTCWs = su.ActiveTCWs
 	state.FlightStripACIDs = su.FlightStripACIDs
+
+	// TCWDisplay is snapshotted on every poll; later snapshots
+	// replace earlier ones wholesale. Nil snapshots leave existing
+	// state in place (e.g., if the server has not yet seeded one).
+	if su.TCWDisplay != nil {
+		state.TCWDisplay = su.TCWDisplay
+	}
 
 	// Post events after updating state so they reflect current state.
 	if eventStream != nil {

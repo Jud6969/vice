@@ -88,6 +88,30 @@ func TestSignOnSeedsTCWDisplay(t *testing.T) {
 	}
 }
 
+func TestGetStateUpdateIncludesTCWDisplay(t *testing.T) {
+	lg := &log.Logger{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	s := NewTestSim(lg)
+	tcw := E2ETCW()
+	if _, _, err := s.SignOn(tcw, nil); err != nil {
+		t.Fatalf("SignOn: %v", err)
+	}
+	up := s.GetStateUpdate(tcw)
+	if up.TCWDisplay == nil {
+		t.Fatal("StateUpdate.TCWDisplay is nil after SignOn")
+	}
+	// Mutate and re-poll.
+	s.TCWDisplay[tcw].SetRange(42)
+	up2 := s.GetStateUpdate(tcw)
+	if up2.TCWDisplay == nil || up2.TCWDisplay.ScopeView.Range != 42 {
+		t.Errorf("poll did not observe mutation; got %+v", up2.TCWDisplay)
+	}
+	// A poll for a TCW with no display state returns nil.
+	up3 := s.GetStateUpdate(TCW("UNKNOWN"))
+	if up3.TCWDisplay != nil {
+		t.Errorf("StateUpdate.TCWDisplay for unknown TCW = %+v, want nil", up3.TCWDisplay)
+	}
+}
+
 func TestSimEnsureTCWDisplayIsLazy(t *testing.T) {
 	s := &Sim{}
 	if got := s.GetTCWDisplay("N01"); got != nil {

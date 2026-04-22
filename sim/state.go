@@ -120,6 +120,10 @@ type StateUpdate struct {
 	DynamicState
 	DerivedState
 	FlightStripACIDs []ACID
+
+	// TCWDisplay is the shared display state for the caller's TCW,
+	// or nil if none exists. Populated by Sim.GetStateUpdate.
+	TCWDisplay *TCWDisplayState
 }
 
 // GetInitialRangeForTCW returns the initial scope range for a TCW,

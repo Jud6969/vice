@@ -1132,6 +1132,7 @@ func (s *Sim) GetStateUpdate(tcw TCW) StateUpdate {
 		DynamicState:     s.State.DynamicState,
 		DerivedState:     makeDerivedState(s),
 		FlightStripACIDs: s.flightStripACIDsForTCW(tcw),
+		TCWDisplay:       s.TCWDisplay[tcw],
 	}
 
 	if util.SizeOf(update, os.Stderr, false, 1024*1024) > 256*1024*1024 {
