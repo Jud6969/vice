@@ -1102,3 +1102,26 @@ func (sd *dispatcher) AnnotateFlightStrip(args *AnnotateFlightStripArgs, _ *stru
 	}
 	return c.sim.AnnotateFlightStrip(c.tcw, args.ACID, args.Annotations)
 }
+
+// Shared TCW display state mutations. Each RPC echoes a fresh
+// SimStateUpdate so the caller's local State.TCWDisplay reflects the
+// server value immediately, without waiting for the next 1 Hz poll.
+
+type SetTCWRangeArgs struct {
+	ControllerToken string
+	Range           float32
+}
+
+const SetTCWRangeRPC = "Sim.SetTCWRange"
+
+func (sd *dispatcher) SetTCWRange(args *SetTCWRangeArgs, update *SimStateUpdate) error {
+	defer sd.sm.lg.CatchAndReportCrash()
+
+	c := sd.sm.LookupController(args.ControllerToken)
+	if c == nil {
+		return ErrNoSimForControllerToken
+	}
+	c.sim.SetTCWRange(c.tcw, args.Range)
+	*update = c.GetStateUpdate()
+	return nil
+}

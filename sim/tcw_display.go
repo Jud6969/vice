@@ -77,3 +77,15 @@ func (s *Sim) EnsureTCWDisplay(tcw TCW, seed ScopeViewState) *TCWDisplayState {
 	s.TCWDisplay[tcw] = d
 	return d
 }
+
+// SetTCWRange mutates the shared range for the given TCW. Locks the
+// sim. Creates the state lazily if not present (defensive — should
+// already exist by the time a client calls this). Returns the new Rev.
+func (s *Sim) SetTCWRange(tcw TCW, r float32) uint64 {
+	s.mu.Lock(s.lg)
+	defer s.mu.Unlock(s.lg)
+
+	d := s.EnsureTCWDisplay(tcw, ScopeViewState{})
+	d.SetRange(r)
+	return d.Rev
+}

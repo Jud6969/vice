@@ -112,6 +112,23 @@ func TestGetStateUpdateIncludesTCWDisplay(t *testing.T) {
 	}
 }
 
+func TestSimSetTCWRangeLocksAndBumpsRev(t *testing.T) {
+	lg := &log.Logger{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	s := NewTestSim(lg)
+	tcw := E2ETCW()
+	if _, _, err := s.SignOn(tcw, nil); err != nil {
+		t.Fatalf("SignOn: %v", err)
+	}
+	rev0 := s.GetTCWDisplay(tcw).Rev
+	rev1 := s.SetTCWRange(tcw, 99)
+	if rev1 != rev0+1 {
+		t.Errorf("Rev = %d, want %d", rev1, rev0+1)
+	}
+	if got := s.GetTCWDisplay(tcw).ScopeView.Range; got != 99 {
+		t.Errorf("Range = %v, want 99", got)
+	}
+}
+
 func TestSimEnsureTCWDisplayIsLazy(t *testing.T) {
 	s := &Sim{}
 	if got := s.GetTCWDisplay("N01"); got != nil {
