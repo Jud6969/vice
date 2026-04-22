@@ -40,7 +40,7 @@ func (sp *STARSPane) drawCompass(ctx *panes.Context, scopeExtent math.Extent2D, 
 
 	// Window coordinates of the center point.
 	// TODO: should we explicitly handle the case of this being outside the window?
-	ctr := util.Select(ps.UseUserCenter, ps.UserCenter, ps.DefaultCenter)
+	ctr := util.Select(ps.UseUserCenter, sp.syncedUserCenter(ctx), ps.DefaultCenter)
 	pw := transforms.WindowFromLatLongP(ctr)
 	bounds := math.Extent2D{P1: [2]float32{scopeExtent.Width(), scopeExtent.Height()}}
 	font := sp.systemFont(ctx, ps.CharSize.Tools)
@@ -941,7 +941,7 @@ func (sp *STARSPane) drawWind(ctx *panes.Context, transforms radar.ScopeTransfor
 	const arrowLength = 25
 	const arrowheadSize = 8
 	step := 1
-	if r := ps.Range; r > 80 {
+	if r := sp.syncedRange(ctx); r > 80 {
 		step = 4
 	} else if r > 45 {
 		step = 3

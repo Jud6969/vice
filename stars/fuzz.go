@@ -275,10 +275,10 @@ func (fc *FuzzController) ExecuteRandomCommand(ctx *panes.Context) {
 	ps := fc.sp.currentPrefs()
 	ctr := ps.DefaultCenter
 	if ps.UseUserCenter {
-		ctr = ps.UserCenter
+		ctr = fc.sp.syncedUserCenter(ctx)
 	}
 	transforms := radar.GetScopeTransformations(ctx.PaneExtent, ctx.MagneticVariation, ctx.NmPerLongitude,
-		ctr, float32(ps.Range), 0)
+		ctr, fc.sp.syncedRange(ctx), 0)
 
 	// Execute command
 	_, err, handled := fc.sp.tryExecuteUserCommand(

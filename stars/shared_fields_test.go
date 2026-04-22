@@ -4,6 +4,11 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/mmp/vice/client"
+	"github.com/mmp/vice/math"
+	"github.com/mmp/vice/panes"
+	"github.com/mmp/vice/sim"
 )
 
 // TestEveryPreferencesFieldIsCategorized walks every field in Preferences
@@ -62,5 +67,89 @@ func TestEveryPreferencesFieldIsCategorized(t *testing.T) {
 		if !all[name] && !strings.HasPrefix(name, "_deprecated_") {
 			t.Errorf("stars/shared_fields.go lists unknown Preferences field %q", name)
 		}
+	}
+}
+
+// newCtxWithClient returns a panes.Context whose Client is non-nil but
+// otherwise zero-valued — enough for the sync helpers, which only read
+// ctx.Client.State.TCWDisplay.
+func newCtxWithClient() *panes.Context {
+	return &panes.Context{Client: &client.ControlClient{}}
+}
+
+func TestSyncedRangePrefersTCWDisplay(t *testing.T) {
+	sp := &STARSPane{prefSet: &PreferenceSet{Current: Preferences{}}}
+	sp.prefSet.Current.Range = 10
+	ctx := newCtxWithClient()
+
+	if got := sp.syncedRange(ctx); got != 10 {
+		t.Errorf("syncedRange without TCWDisplay = %v, want 10", got)
+	}
+
+	ctx.Client.State.TCWDisplay = &sim.TCWDisplayState{ScopeView: sim.ScopeViewState{Range: 50}}
+	if got := sp.syncedRange(ctx); got != 50 {
+		t.Errorf("syncedRange with TCWDisplay = %v, want 50", got)
+	}
+}
+
+func TestSyncedUserCenterPrefersTCWDisplay(t *testing.T) {
+	sp := &STARSPane{prefSet: &PreferenceSet{Current: Preferences{}}}
+	sp.prefSet.Current.UserCenter = math.Point2LL{1, 2}
+	ctx := newCtxWithClient()
+
+	if got := sp.syncedUserCenter(ctx); got != (math.Point2LL{1, 2}) {
+		t.Errorf("syncedUserCenter without TCWDisplay = %+v, want {1,2}", got)
+	}
+
+	ctx.Client.State.TCWDisplay = &sim.TCWDisplayState{
+		ScopeView: sim.ScopeViewState{UserCenter: math.Point2LL{-73.7, 40.6}},
+	}
+	if got := sp.syncedUserCenter(ctx); got != (math.Point2LL{-73.7, 40.6}) {
+		t.Errorf("syncedUserCenter with TCWDisplay = %+v, want {-73.7,40.6}", got)
+	}
+}
+
+func TestSyncedRangeRingRadiusPrefersTCWDisplay(t *testing.T) {
+	sp := &STARSPane{prefSet: &PreferenceSet{Current: Preferences{}}}
+	sp.prefSet.Current.RangeRingRadius = 5
+	ctx := newCtxWithClient()
+
+	if got := sp.syncedRangeRingRadius(ctx); got != 5 {
+		t.Errorf("syncedRangeRingRadius without TCWDisplay = %v, want 5", got)
+	}
+
+	ctx.Client.State.TCWDisplay = &sim.TCWDisplayState{ScopeView: sim.ScopeViewState{RangeRingRadius: 20}}
+	if got := sp.syncedRangeRingRadius(ctx); got != 20 {
+		t.Errorf("syncedRangeRingRadius with TCWDisplay = %v, want 20", got)
+	}
+}
+
+func TestMirrorTCWDisplayIntoPrefs(t *testing.T) {
+	sp := &STARSPane{prefSet: &PreferenceSet{Current: Preferences{}}}
+	sp.prefSet.Current.Range = 1
+	sp.prefSet.Current.UserCenter = math.Point2LL{}
+	sp.prefSet.Current.RangeRingRadius = 1
+
+	// Nil snapshot must be a no-op.
+	sp.mirrorTCWDisplayIntoPrefs(nil)
+	if sp.currentPrefs().Range != 1 {
+		t.Errorf("nil mirror clobbered Range")
+	}
+
+	d := &sim.TCWDisplayState{ScopeView: sim.ScopeViewState{
+		Range:           42,
+		UserCenter:      math.Point2LL{-73.7, 40.6},
+		RangeRingRadius: 7,
+	}}
+	sp.mirrorTCWDisplayIntoPrefs(d)
+	ps := sp.currentPrefs()
+	if ps.Range != 42 {
+		t.Errorf("mirror Range = %v, want 42", ps.Range)
+	}
+	if ps.UserCenter != (math.Point2LL{-73.7, 40.6}) {
+		t.Errorf("mirror UserCenter = %+v, want {-73.7,40.6}", ps.UserCenter)
+	}
+	if ps.RangeRingRadius != 7 {
+		t.Errorf("mirror RangeRingRadius = %v, want 7", ps.RangeRingRadius)
 	}
 }

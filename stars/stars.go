@@ -1195,8 +1195,53 @@ func (sp *STARSPane) Upgrade(from, to int) {
 	}
 }
 
+// syncedRange returns the effective scope range for this TCW: the
+// shared TCWDisplay value if present, else the local Preferences. Use
+// this in place of currentPrefs().Range on read paths.
+func (sp *STARSPane) syncedRange(ctx *panes.Context) float32 {
+	if d := ctx.Client.State.TCWDisplay; d != nil {
+		return d.ScopeView.Range
+	}
+	return sp.currentPrefs().Range
+}
+
+// syncedUserCenter returns the effective scope center. When TCWDisplay
+// is present we trust it unconditionally — the signon seed populates
+// UserCenter from sim defaults, so a "zero" point after signon is a
+// real (and rare) value, not an unset sentinel.
+func (sp *STARSPane) syncedUserCenter(ctx *panes.Context) math.Point2LL {
+	if d := ctx.Client.State.TCWDisplay; d != nil {
+		return d.ScopeView.UserCenter
+	}
+	return sp.currentPrefs().UserCenter
+}
+
+// syncedRangeRingRadius returns the effective range-ring radius (nm).
+func (sp *STARSPane) syncedRangeRingRadius(ctx *panes.Context) int {
+	if d := ctx.Client.State.TCWDisplay; d != nil {
+		return d.ScopeView.RangeRingRadius
+	}
+	return sp.currentPrefs().RangeRingRadius
+}
+
+// mirrorTCWDisplayIntoPrefs copies the synced fields from a snapshot
+// back into the active Preferences. The shared values are the source
+// of truth, but the prefs serializer still reads from Preferences when
+// the user saves a set, so we keep the pref fields in lockstep with
+// the snapshot. (Loaded saved sets still skip the synced fields.)
+func (sp *STARSPane) mirrorTCWDisplayIntoPrefs(d *sim.TCWDisplayState) {
+	if d == nil {
+		return
+	}
+	ps := sp.currentPrefs()
+	ps.Range = d.ScopeView.Range
+	ps.UserCenter = d.ScopeView.UserCenter
+	ps.RangeRingRadius = d.ScopeView.RangeRingRadius
+}
+
 func (sp *STARSPane) Draw(ctx *panes.Context, cb *renderer.CommandBuffer) {
 	sp.processEvents(ctx)
+	sp.mirrorTCWDisplayIntoPrefs(ctx.Client.State.TCWDisplay)
 	sp.updateVisibleTracks(ctx)
 
 	sp.updateRadarTracks(ctx)
@@ -1209,9 +1254,9 @@ func (sp *STARSPane) Draw(ctx *panes.Context, cb *renderer.CommandBuffer) {
 
 	sp.processKeyboardInput(ctx)
 
-	ctr := util.Select(ps.UseUserCenter, ps.UserCenter, ps.DefaultCenter)
+	ctr := util.Select(ps.UseUserCenter, sp.syncedUserCenter(ctx), ps.DefaultCenter)
 	transforms := radar.GetScopeTransformations(ctx.PaneExtent, ctx.MagneticVariation, ctx.NmPerLongitude,
-		ctr, float32(ps.Range), 0)
+		ctr, sp.syncedRange(ctx), 0)
 
 	scopeExtent := ctx.PaneExtent
 	if ps.DisplayDCB {
