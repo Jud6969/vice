@@ -200,8 +200,12 @@ func (sp *STARSPane) drawDCB(ctx *panes.Context, transforms radar.ScopeTransform
 		// If a submenu is active, draw the full regular menu, but disabled.
 		disableMain = isMainSubmenuMode(sp.commandMode)
 
-		sp.drawDCBSpinner(ctx, makeRadarRangeSpinner(&ps.Range), CommandModeRange,
-			maybeDisable(buttonFull), buttonScale)
+		sp.drawDCBSpinner(ctx, makeRadarRangeSpinner(
+			func() float32 { return sp.syncedRange(ctx) },
+			func(v float32) {
+				ctx.Client.SetTCWRange(math.Clamp(v, 6, 256), func(err error) { sp.displayError(err, ctx, "") })
+			},
+		), CommandModeRange, maybeDisable(buttonFull), buttonScale)
 		sp.drawDCBMouseDeltaButton(ctx, "PLACE\nCNTR", CommandModePlaceCenter, maybeDisable(buttonHalfVertical),
 			buttonScale,
 			func() { /* start */
@@ -1185,25 +1189,31 @@ func (sp *STARSPane) drawDCBSpinner(ctx *panes.Context, spinner dcbSpinner, comm
 	}
 }
 
+// dcbRadarRangeSpinner reads/writes the scope range via callbacks
+// instead of a pointer. Range is server-owned (TCWDisplay), so writes
+// must go through an RPC; the get callback returns the current synced
+// value and set forwards to the RPC.
 type dcbRadarRangeSpinner struct {
-	r *float32
+	get func() float32
+	set func(float32)
 }
 
-func makeRadarRangeSpinner(r *float32) dcbSpinner {
-	return &dcbRadarRangeSpinner{r}
+func makeRadarRangeSpinner(get func() float32, set func(float32)) dcbSpinner {
+	return &dcbRadarRangeSpinner{get: get, set: set}
 }
 
 func (s dcbRadarRangeSpinner) Label() string {
-	return "RANGE\n" + strconv.Itoa(int(*s.r+0.5)) // print it as an int
+	return "RANGE\n" + strconv.Itoa(int(s.get()+0.5)) // print it as an int
 }
 
 func (s dcbRadarRangeSpinner) Equals(other dcbSpinner) bool {
-	r, ok := other.(*dcbRadarRangeSpinner)
-	return ok && r.r == s.r
+	// Only one radar-range spinner exists per pane; type identity is enough.
+	_, ok := other.(*dcbRadarRangeSpinner)
+	return ok
 }
 
 func (s *dcbRadarRangeSpinner) Delta(delta int) {
-	*s.r = math.Clamp(*s.r+float32(delta), 6, 256)
+	s.set(math.Clamp(s.get()+float32(delta), 6, 256))
 }
 
 func (s *dcbRadarRangeSpinner) MouseDelta() float32 {
@@ -1219,7 +1229,7 @@ func (s *dcbRadarRangeSpinner) KeyboardInput(text string) (CommandMode, error) {
 	} else {
 		// Input numbers are ints but we store a float (for smoother
 		// stepping when the mouse wheel is used to zoom the scope).
-		*s.r = float32(r)
+		s.set(float32(r))
 		return CommandModeNone, nil
 	}
 }
