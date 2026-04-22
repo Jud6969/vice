@@ -11,7 +11,8 @@ import (
 )
 
 // NewTestSim creates a minimal Sim suitable for command dispatch tests.
-// Exported only to _test packages via Go's export_test.go convention.
+// Public so cross-package tests (e.g. server/) can build a Sim without
+// going through NewSim's heavyweight METAR/airspace setup.
 func NewTestSim(lg *log.Logger) *Sim {
 	tcw := TCW("TEST")
 	freq := ControlPosition("125.0")
