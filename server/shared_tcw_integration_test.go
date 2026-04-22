@@ -87,3 +87,32 @@ func TestTwoClientsSeeEachOthersRangeChange(t *testing.T) {
 		t.Errorf("after A signoff, Range=%v, want 99", got)
 	}
 }
+
+// TestRejoinInheritsTCWDisplay covers the spec's "last leaves, new human
+// joins" case: TCWDisplay survives the gap and the next signon inherits
+// the prior controller's range/center settings rather than reseeding.
+func TestRejoinInheritsTCWDisplay(t *testing.T) {
+	sm, tokenA, tcw := newTestManagerWithHuman(t)
+	sd := &dispatcher{sm: sm}
+
+	// A sets a unique value.
+	var up SimStateUpdate
+	if err := sd.SetTCWRange(&SetTCWRangeArgs{ControllerToken: tokenA, Range: 77}, &up); err != nil {
+		t.Fatalf("A SetTCWRange: %v", err)
+	}
+
+	// Everyone leaves.
+	if err := sm.SignOff(tokenA); err != nil {
+		t.Fatalf("SignOff: %v", err)
+	}
+
+	// New human joins the same TCW.
+	tokenC := newHumanAt(t, sm, tcw)
+	var upC SimStateUpdate
+	if err := sd.GetStateUpdate(tokenC, &upC); err != nil {
+		t.Fatalf("GetStateUpdate C: %v", err)
+	}
+	if upC.TCWDisplay == nil || upC.TCWDisplay.ScopeView.Range != 77 {
+		t.Errorf("C did not inherit A's Range=77; got %+v", upC.TCWDisplay)
+	}
+}
