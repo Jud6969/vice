@@ -16,8 +16,6 @@ import (
 	"github.com/mmp/vice/radar"
 	"github.com/mmp/vice/renderer"
 	"github.com/mmp/vice/util"
-
-	"github.com/brunoga/deep"
 )
 
 const dcbButtonSize = 84
@@ -535,9 +533,9 @@ func (sp *STARSPane) drawDCB(ctx *panes.Context, transforms radar.ScopeTransform
 			sp.disabledButton(ctx, "RESTORE", buttonHalfVertical, buttonScale)
 		} else if sp.selectButton(ctx, "RESTORE", buttonHalfVertical, buttonScale) {
 			// 4-20: restore display settings that were in effect when we
-			// entered the PREF sub-menu.
-			sp.prefSet.Current = deep.MustCopy(*sp.RestorePreferences)
-			sp.prefSet.Current.Activate(ctx.Platform, sp)
+			// entered the PREF sub-menu. Use SetCurrent so synced fields
+			// (TCWDisplay-owned scope view) are preserved across the load.
+			sp.prefSet.SetCurrent(*sp.RestorePreferences, ctx.Platform, sp)
 			if sp.RestorePreferencesNumber == nil {
 				sp.prefSet.Selected = nil
 			} else {

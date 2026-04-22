@@ -124,6 +124,34 @@ func TestSyncedRangeRingRadiusPrefersTCWDisplay(t *testing.T) {
 	}
 }
 
+func TestMergeLoadedPreferencesSkipsSyncedFields(t *testing.T) {
+	existing := Preferences{}
+	existing.Range = 20
+	existing.UserCenter = math.Point2LL{1, 1}
+	existing.RangeRingRadius = 5
+
+	toLoad := Preferences{}
+	toLoad.Range = 999
+	toLoad.UserCenter = math.Point2LL{9, 9}
+	toLoad.RangeRingRadius = 99
+	// Unsynced field (Brightness lives on CommonPreferences/Preferences).
+	toLoad.Brightness.DCB = 77
+
+	result := mergeLoadedPreferences(existing, toLoad)
+	if result.Range != 20 {
+		t.Errorf("synced Range was clobbered: got %v, want 20", result.Range)
+	}
+	if result.UserCenter != (math.Point2LL{1, 1}) {
+		t.Errorf("synced UserCenter was clobbered: got %+v, want {1,1}", result.UserCenter)
+	}
+	if result.RangeRingRadius != 5 {
+		t.Errorf("synced RangeRingRadius was clobbered: got %v, want 5", result.RangeRingRadius)
+	}
+	if result.Brightness.DCB != 77 {
+		t.Errorf("unsynced Brightness.DCB not applied: got %v, want 77", result.Brightness.DCB)
+	}
+}
+
 func TestMirrorTCWDisplayIntoPrefs(t *testing.T) {
 	sp := &STARSPane{prefSet: &PreferenceSet{Current: Preferences{}}}
 	sp.prefSet.Current.Range = 1

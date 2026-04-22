@@ -4,6 +4,8 @@
 
 package stars
 
+import "reflect"
+
 // SyncedPreferenceFields lists every field on Preferences (including
 // flattened CommonPreferences) that is shared across all relief
 // controllers at a TCW via TCWDisplayState. Mutations must go through
@@ -135,4 +137,33 @@ var UnsyncedPreferenceFields = []string{
 
 	// Restriction area visibility/behavior (per the type comment, local per user)
 	"RestrictionAreaSettings",
+}
+
+// mergeLoadedPreferences returns a Preferences that combines existing
+// (where synced fields stay put — they belong to TCWDisplayState, not
+// to any one user's saved set) with loaded (where unsynced fields
+// apply, since they're personal). Use this when a user loads a saved
+// preference set so a relief partner's shared scope picture is not
+// yanked out from under them.
+func mergeLoadedPreferences(existing, loaded Preferences) Preferences {
+	result := existing
+	unsynced := map[string]bool{}
+	for _, f := range UnsyncedPreferenceFields {
+		unsynced[f] = true
+	}
+	copyUnsyncedFields(reflect.ValueOf(&result).Elem(), reflect.ValueOf(loaded), unsynced)
+	return result
+}
+
+func copyUnsyncedFields(dst, src reflect.Value, unsynced map[string]bool) {
+	for i := 0; i < dst.NumField(); i++ {
+		sf := dst.Type().Field(i)
+		if sf.Anonymous && sf.Type.Kind() == reflect.Struct {
+			copyUnsyncedFields(dst.Field(i), src.Field(i), unsynced)
+			continue
+		}
+		if unsynced[sf.Name] {
+			dst.Field(i).Set(src.Field(i))
+		}
+	}
 }
