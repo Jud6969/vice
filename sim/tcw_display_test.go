@@ -205,3 +205,86 @@ func TestPruneTCWDisplayAnnotationsNoopWhenAllLive(t *testing.T) {
 		t.Errorf("Rev changed: %d -> %d, want unchanged", revBefore, d.Rev)
 	}
 }
+
+func TestSetTCWRangeStoresAndBumpsRev(t *testing.T) {
+	s := NewTestSim(log.New(true, "error", t.TempDir()))
+	tcw := TCW("N90")
+
+	s.SetTCWRange(tcw, 42)
+
+	d := s.GetTCWDisplay(tcw)
+	if d == nil || d.ScopeView.Range != 42 {
+		t.Errorf("ScopeView.Range = %+v, want 42", d)
+	}
+	if d.Rev != 1 {
+		t.Errorf("Rev = %d, want 1", d.Rev)
+	}
+}
+
+func TestSetTCWUserCenterStoresAndBumpsRev(t *testing.T) {
+	s := NewTestSim(log.New(true, "error", t.TempDir()))
+	tcw := TCW("N90")
+	p := math.Point2LL{-73.5, 40.7}
+
+	s.SetTCWUserCenter(tcw, p)
+
+	d := s.GetTCWDisplay(tcw)
+	if d == nil || d.ScopeView.UserCenter != p {
+		t.Errorf("ScopeView.UserCenter = %+v, want %+v", d, p)
+	}
+	if d.Rev != 1 {
+		t.Errorf("Rev = %d, want 1", d.Rev)
+	}
+}
+
+func TestSetTCWRangeRingRadiusStoresAndBumpsRev(t *testing.T) {
+	s := NewTestSim(log.New(true, "error", t.TempDir()))
+	tcw := TCW("N90")
+
+	s.SetTCWRangeRingRadius(tcw, 7)
+
+	d := s.GetTCWDisplay(tcw)
+	if d == nil || d.ScopeView.RangeRingRadius != 7 {
+		t.Errorf("ScopeView.RangeRingRadius = %+v, want 7", d)
+	}
+	if d.Rev != 1 {
+		t.Errorf("Rev = %d, want 1", d.Rev)
+	}
+}
+
+func TestSetTCWScopeViewIsolatesTCWs(t *testing.T) {
+	s := NewTestSim(log.New(true, "error", t.TempDir()))
+
+	s.SetTCWRange("N90", 20)
+	s.SetTCWRange("N01", 80)
+
+	if got := s.GetTCWDisplay("N90").ScopeView.Range; got != 20 {
+		t.Errorf("N90 ScopeView.Range = %v, want 20", got)
+	}
+	if got := s.GetTCWDisplay("N01").ScopeView.Range; got != 80 {
+		t.Errorf("N01 ScopeView.Range = %v, want 80", got)
+	}
+}
+
+func TestSetTCWScopeViewCoexistsWithAnnotations(t *testing.T) {
+	// Setting a ScopeView field must not clobber per-ACID annotations and
+	// vice versa; the shared Rev bumps for either.
+	s := NewTestSim(log.New(true, "error", t.TempDir()))
+	tcw := TCW("N90")
+
+	s.SetTrackJRingRadius(tcw, "AAL123", 3)
+	revAfterAnnot := s.GetTCWDisplay(tcw).Rev
+
+	s.SetTCWRange(tcw, 99)
+
+	d := s.GetTCWDisplay(tcw)
+	if d.Rev <= revAfterAnnot {
+		t.Errorf("Rev = %d, want > %d", d.Rev, revAfterAnnot)
+	}
+	if got := d.Annotations["AAL123"].JRingRadius; got != 3 {
+		t.Errorf("JRingRadius = %v, want 3 (unchanged by SetTCWRange)", got)
+	}
+	if got := d.ScopeView.Range; got != 99 {
+		t.Errorf("ScopeView.Range = %v, want 99", got)
+	}
+}

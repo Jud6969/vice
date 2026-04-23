@@ -1209,9 +1209,9 @@ func (sp *STARSPane) Draw(ctx *panes.Context, cb *renderer.CommandBuffer) {
 
 	sp.processKeyboardInput(ctx)
 
-	ctr := util.Select(ps.UseUserCenter, ps.UserCenter, ps.DefaultCenter)
+	ctr := util.Select(ps.UseUserCenter, sp.scopeUserCenter(ctx.Client), ps.DefaultCenter)
 	transforms := radar.GetScopeTransformations(ctx.PaneExtent, ctx.MagneticVariation, ctx.NmPerLongitude,
-		ctr, ps.Range, 0)
+		ctr, sp.scopeRange(ctx.Client), 0)
 
 	scopeExtent := ctx.PaneExtent
 	if ps.DisplayDCB {

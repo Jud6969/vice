@@ -603,7 +603,7 @@ func (sp *STARSPane) drawSSAList(ctx *panes.Context, pw [2]float32, listStyle re
 	if filter.All || filter.Range || filter.PredictedTrackLines {
 		text := ""
 		if filter.All || filter.Range {
-			text += fmt.Sprintf("%dNM ", int(ps.Range))
+			text += fmt.Sprintf("%dNM ", int(sp.scopeRange(ctx.Client)))
 		}
 		if (filter.All || filter.PredictedTrackLines) && ps.PTLLength > 0 {
 			text += fmt.Sprintf("PTL: %.1f", ps.PTLLength)

@@ -18,9 +18,24 @@ type TCWDisplayState struct {
 	// field for an ACID, and pruned when the aircraft leaves the sim.
 	Annotations map[ACID]TrackAnnotations
 
+	// ScopeView holds scope-view fields (range / pan / range-ring
+	// radius). Writes always populate this from any controller; reads
+	// are subscribed to by clients that opt into "Sync Scope Setup"
+	// on the Join-as-Relief dialog.
+	ScopeView ScopeViewState
+
 	// Monotonic revision, bumped on every mutation. Clients can send
 	// last-seen rev to the server for diff detection in future plans.
 	Rev uint64
+}
+
+// ScopeViewState is the scope-view slice of shared TCW display state.
+// Only opt-in clients read from it; writes are unconditional so the
+// value is always fresh for any later opt-in joiner.
+type ScopeViewState struct {
+	Range           float32
+	UserCenter      math.Point2LL
+	RangeRingRadius int
 }
 
 // TrackAnnotations is the subset of stars.TrackState that is shared
@@ -127,6 +142,29 @@ func (s *Sim) SetTrackDisplayRequestedAltitude(tcw TCW, acid ACID, v *bool) {
 
 func (s *Sim) SetTrackDisplayLDBBeaconCode(tcw TCW, acid ACID, v bool) {
 	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.DisplayLDBBeaconCode = v })
+}
+
+// mutateScopeView acquires the sim lock, ensures a TCWDisplay exists,
+// applies `f` to its ScopeView in place, and bumps Rev.
+func (s *Sim) mutateScopeView(tcw TCW, f func(*ScopeViewState)) {
+	s.mu.Lock(s.lg)
+	defer s.mu.Unlock(s.lg)
+
+	d := s.EnsureTCWDisplay(tcw)
+	f(&d.ScopeView)
+	d.Rev++
+}
+
+func (s *Sim) SetTCWRange(tcw TCW, r float32) {
+	s.mutateScopeView(tcw, func(v *ScopeViewState) { v.Range = r })
+}
+
+func (s *Sim) SetTCWUserCenter(tcw TCW, p math.Point2LL) {
+	s.mutateScopeView(tcw, func(v *ScopeViewState) { v.UserCenter = p })
+}
+
+func (s *Sim) SetTCWRangeRingRadius(tcw TCW, r int) {
+	s.mutateScopeView(tcw, func(v *ScopeViewState) { v.RangeRingRadius = r })
 }
 
 // pruneTCWDisplayAnnotations removes per-ACID annotation entries whose

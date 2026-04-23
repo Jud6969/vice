@@ -607,14 +607,14 @@ func (sp *STARSPane) consumeMouseEvents(ctx *panes.Context, ghosts []*av.GhostTr
 			delta := mouse.DragDelta
 			if delta[0] != 0 || delta[1] != 0 {
 				deltaLL := transforms.LatLongFromWindowV(delta)
-				ps.UserCenter = math.Sub2f(ps.UserCenter, deltaLL)
+				sp.setScopeUserCenter(ctx, math.Sub2f(sp.scopeUserCenter(ctx.Client), deltaLL))
 				ps.UseUserCenter = true
 			}
 		}
 
 		// Consume mouse wheel
 		if mouse.Wheel[1] != 0 {
-			r := ps.Range
+			r := sp.scopeRange(ctx.Client)
 			delta := func() float32 {
 				if ctx.Keyboard != nil {
 					if ctx.Keyboard.KeyControl() {
@@ -624,7 +624,7 @@ func (sp *STARSPane) consumeMouseEvents(ctx *panes.Context, ghosts []*av.GhostTr
 				return mouse.Wheel[1]
 			}()
 			nr := math.Clamp(r+delta, 6, 256) // 4-33
-			ps.Range = nr
+			sp.setScopeRange(ctx, nr)
 
 			// We want to zoom in centered at the mouse position; this affects
 			// the scope center after the zoom, so we'll find the
@@ -636,7 +636,7 @@ func (sp *STARSPane) consumeMouseEvents(ctx *panes.Context, ghosts []*av.GhostTr
 				Scale(scale, scale).
 				Translate(-mouseLL[0], -mouseLL[1])
 
-			ps.UserCenter = centerTransform.TransformPoint(ps.UserCenter)
+			sp.setScopeUserCenter(ctx, centerTransform.TransformPoint(sp.scopeUserCenter(ctx.Client)))
 			ps.UseUserCenter = true
 		}
 	}

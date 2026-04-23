@@ -62,6 +62,13 @@ type ControlClient struct {
 	// This is all read-only data that we expect other parts of the system
 	// to access directly.
 	State SimState
+
+	// SyncScopeState, when true, makes STARS render from (and write
+	// back to) the shared TCWDisplay.ScopeView so this client's
+	// range/pan/range-ring track every other opt-in controller at the
+	// same TCW. Set at connect-time from JoinSimRequest.SyncScopeState
+	// — never mutated after. Default false.
+	SyncScopeState bool
 }
 
 // This is the client-side representation of a server (perhaps could be better-named...)
@@ -196,13 +203,14 @@ func (p *pendingCall) InvokeCallback(es *sim.EventStream, state *SimState) {
 }
 
 func NewControlClient(ss server.SimState, controllerToken string, disableTTSPtr *bool, initials string,
-	client *RPCClient, lg *log.Logger) *ControlClient {
+	syncScopeState bool, client *RPCClient, lg *log.Logger) *ControlClient {
 	cc := &ControlClient{
 		controllerToken:   controllerToken,
 		client:            client,
 		lg:                lg,
 		lastUpdateRequest: time.Now(),
 		State:             SimState{ss},
+		SyncScopeState:    syncScopeState,
 		transmissions:     NewTransmissionManager(lg),
 		disableTTSPtr:     disableTTSPtr,
 		sttTranscriber:    stt.NewTranscriber(lg),

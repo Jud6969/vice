@@ -287,6 +287,12 @@ type JoinSimRequest struct {
 	Password        string
 	Privileged      bool
 	JoiningAsRelief bool
+	// SyncScopeState is a client-side hint (opt-in on the Join-as-Relief
+	// dialog) — when true, the client mirrors the per-TCW ScopeView
+	// (range/pan/range-ring) rather than its local preference. Server
+	// doesn't use it; it's round-tripped so the caller's own client has
+	// the intent and passes it to NewControlClient.
+	SyncScopeState bool
 }
 
 const ConnectToSimRPC = "SimManager.ConnectToSim"
