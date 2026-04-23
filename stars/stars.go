@@ -241,6 +241,13 @@ type STARSPane struct {
 	pdbArena util.ObjectArena[partialDatablock]
 	ldbArena util.ObjectArena[limitedDatablock]
 	sdbArena util.ObjectArena[suspendedDatablock]
+
+	// Scope-prefs sync state -- only used while ScopeSyncEnabled.
+	// scopePrefsBaseline is the last blob we either pushed or adopted,
+	// kept so we can detect local divergence vs shared state. Cleared
+	// whenever sync is off.
+	scopePrefsBaseline    []byte
+	scopePrefsBaselineRev uint64
 }
 
 func (sp *STARSPane) notePendingATISGITextUpdate(ctx *panes.Context, line int, atis, text *string) {
@@ -1204,14 +1211,18 @@ func (sp *STARSPane) Draw(ctx *panes.Context, cb *renderer.CommandBuffer) {
 
 	ps := sp.currentPrefs()
 
+	// Reconcile local prefs with the TCW's shared scope-prefs blob
+	// before anything reads ps this frame. No-op when sync is off.
+	sp.syncScopePrefs(ctx)
+
 	// Clear to background color
 	cb.ClearRGB(ps.Brightness.BackgroundContrast.ScaleRGB(sp.Colors.Background))
 
 	sp.processKeyboardInput(ctx)
 
-	ctr := util.Select(ps.UseUserCenter, sp.scopeUserCenter(ctx.Client), ps.DefaultCenter)
+	ctr := util.Select(ps.UseUserCenter, ps.UserCenter, ps.DefaultCenter)
 	transforms := radar.GetScopeTransformations(ctx.PaneExtent, ctx.MagneticVariation, ctx.NmPerLongitude,
-		ctr, sp.scopeRange(ctx.Client), 0)
+		ctr, ps.Range, 0)
 
 	scopeExtent := ctx.PaneExtent
 	if ps.DisplayDCB {

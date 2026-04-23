@@ -63,12 +63,18 @@ type ControlClient struct {
 	// to access directly.
 	State SimState
 
-	// SyncScopeState, when true, makes STARS render from (and write
-	// back to) the shared TCWDisplay.ScopeView so this client's
-	// range/pan/range-ring track every other opt-in controller at the
-	// same TCW. Set at connect-time from JoinSimRequest.SyncScopeState
-	// — never mutated after. Default false.
+	// SyncScopeState is the caller's hint at connect-time: "I ticked
+	// the Sync Scope Setup checkbox on the Join as Relief dialog."
+	// The server uses it to flip the TCW-wide ScopeSyncEnabled flag
+	// on. STARS read/write routing is gated on that server flag, not
+	// on this field.
 	SyncScopeState bool
+
+	// IsRelief records whether this client joined through the
+	// JoiningAsRelief path. STARS uses it to break the first-tick tie
+	// in scope-prefs sync: the primary seeds the shared state on
+	// enable, reliefs wait for the seed.
+	IsRelief bool
 }
 
 // This is the client-side representation of a server (perhaps could be better-named...)
@@ -203,7 +209,7 @@ func (p *pendingCall) InvokeCallback(es *sim.EventStream, state *SimState) {
 }
 
 func NewControlClient(ss server.SimState, controllerToken string, disableTTSPtr *bool, initials string,
-	syncScopeState bool, client *RPCClient, lg *log.Logger) *ControlClient {
+	syncScopeState, isRelief bool, client *RPCClient, lg *log.Logger) *ControlClient {
 	cc := &ControlClient{
 		controllerToken:   controllerToken,
 		client:            client,
@@ -211,6 +217,7 @@ func NewControlClient(ss server.SimState, controllerToken string, disableTTSPtr 
 		lastUpdateRequest: time.Now(),
 		State:             SimState{ss},
 		SyncScopeState:    syncScopeState,
+		IsRelief:          isRelief,
 		transmissions:     NewTransmissionManager(lg),
 		disableTTSPtr:     disableTTSPtr,
 		sttTranscriber:    stt.NewTranscriber(lg),

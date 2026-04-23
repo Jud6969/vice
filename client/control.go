@@ -683,26 +683,14 @@ func (c *ControlClient) SetTrackDisplayLDBBeaconCode(acid sim.ACID, v bool, call
 	c.setTrackBool(server.SetTrackDisplayLDBBeaconCodeRPC, acid, v, callback)
 }
 
-func (c *ControlClient) SetTCWRange(v float32, callback func(error)) {
+// SetScopePrefs pushes a caller-encoded STARS preferences blob to the
+// TCW's shared state. STARS callers encode their current prefs via
+// the stars-local snapshot helper; the server stores the bytes
+// verbatim and fans them out to every controller at the TCW.
+func (c *ControlClient) SetScopePrefs(blob []byte, callback func(error)) {
 	var update server.SimStateUpdate
-	c.addCall(makeStateUpdateRPCCall(c.client.Go(server.SetTCWRangeRPC, &server.SetTCWFloatArgs{
+	c.addCall(makeStateUpdateRPCCall(c.client.Go(server.SetScopePrefsBlobRPC, &server.SetScopePrefsBlobArgs{
 		ControllerToken: c.controllerToken,
-		Value:           v,
-	}, &update, nil), &update, callback))
-}
-
-func (c *ControlClient) SetTCWUserCenter(p math.Point2LL, callback func(error)) {
-	var update server.SimStateUpdate
-	c.addCall(makeStateUpdateRPCCall(c.client.Go(server.SetTCWUserCenterRPC, &server.SetTCWPointArgs{
-		ControllerToken: c.controllerToken,
-		Value:           p,
-	}, &update, nil), &update, callback))
-}
-
-func (c *ControlClient) SetTCWRangeRingRadius(v int, callback func(error)) {
-	var update server.SimStateUpdate
-	c.addCall(makeStateUpdateRPCCall(c.client.Go(server.SetTCWRangeRingRadiusRPC, &server.SetTCWIntArgs{
-		ControllerToken: c.controllerToken,
-		Value:           v,
+		Blob:            blob,
 	}, &update, nil), &update, callback))
 }

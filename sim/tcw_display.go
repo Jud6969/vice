@@ -18,31 +18,33 @@ type TCWDisplayState struct {
 	// field for an ACID, and pruned when the aircraft leaves the sim.
 	Annotations map[ACID]TrackAnnotations
 
-	// ScopeView holds scope-view fields (range / pan / range-ring
-	// radius). Writes always populate this from any controller; reads
-	// are subscribed to by clients that opt into "Sync Scope Setup"
-	// on the Join-as-Relief dialog.
-	ScopeView ScopeViewState
+	// ScopePrefsBlob is an opaque JSON-encoded STARS Preferences
+	// snapshot: the whole struct sans a handful of per-user fields
+	// (character size, audio, cursor home, dwell mode, DCB position).
+	// The server does not inspect the blob -- it is written by the
+	// client that last mutated a scope-wide setting and echoed back
+	// to all controllers at the TCW so they can apply it to their
+	// local prefs. Zero-length means no client has seeded shared
+	// state yet.
+	ScopePrefsBlob []byte
+
+	// ScopePrefsRev is bumped every time ScopePrefsBlob is written.
+	// Clients track the last Rev they applied so they can ignore
+	// echoes of their own pushes without having to byte-compare the
+	// blob every frame.
+	ScopePrefsRev uint64
 
 	// ScopeSyncEnabled is a TCW-wide flag flipped to true the first
 	// time a relief joins with the "Sync Scope Setup" checkbox on.
 	// While true, every client at the TCW (including the primary who
-	// never saw the checkbox) reads/writes the shared ScopeView
-	// instead of their local STARS preference. Sticky for the session.
+	// never saw the checkbox) reads/writes the shared scope prefs
+	// blob instead of their local-only STARS preference. Sticky for
+	// the session.
 	ScopeSyncEnabled bool
 
 	// Monotonic revision, bumped on every mutation. Clients can send
 	// last-seen rev to the server for diff detection in future plans.
 	Rev uint64
-}
-
-// ScopeViewState is the scope-view slice of shared TCW display state.
-// Only opt-in clients read from it; writes are unconditional so the
-// value is always fresh for any later opt-in joiner.
-type ScopeViewState struct {
-	Range           float32
-	UserCenter      math.Point2LL
-	RangeRingRadius int
 }
 
 // TrackAnnotations is the subset of stars.TrackState that is shared
@@ -151,27 +153,18 @@ func (s *Sim) SetTrackDisplayLDBBeaconCode(tcw TCW, acid ACID, v bool) {
 	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.DisplayLDBBeaconCode = v })
 }
 
-// mutateScopeView acquires the sim lock, ensures a TCWDisplay exists,
-// applies `f` to its ScopeView in place, and bumps Rev.
-func (s *Sim) mutateScopeView(tcw TCW, f func(*ScopeViewState)) {
+// SetScopePrefsBlob replaces the TCW-wide scope prefs blob with the
+// caller's payload and bumps both ScopePrefsRev and Rev. The server
+// does not interpret the bytes -- it just fans them out to everyone
+// polling the TCW's state.
+func (s *Sim) SetScopePrefsBlob(tcw TCW, blob []byte) {
 	s.mu.Lock(s.lg)
 	defer s.mu.Unlock(s.lg)
 
 	d := s.EnsureTCWDisplay(tcw)
-	f(&d.ScopeView)
+	d.ScopePrefsBlob = blob
+	d.ScopePrefsRev++
 	d.Rev++
-}
-
-func (s *Sim) SetTCWRange(tcw TCW, r float32) {
-	s.mutateScopeView(tcw, func(v *ScopeViewState) { v.Range = r })
-}
-
-func (s *Sim) SetTCWUserCenter(tcw TCW, p math.Point2LL) {
-	s.mutateScopeView(tcw, func(v *ScopeViewState) { v.UserCenter = p })
-}
-
-func (s *Sim) SetTCWRangeRingRadius(tcw TCW, r int) {
-	s.mutateScopeView(tcw, func(v *ScopeViewState) { v.RangeRingRadius = r })
 }
 
 // EnableScopeSync flips the TCW-wide ScopeSyncEnabled flag on and bumps

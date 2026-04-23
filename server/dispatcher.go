@@ -1287,60 +1287,25 @@ func (sd *dispatcher) SetTrackDisplayLDBBeaconCode(args *SetTrackBoolArgs, updat
 	return nil
 }
 
-// Shared TCW scope-view mutations. These populate the per-TCW
-// ScopeView fields regardless of who's watching; clients that opted
-// into scope sync read those fields back on poll.
+// Shared TCW scope-prefs sync. A client whose scopePrefsBaseline
+// diverges from the currently-shared blob pushes its JSON-encoded
+// STARS Preferences here; the server stores it verbatim and everyone
+// at the TCW picks it up via their next SimStateUpdate poll.
 
-type SetTCWFloatArgs struct {
+type SetScopePrefsBlobArgs struct {
 	ControllerToken string
-	Value           float32
+	Blob            []byte
 }
 
-type SetTCWPointArgs struct {
-	ControllerToken string
-	Value           math.Point2LL
-}
+const SetScopePrefsBlobRPC = "Sim.SetScopePrefsBlob"
 
-type SetTCWIntArgs struct {
-	ControllerToken string
-	Value           int
-}
-
-const SetTCWRangeRPC = "Sim.SetTCWRange"
-
-func (sd *dispatcher) SetTCWRange(args *SetTCWFloatArgs, update *SimStateUpdate) error {
+func (sd *dispatcher) SetScopePrefsBlob(args *SetScopePrefsBlobArgs, update *SimStateUpdate) error {
 	defer sd.sm.lg.CatchAndReportCrash()
 	c := sd.sm.LookupController(args.ControllerToken)
 	if c == nil {
 		return ErrNoSimForControllerToken
 	}
-	c.sim.SetTCWRange(c.tcw, args.Value)
-	*update = c.GetStateUpdate()
-	return nil
-}
-
-const SetTCWUserCenterRPC = "Sim.SetTCWUserCenter"
-
-func (sd *dispatcher) SetTCWUserCenter(args *SetTCWPointArgs, update *SimStateUpdate) error {
-	defer sd.sm.lg.CatchAndReportCrash()
-	c := sd.sm.LookupController(args.ControllerToken)
-	if c == nil {
-		return ErrNoSimForControllerToken
-	}
-	c.sim.SetTCWUserCenter(c.tcw, args.Value)
-	*update = c.GetStateUpdate()
-	return nil
-}
-
-const SetTCWRangeRingRadiusRPC = "Sim.SetTCWRangeRingRadius"
-
-func (sd *dispatcher) SetTCWRangeRingRadius(args *SetTCWIntArgs, update *SimStateUpdate) error {
-	defer sd.sm.lg.CatchAndReportCrash()
-	c := sd.sm.LookupController(args.ControllerToken)
-	if c == nil {
-		return ErrNoSimForControllerToken
-	}
-	c.sim.SetTCWRangeRingRadius(c.tcw, args.Value)
+	c.sim.SetScopePrefsBlob(c.tcw, args.Blob)
 	*update = c.GetStateUpdate()
 	return nil
 }

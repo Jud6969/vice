@@ -5,53 +5,56 @@
 package server
 
 import (
+	"bytes"
 	"testing"
-
-	"github.com/mmp/vice/math"
 )
 
-// TestTwoClientsSeeEachOthersScopeViewChange exercises the scope-view
-// dispatcher round trip: A mutates Range, B polls and sees it; B
-// mutates UserCenter, A polls and sees it; A mutates RangeRingRadius,
-// B polls and sees it. Rev is monotonic across the mutations.
-func TestTwoClientsSeeEachOthersScopeViewChange(t *testing.T) {
+// TestTwoClientsSeeEachOthersScopePrefsBlob exercises the unified
+// scope-prefs blob dispatcher round trip: A pushes a blob, B polls
+// and sees it; B pushes a new blob, A polls and sees it. Rev is
+// monotonic across the mutations.
+func TestTwoClientsSeeEachOthersScopePrefsBlob(t *testing.T) {
 	sm, tokenA, tcw := newTestManagerWithHuman(t)
 	tokenB := addReliefHuman(t, sm, tcw)
 
 	sd := &dispatcher{sm: sm}
 
-	// A sets Range.
+	blob1 := []byte(`{"Range":42}`)
 	var upA SimStateUpdate
-	if err := sd.SetTCWRange(
-		&SetTCWFloatArgs{ControllerToken: tokenA, Value: 42},
+	if err := sd.SetScopePrefsBlob(
+		&SetScopePrefsBlobArgs{ControllerToken: tokenA, Blob: blob1},
 		&upA,
 	); err != nil {
-		t.Fatalf("A SetTCWRange: %v", err)
+		t.Fatalf("A SetScopePrefsBlob: %v", err)
 	}
-	if upA.TCWDisplay == nil || upA.TCWDisplay.ScopeView.Range != 42 {
-		t.Errorf("A echo ScopeView.Range = %+v, want 42", upA.TCWDisplay)
+	if upA.TCWDisplay == nil || !bytes.Equal(upA.TCWDisplay.ScopePrefsBlob, blob1) {
+		t.Errorf("A echo ScopePrefsBlob = %q, want %q", upA.TCWDisplay.ScopePrefsBlob, blob1)
 	}
+	rev1 := upA.TCWDisplay.ScopePrefsRev
 
-	// B polls and sees A's range.
+	// B polls and sees A's blob.
 	var upB SimStateUpdate
 	if err := sd.GetStateUpdate(tokenB, &upB); err != nil {
 		t.Fatalf("B GetStateUpdate: %v", err)
 	}
-	if upB.TCWDisplay == nil || upB.TCWDisplay.ScopeView.Range != 42 {
-		t.Errorf("B sees ScopeView.Range = %+v, want 42", upB.TCWDisplay)
+	if upB.TCWDisplay == nil || !bytes.Equal(upB.TCWDisplay.ScopePrefsBlob, blob1) {
+		t.Errorf("B sees ScopePrefsBlob = %q, want %q", upB.TCWDisplay.ScopePrefsBlob, blob1)
+	}
+	if upB.TCWDisplay.ScopePrefsRev != rev1 {
+		t.Errorf("B sees ScopePrefsRev = %d, want %d", upB.TCWDisplay.ScopePrefsRev, rev1)
 	}
 
-	// B sets UserCenter.
-	p := math.Point2LL{-73.5, 40.7}
+	// B pushes a new blob.
+	blob2 := []byte(`{"Range":99,"PTLLength":3}`)
 	var upB2 SimStateUpdate
-	if err := sd.SetTCWUserCenter(
-		&SetTCWPointArgs{ControllerToken: tokenB, Value: p},
+	if err := sd.SetScopePrefsBlob(
+		&SetScopePrefsBlobArgs{ControllerToken: tokenB, Blob: blob2},
 		&upB2,
 	); err != nil {
-		t.Fatalf("B SetTCWUserCenter: %v", err)
+		t.Fatalf("B SetScopePrefsBlob: %v", err)
 	}
 
-	// A polls and sees B's center and the retained range.
+	// A polls and sees B's blob and a bumped rev.
 	var upA2 SimStateUpdate
 	if err := sd.GetStateUpdate(tokenA, &upA2); err != nil {
 		t.Fatalf("A GetStateUpdate: %v", err)
@@ -59,40 +62,14 @@ func TestTwoClientsSeeEachOthersScopeViewChange(t *testing.T) {
 	if upA2.TCWDisplay == nil {
 		t.Fatal("A.TCWDisplay is nil on poll")
 	}
-	if upA2.TCWDisplay.ScopeView.UserCenter != p {
-		t.Errorf("A sees UserCenter = %+v, want %+v", upA2.TCWDisplay.ScopeView.UserCenter, p)
+	if !bytes.Equal(upA2.TCWDisplay.ScopePrefsBlob, blob2) {
+		t.Errorf("A sees ScopePrefsBlob = %q, want %q", upA2.TCWDisplay.ScopePrefsBlob, blob2)
 	}
-	if upA2.TCWDisplay.ScopeView.Range != 42 {
-		t.Errorf("A lost Range: got %v, want 42 retained", upA2.TCWDisplay.ScopeView.Range)
+	if upA2.TCWDisplay.ScopePrefsRev <= rev1 {
+		t.Errorf("ScopePrefsRev did not advance: %d -> %d", rev1, upA2.TCWDisplay.ScopePrefsRev)
 	}
-
-	// A sets RangeRingRadius.
-	var upA3 SimStateUpdate
-	if err := sd.SetTCWRangeRingRadius(
-		&SetTCWIntArgs{ControllerToken: tokenA, Value: 7},
-		&upA3,
-	); err != nil {
-		t.Fatalf("A SetTCWRangeRingRadius: %v", err)
-	}
-
-	// B polls and sees all three fields.
-	var upB3 SimStateUpdate
-	if err := sd.GetStateUpdate(tokenB, &upB3); err != nil {
-		t.Fatalf("B GetStateUpdate: %v", err)
-	}
-	if upB3.TCWDisplay == nil {
-		t.Fatal("B.TCWDisplay is nil on poll")
-	}
-	if upB3.TCWDisplay.ScopeView.RangeRingRadius != 7 {
-		t.Errorf("B sees RangeRingRadius = %v, want 7", upB3.TCWDisplay.ScopeView.RangeRingRadius)
-	}
-	if upB3.TCWDisplay.ScopeView.Range != 42 || upB3.TCWDisplay.ScopeView.UserCenter != p {
-		t.Errorf("B lost earlier fields: %+v", upB3.TCWDisplay.ScopeView)
-	}
-
-	// Rev advanced across the three mutations.
-	if upB3.TCWDisplay.Rev <= upA.TCWDisplay.Rev {
-		t.Errorf("Rev did not advance: %d -> %d", upA.TCWDisplay.Rev, upB3.TCWDisplay.Rev)
+	if upA2.TCWDisplay.Rev <= upA.TCWDisplay.Rev {
+		t.Errorf("Rev did not advance: %d -> %d", upA.TCWDisplay.Rev, upA2.TCWDisplay.Rev)
 	}
 }
 
@@ -175,21 +152,19 @@ func TestReliefJoinWithSyncScopeStateEnablesSharedMode(t *testing.T) {
 	}
 }
 
-// TestScopeViewSurvivesRejoin: A sets a non-default ScopeView, leaves;
-// a fresh human joins the same TCW and inherits the full ScopeView.
-func TestScopeViewSurvivesRejoin(t *testing.T) {
+// TestScopePrefsBlobSurvivesRejoin: A pushes a non-default
+// scope-prefs blob, leaves; a fresh human joins the same TCW and
+// inherits the blob.
+func TestScopePrefsBlobSurvivesRejoin(t *testing.T) {
 	sm, tokenA, tcw := newTestManagerWithHuman(t)
 	sd := &dispatcher{sm: sm}
 
-	p := math.Point2LL{-118.4, 33.9}
-	if err := sd.SetTCWRange(&SetTCWFloatArgs{ControllerToken: tokenA, Value: 55}, &SimStateUpdate{}); err != nil {
-		t.Fatalf("SetTCWRange: %v", err)
-	}
-	if err := sd.SetTCWUserCenter(&SetTCWPointArgs{ControllerToken: tokenA, Value: p}, &SimStateUpdate{}); err != nil {
-		t.Fatalf("SetTCWUserCenter: %v", err)
-	}
-	if err := sd.SetTCWRangeRingRadius(&SetTCWIntArgs{ControllerToken: tokenA, Value: 12}, &SimStateUpdate{}); err != nil {
-		t.Fatalf("SetTCWRangeRingRadius: %v", err)
+	blob := []byte(`{"Range":55,"PTLLength":2.5}`)
+	if err := sd.SetScopePrefsBlob(
+		&SetScopePrefsBlobArgs{ControllerToken: tokenA, Blob: blob},
+		&SimStateUpdate{},
+	); err != nil {
+		t.Fatalf("SetScopePrefsBlob: %v", err)
 	}
 
 	if err := sm.SignOff(tokenA); err != nil {
@@ -204,8 +179,7 @@ func TestScopeViewSurvivesRejoin(t *testing.T) {
 	if upC.TCWDisplay == nil {
 		t.Fatal("C.TCWDisplay is nil")
 	}
-	sv := upC.TCWDisplay.ScopeView
-	if sv.Range != 55 || sv.UserCenter != p || sv.RangeRingRadius != 12 {
-		t.Errorf("C did not inherit ScopeView: got %+v, want Range=55 UserCenter=%+v RangeRingRadius=12", sv, p)
+	if !bytes.Equal(upC.TCWDisplay.ScopePrefsBlob, blob) {
+		t.Errorf("C did not inherit ScopePrefsBlob: got %q, want %q", upC.TCWDisplay.ScopePrefsBlob, blob)
 	}
 }

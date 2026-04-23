@@ -40,7 +40,7 @@ func (sp *STARSPane) drawCompass(ctx *panes.Context, scopeExtent math.Extent2D, 
 
 	// Window coordinates of the center point.
 	// TODO: should we explicitly handle the case of this being outside the window?
-	ctr := util.Select(ps.UseUserCenter, sp.scopeUserCenter(ctx.Client), ps.DefaultCenter)
+	ctr := util.Select(ps.UseUserCenter, ps.UserCenter, ps.DefaultCenter)
 	pw := transforms.WindowFromLatLongP(ctr)
 	bounds := math.Extent2D{P1: [2]float32{scopeExtent.Width(), scopeExtent.Height()}}
 	font := sp.systemFont(ctx, ps.CharSize.Tools)
@@ -133,7 +133,7 @@ func (sp *STARSPane) drawRangeRings(ctx *panes.Context, transforms radar.ScopeTr
 	ld := renderer.GetLinesDrawBuilder()
 	defer renderer.ReturnLinesDrawBuilder(ld)
 
-	rrr := sp.scopeRangeRingRadius(ctx.Client)
+	rrr := ps.RangeRingRadius
 	for i := 1; i < 40; i++ {
 		// Radius of this ring in pixels
 		r := float32(i) * float32(rrr) / pixelDistanceNm

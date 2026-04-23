@@ -529,8 +529,8 @@ func (sp *STARSPane) DrawInfo(c *client.ControlClient, p platform.Platform, lg *
 
 		candidateHolds := make(map[string]av.Hold)
 		ps := sp.currentPrefs()
-		ctr := util.Select(ps.UseUserCenter, sp.scopeUserCenter(c), ps.DefaultCenter)
-		rng := sp.scopeRange(c)
+		ctr := util.Select(ps.UseUserCenter, ps.UserCenter, ps.DefaultCenter)
+		rng := ps.Range
 		for fix, holds := range util.SortedMap(av.DB.EnrouteHolds) {
 			loc, _ := av.DB.LookupWaypoint(fix)
 			if dist := math.NMDistance2LL(ctr, loc); dist <= rng {

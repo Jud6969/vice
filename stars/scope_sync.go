@@ -5,16 +5,32 @@
 package stars
 
 import (
+	"bytes"
+	"encoding/json"
+
 	"github.com/mmp/vice/client"
-	"github.com/mmp/vice/math"
 	"github.com/mmp/vice/panes"
 )
 
-// scopeSyncActive reports whether the client is currently at a TCW
-// that has flipped to shared-scope mode. The flag is server-owned and
-// arrives via SimStateUpdate; it is sticky once enabled. A relief
-// joining with the "Sync Scope Setup" checkbox turns it on for every
-// controller at the TCW, including the primary.
+// Scope-prefs sync routes every scope-wide STARS preference
+// (brightness, PTL, range/pan/range-ring, weather levels, leader
+// lines, SSA filters, list positions, video map selections, etc.)
+// through a single opaque JSON blob shipped with SimStateUpdate.
+// Per-user settings -- character size, audio, dwell mode, cursor
+// home, DCB visibility -- are excluded and remain local.
+//
+// The loop runs once per STARSPane Draw:
+//   - When sync goes on and shared is already seeded, adopt the
+//     shared blob into local prefs.
+//   - When sync goes on and shared is empty, the primary seeds; the
+//     relief that ticked the checkbox waits.
+//   - While sync is on, if shared's Rev advanced since we last saw
+//     it, apply the shared blob to local.
+//   - Otherwise, if our local prefs diverged from the last snapshot
+//     we pushed/applied, push a fresh blob.
+
+// scopeSyncActive reports whether the client's current TCW has
+// flipped to shared-scope mode.
 func scopeSyncActive(c *client.ControlClient) bool {
 	if c == nil {
 		return false
@@ -23,58 +39,149 @@ func scopeSyncActive(c *client.ControlClient) bool {
 	return d != nil && d.ScopeSyncEnabled
 }
 
-// scopeRange returns the effective scope range. Under shared-scope
-// mode, reads come from TCWDisplay.ScopeView when it has been seeded;
-// otherwise the local preference is used as a fallback so the scope
-// never jumps to a zero value before the first shared write.
-func (sp *STARSPane) scopeRange(c *client.ControlClient) float32 {
-	ps := sp.currentPrefs()
-	if scopeSyncActive(c) && c.State.TCWDisplay.ScopeView.Range != 0 {
-		return c.State.TCWDisplay.ScopeView.Range
-	}
-	return ps.Range
+// scopeLocalOnly snapshots the STARS preference fields that must
+// survive any incoming scope-sync apply. These are per-user
+// settings the user explicitly wants to keep (character size) or
+// that simply don't make sense to share (audio, cursor home, dwell
+// mode, DCB position/visibility, per-user restriction-area
+// overrides).
+type scopeLocalOnly struct {
+	charSize                struct{ DCB, Datablocks, Lists, Tools, PositionSymbols int }
+	audioVolume             int
+	audioEffectEnabled      []bool
+	dwellMode               DwellMode
+	autoCursorHome          bool
+	cursorHome              [2]float32
+	displayDCB              bool
+	dcbPosition             int
+	restrictionAreaSettings map[int]*RestrictionAreaSettings
 }
 
-func (sp *STARSPane) scopeUserCenter(c *client.ControlClient) math.Point2LL {
-	ps := sp.currentPrefs()
-	if scopeSyncActive(c) && !c.State.TCWDisplay.ScopeView.UserCenter.IsZero() {
-		return c.State.TCWDisplay.ScopeView.UserCenter
+func captureScopeLocalOnly(p *Preferences) scopeLocalOnly {
+	return scopeLocalOnly{
+		charSize:                p.CharSize,
+		audioVolume:             p.AudioVolume,
+		audioEffectEnabled:      append([]bool(nil), p.AudioEffectEnabled...),
+		dwellMode:               p.DwellMode,
+		autoCursorHome:          p.AutoCursorHome,
+		cursorHome:              p.CursorHome,
+		displayDCB:              p.DisplayDCB,
+		dcbPosition:             p.DCBPosition,
+		restrictionAreaSettings: p.RestrictionAreaSettings,
 	}
-	return ps.UserCenter
 }
 
-func (sp *STARSPane) scopeRangeRingRadius(c *client.ControlClient) int {
-	ps := sp.currentPrefs()
-	if scopeSyncActive(c) && c.State.TCWDisplay.ScopeView.RangeRingRadius != 0 {
-		return c.State.TCWDisplay.ScopeView.RangeRingRadius
-	}
-	return ps.RangeRingRadius
+func restoreScopeLocalOnly(p *Preferences, s scopeLocalOnly) {
+	p.CharSize = s.charSize
+	p.AudioVolume = s.audioVolume
+	p.AudioEffectEnabled = s.audioEffectEnabled
+	p.DwellMode = s.dwellMode
+	p.AutoCursorHome = s.autoCursorHome
+	p.CursorHome = s.cursorHome
+	p.DisplayDCB = s.displayDCB
+	p.DCBPosition = s.dcbPosition
+	p.RestrictionAreaSettings = s.restrictionAreaSettings
 }
 
-// setScopeRange routes a range mutation to either the shared TCWDisplay
-// (when the TCW is in shared-scope mode) or the local preference. The
-// shared path is fire-and-forget; the echoed SimStateUpdate refreshes
-// State.TCWDisplay.ScopeView on the next poll.
-func (sp *STARSPane) setScopeRange(ctx *panes.Context, v float32) {
-	if scopeSyncActive(ctx.Client) {
-		ctx.Client.SetTCWRange(v, func(err error) { sp.displayError(err, ctx, "") })
+// encodeScopePrefs JSON-encodes a Preferences snapshot suitable for
+// shared-state transport. Local-only fields are zeroed so they don't
+// clobber the receiver's values on apply.
+func encodeScopePrefs(p *Preferences) ([]byte, error) {
+	snap := *p
+	// Zero local-only fields on the copy so they round-trip as
+	// empty; restoreScopeLocalOnly on apply then reinstates the
+	// receiver's own values.
+	snap.CharSize = struct{ DCB, Datablocks, Lists, Tools, PositionSymbols int }{}
+	snap.AudioVolume = 0
+	snap.AudioEffectEnabled = nil
+	snap.DwellMode = DwellMode(0)
+	snap.AutoCursorHome = false
+	snap.CursorHome = [2]float32{}
+	snap.DisplayDCB = false
+	snap.DCBPosition = 0
+	snap.RestrictionAreaSettings = nil
+	return json.Marshal(&snap)
+}
+
+// applyScopePrefsBlob decodes blob and copies the result over the
+// receiver's Preferences, then restores the local-only fields so
+// character size / audio / cursor / etc. remain per-user.
+func applyScopePrefsBlob(p *Preferences, blob []byte) error {
+	local := captureScopeLocalOnly(p)
+
+	var incoming Preferences
+	if err := json.Unmarshal(blob, &incoming); err != nil {
+		return err
+	}
+	*p = incoming
+
+	restoreScopeLocalOnly(p, local)
+	return nil
+}
+
+// syncScopePrefs is called once per STARSPane.Draw. It reconciles
+// the local prefs with the TCW's shared blob: adopt shared state
+// when we fall behind, push local state when we diverge. Does
+// nothing when sync is not active.
+func (sp *STARSPane) syncScopePrefs(ctx *panes.Context) {
+	c := ctx.Client
+	if !scopeSyncActive(c) {
+		sp.scopePrefsBaseline = nil
+		sp.scopePrefsBaselineRev = 0
 		return
 	}
-	sp.currentPrefs().Range = v
-}
+	d := c.State.TCWDisplay
+	ps := sp.currentPrefs()
 
-func (sp *STARSPane) setScopeUserCenter(ctx *panes.Context, p math.Point2LL) {
-	if scopeSyncActive(ctx.Client) {
-		ctx.Client.SetTCWUserCenter(p, func(err error) { sp.displayError(err, ctx, "") })
+	// First tick after sync enabled on this client.
+	if sp.scopePrefsBaseline == nil {
+		if d.ScopePrefsRev > 0 && len(d.ScopePrefsBlob) > 0 {
+			// Shared already seeded by someone else -- adopt it.
+			if err := applyScopePrefsBlob(ps, d.ScopePrefsBlob); err != nil {
+				return
+			}
+			sp.scopePrefsBaseline = append([]byte(nil), d.ScopePrefsBlob...)
+			sp.scopePrefsBaselineRev = d.ScopePrefsRev
+			return
+		}
+		// Shared empty. The primary seeds; the relief that flipped
+		// the switch waits for the primary's push so its defaults
+		// don't race in first and clobber the primary's view.
+		if c.IsRelief {
+			return
+		}
+		blob, err := encodeScopePrefs(ps)
+		if err != nil {
+			return
+		}
+		c.SetScopePrefs(blob, func(err error) { sp.displayError(err, ctx, "") })
+		sp.scopePrefsBaseline = blob
+		// Rev will catch up on the next poll when we see the
+		// server's echo; leave it at 0 so the next tick treats the
+		// server echo as "remote advanced" and does not re-push.
 		return
 	}
-	sp.currentPrefs().UserCenter = p
-}
 
-func (sp *STARSPane) setScopeRangeRingRadius(ctx *panes.Context, v int) {
-	if scopeSyncActive(ctx.Client) {
-		ctx.Client.SetTCWRangeRingRadius(v, func(err error) { sp.displayError(err, ctx, "") })
+	// If the server's Rev advanced past ours, pull the shared blob
+	// into local prefs. This path handles echoes of our own pushes
+	// too -- applying our own blob back onto ourselves is a no-op.
+	if d.ScopePrefsRev > sp.scopePrefsBaselineRev && len(d.ScopePrefsBlob) > 0 {
+		if err := applyScopePrefsBlob(ps, d.ScopePrefsBlob); err != nil {
+			return
+		}
+		sp.scopePrefsBaseline = append([]byte(nil), d.ScopePrefsBlob...)
+		sp.scopePrefsBaselineRev = d.ScopePrefsRev
 		return
 	}
-	sp.currentPrefs().RangeRingRadius = v
+
+	// Local-only path: detect divergence vs the last known shared
+	// blob and push if different.
+	blob, err := encodeScopePrefs(ps)
+	if err != nil {
+		return
+	}
+	if !bytes.Equal(blob, sp.scopePrefsBaseline) {
+		c.SetScopePrefs(blob, func(err error) { sp.displayError(err, ctx, "") })
+		sp.scopePrefsBaseline = blob
+	}
 }

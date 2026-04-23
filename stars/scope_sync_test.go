@@ -8,100 +8,122 @@ import (
 	"testing"
 
 	"github.com/mmp/vice/client"
-	"github.com/mmp/vice/math"
 	"github.com/mmp/vice/server"
 	"github.com/mmp/vice/sim"
 )
 
-// newScopeTestPane builds an sp with local preferences seeded to known
-// values. Helpers read ps via currentPrefs() → &sp.prefSet.Current.
-func newScopeTestPane(localRange float32, localCenter math.Point2LL, localRRR int) *STARSPane {
-	sp := &STARSPane{prefSet: &PreferenceSet{}}
-	sp.prefSet.Current.Range = localRange
-	sp.prefSet.Current.UserCenter = localCenter
-	sp.prefSet.Current.RangeRingRadius = localRRR
-	return sp
+func TestScopeSyncActiveGatesOnTCWFlag(t *testing.T) {
+	cases := []struct {
+		name string
+		c    *client.ControlClient
+		want bool
+	}{
+		{"nil client", nil, false},
+		{"nil TCWDisplay", newSyncTestClient(nil), false},
+		{"TCWDisplay present, flag off", newSyncTestClient(&sim.TCWDisplayState{}), false},
+		{"TCWDisplay present, flag on", newSyncTestClient(&sim.TCWDisplayState{ScopeSyncEnabled: true}), true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := scopeSyncActive(tc.c); got != tc.want {
+				t.Errorf("scopeSyncActive = %v, want %v", got, tc.want)
+			}
+		})
+	}
 }
 
-// newScopeTestClient builds a ControlClient with an optional TCWDisplay
-// snapshot. ScopeSyncEnabled on that snapshot is what gates the helpers
-// now — the client's local SyncScopeState flag is kept for wire
-// round-tripping but no longer affects read/write routing.
-func newScopeTestClient(tcw *sim.TCWDisplayState) *client.ControlClient {
+// TestApplyScopePrefsBlobPreservesLocalOnlyFields verifies that
+// decoding a blob over a Preferences value restores the receiver's
+// per-user fields (character size, audio, cursor, dwell, DCB
+// position/visibility, restriction-area overrides) rather than
+// letting the incoming blob overwrite them.
+func TestApplyScopePrefsBlobPreservesLocalOnlyFields(t *testing.T) {
+	// Sender's prefs: populate both shared and local-only fields, then
+	// encode. encodeScopePrefs zeros the local-only fields before
+	// marshaling so they can't leak to the receiver.
+	sender := &Preferences{}
+	sender.Range = 42
+	sender.PTLLength = 3
+	sender.CharSize.Datablocks = 7 // local-only: must NOT propagate
+	sender.AudioVolume = 77        // local-only: must NOT propagate
+	sender.DwellMode = DwellMode(2)
+	sender.AutoCursorHome = true
+	sender.DisplayDCB = true
+	sender.DCBPosition = 3
+
+	blob, err := encodeScopePrefs(sender)
+	if err != nil {
+		t.Fatalf("encodeScopePrefs: %v", err)
+	}
+
+	// Receiver starts with its own local-only values that must
+	// survive an apply.
+	receiver := &Preferences{}
+	receiver.Range = 10 // will get replaced
+	receiver.CharSize.Datablocks = 99
+	receiver.AudioVolume = 5
+	receiver.DwellMode = DwellMode(1)
+	receiver.AutoCursorHome = false
+	receiver.DisplayDCB = false
+	receiver.DCBPosition = 0
+
+	if err := applyScopePrefsBlob(receiver, blob); err != nil {
+		t.Fatalf("applyScopePrefsBlob: %v", err)
+	}
+
+	// Shared fields were adopted.
+	if receiver.Range != 42 {
+		t.Errorf("Range = %v, want 42 (shared field adopted)", receiver.Range)
+	}
+	if receiver.PTLLength != 3 {
+		t.Errorf("PTLLength = %v, want 3 (shared field adopted)", receiver.PTLLength)
+	}
+
+	// Local-only fields retained the receiver's original values.
+	if receiver.CharSize.Datablocks != 99 {
+		t.Errorf("CharSize.Datablocks = %v, want 99 (local preserved)", receiver.CharSize.Datablocks)
+	}
+	if receiver.AudioVolume != 5 {
+		t.Errorf("AudioVolume = %v, want 5 (local preserved)", receiver.AudioVolume)
+	}
+	if receiver.DwellMode != DwellMode(1) {
+		t.Errorf("DwellMode = %v, want 1 (local preserved)", receiver.DwellMode)
+	}
+	if receiver.AutoCursorHome != false {
+		t.Errorf("AutoCursorHome = %v, want false (local preserved)", receiver.AutoCursorHome)
+	}
+	if receiver.DisplayDCB != false {
+		t.Errorf("DisplayDCB = %v, want false (local preserved)", receiver.DisplayDCB)
+	}
+	if receiver.DCBPosition != 0 {
+		t.Errorf("DCBPosition = %v, want 0 (local preserved)", receiver.DCBPosition)
+	}
+}
+
+// TestEncodeScopePrefsDoesNotMutateSource verifies that the local-only
+// zeroing done inside encodeScopePrefs is on a copy, not the caller's
+// Preferences.
+func TestEncodeScopePrefsDoesNotMutateSource(t *testing.T) {
+	p := &Preferences{}
+	p.CharSize.Datablocks = 7
+	p.AudioVolume = 77
+	p.DwellMode = DwellMode(2)
+
+	if _, err := encodeScopePrefs(p); err != nil {
+		t.Fatalf("encodeScopePrefs: %v", err)
+	}
+
+	if p.CharSize.Datablocks != 7 || p.AudioVolume != 77 || p.DwellMode != DwellMode(2) {
+		t.Errorf("encodeScopePrefs mutated source: CharSize.Datablocks=%v AudioVolume=%v DwellMode=%v",
+			p.CharSize.Datablocks, p.AudioVolume, p.DwellMode)
+	}
+}
+
+// newSyncTestClient mirrors the helper in other client-using tests:
+// build a minimal ControlClient with a pre-seeded TCWDisplay snapshot.
+func newSyncTestClient(tcw *sim.TCWDisplayState) *client.ControlClient {
 	c := &client.ControlClient{}
 	c.State = client.SimState{SimState: server.SimState{}}
 	c.State.TCWDisplay = tcw
 	return c
-}
-
-func TestScopeReadsWhenSyncDisabledReturnLocal(t *testing.T) {
-	// ScopeView is seeded with non-zero values but ScopeSyncEnabled is
-	// false — helpers must ignore shared state.
-	sp := newScopeTestPane(10, math.Point2LL{1, 2}, 5)
-	c := newScopeTestClient(&sim.TCWDisplayState{
-		ScopeView: sim.ScopeViewState{Range: 99, UserCenter: math.Point2LL{9, 9}, RangeRingRadius: 77},
-	})
-
-	if got := sp.scopeRange(c); got != 10 {
-		t.Errorf("scopeRange = %v, want 10 (local, sync disabled)", got)
-	}
-	if got := sp.scopeUserCenter(c); got != (math.Point2LL{1, 2}) {
-		t.Errorf("scopeUserCenter = %v, want {1,2} (local, sync disabled)", got)
-	}
-	if got := sp.scopeRangeRingRadius(c); got != 5 {
-		t.Errorf("scopeRangeRingRadius = %v, want 5 (local, sync disabled)", got)
-	}
-}
-
-func TestScopeReadsWhenSyncEnabledAndSeededReturnShared(t *testing.T) {
-	sp := newScopeTestPane(10, math.Point2LL{1, 2}, 5)
-	c := newScopeTestClient(&sim.TCWDisplayState{
-		ScopeSyncEnabled: true,
-		ScopeView:        sim.ScopeViewState{Range: 99, UserCenter: math.Point2LL{9, 9}, RangeRingRadius: 77},
-	})
-
-	if got := sp.scopeRange(c); got != 99 {
-		t.Errorf("scopeRange = %v, want 99 (shared, sync enabled)", got)
-	}
-	if got := sp.scopeUserCenter(c); got != (math.Point2LL{9, 9}) {
-		t.Errorf("scopeUserCenter = %v, want {9,9} (shared, sync enabled)", got)
-	}
-	if got := sp.scopeRangeRingRadius(c); got != 77 {
-		t.Errorf("scopeRangeRingRadius = %v, want 77 (shared, sync enabled)", got)
-	}
-}
-
-func TestScopeReadsWhenSyncEnabledAndSharedUnseededFallBackToLocal(t *testing.T) {
-	// TCW flipped to shared-scope mode but no one has written yet —
-	// every ScopeView field is zero. Helpers fall back to local rather
-	// than return a garbage zero so the scope doesn't jump on join.
-	sp := newScopeTestPane(10, math.Point2LL{1, 2}, 5)
-	c := newScopeTestClient(&sim.TCWDisplayState{ScopeSyncEnabled: true})
-
-	if got := sp.scopeRange(c); got != 10 {
-		t.Errorf("scopeRange = %v, want 10 (unseeded shared, fallback)", got)
-	}
-	if got := sp.scopeUserCenter(c); got != (math.Point2LL{1, 2}) {
-		t.Errorf("scopeUserCenter = %v, want {1,2} (unseeded shared, fallback)", got)
-	}
-	if got := sp.scopeRangeRingRadius(c); got != 5 {
-		t.Errorf("scopeRangeRingRadius = %v, want 5 (unseeded shared, fallback)", got)
-	}
-}
-
-func TestScopeReadsWhenTCWDisplayNilFallBackToLocal(t *testing.T) {
-	// Client connected but the first poll hasn't returned a TCWDisplay
-	// yet. Fall back to local rather than panic.
-	sp := newScopeTestPane(10, math.Point2LL{1, 2}, 5)
-	c := newScopeTestClient(nil)
-
-	if got := sp.scopeRange(c); got != 10 {
-		t.Errorf("scopeRange = %v, want 10 (nil TCWDisplay, fallback)", got)
-	}
-	if got := sp.scopeUserCenter(c); got != (math.Point2LL{1, 2}) {
-		t.Errorf("scopeUserCenter = %v, want {1,2} (nil TCWDisplay, fallback)", got)
-	}
-	if got := sp.scopeRangeRingRadius(c); got != 5 {
-		t.Errorf("scopeRangeRingRadius = %v, want 5 (nil TCWDisplay, fallback)", got)
-	}
 }

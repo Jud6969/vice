@@ -96,7 +96,7 @@ func (cm *ConnectionManager) LoadLocalSim(s *sim.Sim, initials string, lg *log.L
 	}
 
 	cm.client = NewControlClient(*result.SimState, result.ControllerToken, cm.disableTTSPtr, initials,
-		false, cm.LocalServer.RPCClient, lg)
+		false, false, cm.LocalServer.RPCClient, lg)
 	cm.connectionStartTime = time.Now()
 
 	// Set remote server for STT log reporting (local sims report to remote server)
@@ -119,7 +119,7 @@ func (cm *ConnectionManager) CreateNewSim(config server.NewSimRequest, initials 
 		}
 		return err
 	} else {
-		cm.handleSuccessfulConnection(result, srv, initials, false, lg)
+		cm.handleSuccessfulConnection(result, srv, initials, false, false, lg)
 		return nil
 	}
 }
@@ -127,13 +127,13 @@ func (cm *ConnectionManager) CreateNewSim(config server.NewSimRequest, initials 
 // handleSuccessfulConnection handles the common logic for setting up a client
 // connection after a successful RPC call to create or join a sim
 func (cm *ConnectionManager) handleSuccessfulConnection(result server.NewSimResult, srv *Server,
-	initials string, syncScopeState bool, lg *log.Logger) {
+	initials string, syncScopeState, isRelief bool, lg *log.Logger) {
 	if cm.client != nil {
 		cm.client.Disconnect()
 	}
 
 	cm.client = NewControlClient(*result.SimState, result.ControllerToken, cm.disableTTSPtr, initials,
-		syncScopeState, srv.RPCClient, lg)
+		syncScopeState, isRelief, srv.RPCClient, lg)
 
 	cm.connectionStartTime = time.Now()
 
@@ -216,7 +216,7 @@ func (cm *ConnectionManager) ConnectToSim(config server.JoinSimRequest, initials
 		}
 		return err
 	} else {
-		cm.handleSuccessfulConnection(result, srv, initials, config.SyncScopeState, lg)
+		cm.handleSuccessfulConnection(result, srv, initials, config.SyncScopeState, config.JoiningAsRelief, lg)
 		return nil
 	}
 }

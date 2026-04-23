@@ -199,8 +199,8 @@ func (sp *STARSPane) drawDCB(ctx *panes.Context, transforms radar.ScopeTransform
 		disableMain = isMainSubmenuMode(sp.commandMode)
 
 		sp.drawDCBSpinner(ctx, makeRadarRangeSpinner(
-			func() float32 { return sp.scopeRange(ctx.Client) },
-			func(v float32) { sp.setScopeRange(ctx, math.Clamp(v, 6, 256)) },
+			func() float32 { return ps.Range },
+			func(v float32) { ps.Range = math.Clamp(v, 6, 256) },
 		), CommandModeRange, maybeDisable(buttonFull), buttonScale)
 		sp.drawDCBMouseDeltaButton(ctx, "PLACE\nCNTR", CommandModePlaceCenter, maybeDisable(buttonHalfVertical),
 			buttonScale,
@@ -209,13 +209,13 @@ func (sp *STARSPane) drawDCB(ctx *panes.Context, transforms radar.ScopeTransform
 			},
 			func(delta [2]float32) { /* update */
 				deltaLL := transforms.LatLongFromWindowV(delta)
-				sp.setScopeUserCenter(ctx, math.Sub2f(sp.scopeUserCenter(ctx.Client), deltaLL))
+				ps.UserCenter = math.Sub2f(ps.UserCenter, deltaLL)
 			})
 
 		sp.toggleButton(ctx, "OFF\nCNTR", &ps.UseUserCenter, maybeDisable(buttonHalfVertical), buttonScale)
 		sp.drawDCBSpinner(ctx, makeRangeRingRadiusSpinner(
-			func() int { return sp.scopeRangeRingRadius(ctx.Client) },
-			func(v int) { sp.setScopeRangeRingRadius(ctx, v) },
+			func() int { return ps.RangeRingRadius },
+			func(v int) { ps.RangeRingRadius = v },
 		), CommandModeRangeRings, maybeDisable(buttonFull), buttonScale)
 		if sp.drawDCBButton(ctx, "PLACE\nRR", maybeDisable(buttonHalfVertical), buttonScale,
 			sp.commandMode == CommandModePlaceRangeRings) {
