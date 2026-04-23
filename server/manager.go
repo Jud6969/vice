@@ -338,6 +338,14 @@ func (sm *SimManager) ConnectToSim(req *JoinSimRequest, result *NewSimResult) er
 	session.AddHumanController(token, tcw, req.Initials, eventSub)
 	sm.sessionsByToken[token] = session
 
+	// Opt-in scope-view sync: a relief joining with the "Sync Scope Setup"
+	// checkbox flips the TCW-wide flag on so every controller there
+	// (including the primary who never saw the checkbox) switches to
+	// reading/writing shared scope state.
+	if req.JoiningAsRelief && req.SyncScopeState {
+		session.sim.EnableScopeSync(tcw)
+	}
+
 	*result = *sm.buildNewSimResult(session, tcw, token)
 
 	return nil

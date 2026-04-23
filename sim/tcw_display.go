@@ -24,6 +24,13 @@ type TCWDisplayState struct {
 	// on the Join-as-Relief dialog.
 	ScopeView ScopeViewState
 
+	// ScopeSyncEnabled is a TCW-wide flag flipped to true the first
+	// time a relief joins with the "Sync Scope Setup" checkbox on.
+	// While true, every client at the TCW (including the primary who
+	// never saw the checkbox) reads/writes the shared ScopeView
+	// instead of their local STARS preference. Sticky for the session.
+	ScopeSyncEnabled bool
+
 	// Monotonic revision, bumped on every mutation. Clients can send
 	// last-seen rev to the server for diff detection in future plans.
 	Rev uint64
@@ -165,6 +172,19 @@ func (s *Sim) SetTCWUserCenter(tcw TCW, p math.Point2LL) {
 
 func (s *Sim) SetTCWRangeRingRadius(tcw TCW, r int) {
 	s.mutateScopeView(tcw, func(v *ScopeViewState) { v.RangeRingRadius = r })
+}
+
+// EnableScopeSync flips the TCW-wide ScopeSyncEnabled flag on and bumps
+// Rev so every connected client learns about it on the next state
+// update. Idempotent: re-enabling on an already-enabled TCW still bumps
+// Rev so late joiners see the flag promptly.
+func (s *Sim) EnableScopeSync(tcw TCW) {
+	s.mu.Lock(s.lg)
+	defer s.mu.Unlock(s.lg)
+
+	d := s.EnsureTCWDisplay(tcw)
+	d.ScopeSyncEnabled = true
+	d.Rev++
 }
 
 // pruneTCWDisplayAnnotations removes per-ACID annotation entries whose

@@ -96,6 +96,85 @@ func TestTwoClientsSeeEachOthersScopeViewChange(t *testing.T) {
 	}
 }
 
+// TestReliefJoinWithSyncScopeStateEnablesSharedMode verifies the
+// user-visible contract of the "Sync Scope Setup" checkbox: when a
+// relief joins with SyncScopeState=true, the TCW-wide
+// ScopeSyncEnabled flag flips on and is visible in SimStateUpdates
+// delivered to the primary as well, so both sides route scope reads
+// and writes through the shared state.
+func TestReliefJoinWithSyncScopeStateEnablesSharedMode(t *testing.T) {
+	sm, tokenA, tcw := newTestManagerWithHuman(t)
+	sd := &dispatcher{sm: sm}
+
+	// Primary's first poll should see a shared-scope-disabled TCW
+	// (either no TCWDisplay at all, or one with the flag clear).
+	var upA0 SimStateUpdate
+	if err := sd.GetStateUpdate(tokenA, &upA0); err != nil {
+		t.Fatalf("A GetStateUpdate (pre-join): %v", err)
+	}
+	if upA0.TCWDisplay != nil && upA0.TCWDisplay.ScopeSyncEnabled {
+		t.Fatal("primary sees ScopeSyncEnabled before any opt-in relief joined")
+	}
+
+	// Look up the session so we can drive ConnectToSim with a real
+	// JoinSimRequest that the manager can match by SimName.
+	var session *simSession
+	for _, s := range sm.sessionsByName {
+		session = s
+		break
+	}
+	if session == nil {
+		t.Fatal("no session registered in manager")
+	}
+
+	req := &JoinSimRequest{
+		SimName:         session.name,
+		TCW:             tcw,
+		Initials:        "BB",
+		JoiningAsRelief: true,
+		SyncScopeState:  true,
+	}
+	var joinResult NewSimResult
+	if err := sm.ConnectToSim(req, &joinResult); err != nil {
+		t.Fatalf("ConnectToSim: %v", err)
+	}
+
+	// Primary polls again: the flag must now be on, even though the
+	// primary never ticked the checkbox themselves.
+	var upA SimStateUpdate
+	if err := sd.GetStateUpdate(tokenA, &upA); err != nil {
+		t.Fatalf("A GetStateUpdate (post-join): %v", err)
+	}
+	if upA.TCWDisplay == nil {
+		t.Fatal("A.TCWDisplay is nil after opt-in relief joined")
+	}
+	if !upA.TCWDisplay.ScopeSyncEnabled {
+		t.Error("primary does not see ScopeSyncEnabled after opt-in relief joined")
+	}
+
+	// And a plain relief join (SyncScopeState=false) must NOT flip the
+	// flag back off once it has been enabled — the feature is sticky
+	// for the session.
+	req2 := &JoinSimRequest{
+		SimName:         session.name,
+		TCW:             tcw,
+		Initials:        "CC",
+		JoiningAsRelief: true,
+		SyncScopeState:  false,
+	}
+	var joinResult2 NewSimResult
+	if err := sm.ConnectToSim(req2, &joinResult2); err != nil {
+		t.Fatalf("ConnectToSim plain relief: %v", err)
+	}
+	var upA2 SimStateUpdate
+	if err := sd.GetStateUpdate(tokenA, &upA2); err != nil {
+		t.Fatalf("A GetStateUpdate (post-plain-relief): %v", err)
+	}
+	if upA2.TCWDisplay == nil || !upA2.TCWDisplay.ScopeSyncEnabled {
+		t.Error("sticky ScopeSyncEnabled was cleared by a non-opt-in relief join")
+	}
+}
+
 // TestScopeViewSurvivesRejoin: A sets a non-default ScopeView, leaves;
 // a fresh human joins the same TCW and inherits the full ScopeView.
 func TestScopeViewSurvivesRejoin(t *testing.T) {
