@@ -265,8 +265,11 @@ func registerSupeCommands() {
 				case 'E':
 					return configureATPA(sp, ctx, sim.ATPAEnableVolume, vol)
 				case 'I':
-					for _, state := range sp.TrackState {
-						state.DisplayATPAWarnAlert = nil
+					cb := func(err error) { sp.displayError(err, ctx, "") }
+					for _, trk := range sp.visibleTracks {
+						if trk.IsAssociated() {
+							ctx.Client.SetTrackDisplayATPAWarnAlert(trk.FlightPlan.ACID, nil, cb)
+						}
 					}
 					return configureATPA(sp, ctx, sim.ATPADisableVolume, vol)
 				default:

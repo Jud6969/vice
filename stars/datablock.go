@@ -334,7 +334,7 @@ func (sp *STARSPane) datablockType(ctx *panes.Context, trk sim.Track) DatablockT
 			return FullDatablock
 		}
 
-		if state.DisplayFDB {
+		if sp.annotations(ctx, trk.FlightPlan.ACID).DisplayFDB {
 			// Outbound handoff or we slewed a PDB to make it a FDB
 			return FullDatablock
 		}
@@ -670,7 +670,7 @@ func (sp *STARSPane) buildLimitedDatablock(ctx *panes.Context, trk sim.Track,
 		})
 
 		if mci || beaconator || who || extended || trk.Ident || ps.DisplayLDBBeaconCodes ||
-			state.DisplayLDBBeaconCode || displayBeaconCode {
+			sp.annotationsForTrack(ctx, trk).DisplayLDBBeaconCode || displayBeaconCode {
 			// Field 1: reported beacon code
 			// TODO: Field 1: WHO if unassociated and no flight plan
 			var f1 int
@@ -970,10 +970,11 @@ func (sp *STARSPane) fillFDBField5(ctx *panes.Context, trk sim.Track, sfp *sim.N
 		if trk.Ident || forceACType {
 			return false
 		}
-		if state != nil && state.DisplayRequestedAltitude != nil && !*state.DisplayRequestedAltitude {
+		draTrack := sp.annotationsForTrack(ctx, trk).DisplayRequestedAltitude
+		if draTrack != nil && !*draTrack {
 			return false
 		}
-		if state == nil || (state.DisplayRequestedAltitude == nil && !sp.DisplayRequestedAltitude) {
+		if draTrack == nil && !sp.DisplayRequestedAltitude {
 			return false
 		}
 		if alt := sfp.RequestedAltitude; alt != 0 {
@@ -1024,8 +1025,9 @@ func (sp *STARSPane) fillFDBField6(ctx *panes.Context, trk sim.Track, sfp *sim.N
 	state := sp.TrackState[trk.ADSBCallsign]
 
 	// Helper: try to write ATPA content (*TPA, NOWGT, or intrail distance).
+	warnAlertOverride := sp.annotationsForTrack(ctx, trk).DisplayATPAWarnAlert
 	writeATPA := func(field []dbChar) bool {
-		if state.DisplayATPAWarnAlert != nil && !*state.DisplayATPAWarnAlert {
+		if warnAlertOverride != nil && !*warnAlertOverride {
 			formatDBText(field, "*TPA", color, false)
 			return true
 		}
@@ -1341,7 +1343,7 @@ func (sp *STARSPane) datablockVisible(ctx *panes.Context, trk sim.Track) bool {
 		} else if ok, _ := trk.Squawk.IsSPC(); ok {
 			// Special purpose codes
 			return true
-		} else if state.DisplayFDB {
+		} else if sp.annotationsForTrack(ctx, trk).DisplayFDB {
 			// For non-greened handoffs
 			return true
 		} else if trk.IsOverflight() && sp.currentPrefs().OverflightFullDatablocks {

@@ -1103,63 +1103,186 @@ func (sd *dispatcher) AnnotateFlightStrip(args *AnnotateFlightStripArgs, _ *stru
 	return c.sim.AnnotateFlightStrip(c.tcw, args.ACID, args.Annotations)
 }
 
-// Shared TCW display state mutations. Each RPC echoes a fresh
+// Shared TCW track annotation mutations. Each RPC echoes a fresh
 // SimStateUpdate so the caller's local State.TCWDisplay reflects the
 // server value immediately, without waiting for the next 1 Hz poll.
 
-type SetTCWRangeArgs struct {
+type SetTrackFloatArgs struct {
 	ControllerToken string
-	Range           float32
+	ACID            sim.ACID
+	Value           float32
 }
 
-const SetTCWRangeRPC = "Sim.SetTCWRange"
+type SetTrackBoolArgs struct {
+	ControllerToken string
+	ACID            sim.ACID
+	Value           bool
+}
 
-func (sd *dispatcher) SetTCWRange(args *SetTCWRangeArgs, update *SimStateUpdate) error {
+type SetTrackOptBoolArgs struct {
+	ControllerToken string
+	ACID            sim.ACID
+	Value           *bool
+}
+
+type SetTrackLeaderLineArgs struct {
+	ControllerToken string
+	ACID            sim.ACID
+	Direction       *math.CardinalOrdinalDirection
+}
+
+const SetTrackJRingRadiusRPC = "Sim.SetTrackJRingRadius"
+
+func (sd *dispatcher) SetTrackJRingRadius(args *SetTrackFloatArgs, update *SimStateUpdate) error {
 	defer sd.sm.lg.CatchAndReportCrash()
-
 	c := sd.sm.LookupController(args.ControllerToken)
 	if c == nil {
 		return ErrNoSimForControllerToken
 	}
-	c.sim.SetTCWRange(c.tcw, args.Range)
+	c.sim.SetTrackJRingRadius(c.tcw, args.ACID, args.Value)
 	*update = c.GetStateUpdate()
 	return nil
 }
 
-type SetTCWUserCenterArgs struct {
-	ControllerToken string
-	Center          math.Point2LL
-}
+const SetTrackConeLengthRPC = "Sim.SetTrackConeLength"
 
-const SetTCWUserCenterRPC = "Sim.SetTCWUserCenter"
-
-func (sd *dispatcher) SetTCWUserCenter(args *SetTCWUserCenterArgs, update *SimStateUpdate) error {
+func (sd *dispatcher) SetTrackConeLength(args *SetTrackFloatArgs, update *SimStateUpdate) error {
 	defer sd.sm.lg.CatchAndReportCrash()
-
 	c := sd.sm.LookupController(args.ControllerToken)
 	if c == nil {
 		return ErrNoSimForControllerToken
 	}
-	c.sim.SetTCWUserCenter(c.tcw, args.Center)
+	c.sim.SetTrackConeLength(c.tcw, args.ACID, args.Value)
 	*update = c.GetStateUpdate()
 	return nil
 }
 
-type SetTCWRangeRingRadiusArgs struct {
-	ControllerToken string
-	Radius          int
-}
+const SetTrackLeaderLineDirectionRPC = "Sim.SetTrackLeaderLineDirection"
 
-const SetTCWRangeRingRadiusRPC = "Sim.SetTCWRangeRingRadius"
-
-func (sd *dispatcher) SetTCWRangeRingRadius(args *SetTCWRangeRingRadiusArgs, update *SimStateUpdate) error {
+func (sd *dispatcher) SetTrackLeaderLineDirection(args *SetTrackLeaderLineArgs, update *SimStateUpdate) error {
 	defer sd.sm.lg.CatchAndReportCrash()
-
 	c := sd.sm.LookupController(args.ControllerToken)
 	if c == nil {
 		return ErrNoSimForControllerToken
 	}
-	c.sim.SetTCWRangeRingRadius(c.tcw, args.Radius)
+	c.sim.SetTrackLeaderLineDirection(c.tcw, args.ACID, args.Direction)
+	*update = c.GetStateUpdate()
+	return nil
+}
+
+const SetTrackFDAMLeaderLineDirectionRPC = "Sim.SetTrackFDAMLeaderLineDirection"
+
+func (sd *dispatcher) SetTrackFDAMLeaderLineDirection(args *SetTrackLeaderLineArgs, update *SimStateUpdate) error {
+	defer sd.sm.lg.CatchAndReportCrash()
+	c := sd.sm.LookupController(args.ControllerToken)
+	if c == nil {
+		return ErrNoSimForControllerToken
+	}
+	c.sim.SetTrackFDAMLeaderLineDirection(c.tcw, args.ACID, args.Direction)
+	*update = c.GetStateUpdate()
+	return nil
+}
+
+const SetTrackUseGlobalLeaderLineRPC = "Sim.SetTrackUseGlobalLeaderLine"
+
+func (sd *dispatcher) SetTrackUseGlobalLeaderLine(args *SetTrackBoolArgs, update *SimStateUpdate) error {
+	defer sd.sm.lg.CatchAndReportCrash()
+	c := sd.sm.LookupController(args.ControllerToken)
+	if c == nil {
+		return ErrNoSimForControllerToken
+	}
+	c.sim.SetTrackUseGlobalLeaderLine(c.tcw, args.ACID, args.Value)
+	*update = c.GetStateUpdate()
+	return nil
+}
+
+const SetTrackDisplayFDBRPC = "Sim.SetTrackDisplayFDB"
+
+func (sd *dispatcher) SetTrackDisplayFDB(args *SetTrackBoolArgs, update *SimStateUpdate) error {
+	defer sd.sm.lg.CatchAndReportCrash()
+	c := sd.sm.LookupController(args.ControllerToken)
+	if c == nil {
+		return ErrNoSimForControllerToken
+	}
+	c.sim.SetTrackDisplayFDB(c.tcw, args.ACID, args.Value)
+	*update = c.GetStateUpdate()
+	return nil
+}
+
+const SetTrackDisplayPTLRPC = "Sim.SetTrackDisplayPTL"
+
+func (sd *dispatcher) SetTrackDisplayPTL(args *SetTrackBoolArgs, update *SimStateUpdate) error {
+	defer sd.sm.lg.CatchAndReportCrash()
+	c := sd.sm.LookupController(args.ControllerToken)
+	if c == nil {
+		return ErrNoSimForControllerToken
+	}
+	c.sim.SetTrackDisplayPTL(c.tcw, args.ACID, args.Value)
+	*update = c.GetStateUpdate()
+	return nil
+}
+
+const SetTrackDisplayTPASizeRPC = "Sim.SetTrackDisplayTPASize"
+
+func (sd *dispatcher) SetTrackDisplayTPASize(args *SetTrackOptBoolArgs, update *SimStateUpdate) error {
+	defer sd.sm.lg.CatchAndReportCrash()
+	c := sd.sm.LookupController(args.ControllerToken)
+	if c == nil {
+		return ErrNoSimForControllerToken
+	}
+	c.sim.SetTrackDisplayTPASize(c.tcw, args.ACID, args.Value)
+	*update = c.GetStateUpdate()
+	return nil
+}
+
+const SetTrackDisplayATPAMonitorRPC = "Sim.SetTrackDisplayATPAMonitor"
+
+func (sd *dispatcher) SetTrackDisplayATPAMonitor(args *SetTrackOptBoolArgs, update *SimStateUpdate) error {
+	defer sd.sm.lg.CatchAndReportCrash()
+	c := sd.sm.LookupController(args.ControllerToken)
+	if c == nil {
+		return ErrNoSimForControllerToken
+	}
+	c.sim.SetTrackDisplayATPAMonitor(c.tcw, args.ACID, args.Value)
+	*update = c.GetStateUpdate()
+	return nil
+}
+
+const SetTrackDisplayATPAWarnAlertRPC = "Sim.SetTrackDisplayATPAWarnAlert"
+
+func (sd *dispatcher) SetTrackDisplayATPAWarnAlert(args *SetTrackOptBoolArgs, update *SimStateUpdate) error {
+	defer sd.sm.lg.CatchAndReportCrash()
+	c := sd.sm.LookupController(args.ControllerToken)
+	if c == nil {
+		return ErrNoSimForControllerToken
+	}
+	c.sim.SetTrackDisplayATPAWarnAlert(c.tcw, args.ACID, args.Value)
+	*update = c.GetStateUpdate()
+	return nil
+}
+
+const SetTrackDisplayRequestedAltitudeRPC = "Sim.SetTrackDisplayRequestedAltitude"
+
+func (sd *dispatcher) SetTrackDisplayRequestedAltitude(args *SetTrackOptBoolArgs, update *SimStateUpdate) error {
+	defer sd.sm.lg.CatchAndReportCrash()
+	c := sd.sm.LookupController(args.ControllerToken)
+	if c == nil {
+		return ErrNoSimForControllerToken
+	}
+	c.sim.SetTrackDisplayRequestedAltitude(c.tcw, args.ACID, args.Value)
+	*update = c.GetStateUpdate()
+	return nil
+}
+
+const SetTrackDisplayLDBBeaconCodeRPC = "Sim.SetTrackDisplayLDBBeaconCode"
+
+func (sd *dispatcher) SetTrackDisplayLDBBeaconCode(args *SetTrackBoolArgs, update *SimStateUpdate) error {
+	defer sd.sm.lg.CatchAndReportCrash()
+	c := sd.sm.LookupController(args.ControllerToken)
+	if c == nil {
+		return ErrNoSimForControllerToken
+	}
+	c.sim.SetTrackDisplayLDBBeaconCode(c.tcw, args.ACID, args.Value)
 	*update = c.GetStateUpdate()
 	return nil
 }

@@ -1708,6 +1708,8 @@ func (s *Sim) updateState() {
 			}
 		}
 	}
+
+	s.pruneTCWDisplayAnnotations()
 }
 
 // processInterfacilityVFR handles auto-association of interfacility VFR

@@ -41,12 +41,9 @@ func (p *PreferenceSet) Upgrade(from, to int) {
 }
 
 // SetCurrent loads a saved/snapshot preference set into Current.
-// Synced (TCW-shared) fields are preserved from the existing Current
-// so that loading does not yank a relief partner's scope picture.
 func (p *PreferenceSet) SetCurrent(cur Preferences, pl platform.Platform, sp *STARSPane) {
 	// Make sure we don't alias slices, maps, etc.
-	merged := mergeLoadedPreferences(p.Current, cur)
-	p.Current = deep.MustCopy(merged)
+	p.Current = deep.MustCopy(cur)
 
 	// Slightly annoying, but we need to let the Platform know the audio
 	// volume from the prefs.

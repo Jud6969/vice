@@ -40,7 +40,7 @@ func (sp *STARSPane) drawCompass(ctx *panes.Context, scopeExtent math.Extent2D, 
 
 	// Window coordinates of the center point.
 	// TODO: should we explicitly handle the case of this being outside the window?
-	ctr := util.Select(ps.UseUserCenter, sp.syncedUserCenter(ctx), ps.DefaultCenter)
+	ctr := util.Select(ps.UseUserCenter, ps.UserCenter, ps.DefaultCenter)
 	pw := transforms.WindowFromLatLongP(ctr)
 	bounds := math.Extent2D{P1: [2]float32{scopeExtent.Width(), scopeExtent.Height()}}
 	font := sp.systemFont(ctx, ps.CharSize.Tools)
@@ -133,7 +133,7 @@ func (sp *STARSPane) drawRangeRings(ctx *panes.Context, transforms radar.ScopeTr
 	ld := renderer.GetLinesDrawBuilder()
 	defer renderer.ReturnLinesDrawBuilder(ld)
 
-	rrr := sp.syncedRangeRingRadius(ctx)
+	rrr := ps.RangeRingRadius
 	for i := 1; i < 40; i++ {
 		// Radius of this ring in pixels
 		r := float32(i) * float32(rrr) / pixelDistanceNm
@@ -710,14 +710,15 @@ func (sp *STARSPane) drawPTLs(ctx *panes.Context, transforms radar.ScopeTransfor
 			continue
 		}
 
-		if trk.IsUnassociated() && !state.DisplayPTL {
+		displayPTL := sp.annotationsForTrack(ctx, trk).DisplayPTL
+		if trk.IsUnassociated() && !displayPTL {
 			// untracked only PTLs if they're individually enabled (I think); 6-13.
 			continue
 		}
 		// We have it or it's an inbound handoff to us.
 		ourTrack := trk.IsAssociated() && (ctx.UserOwnsFlightPlan(trk.FlightPlan) ||
 			ctx.UserControlsPosition(trk.FlightPlan.HandoffController))
-		if !state.DisplayPTL && !ps.PTLAll && !(ps.PTLOwn && ourTrack) {
+		if !displayPTL && !ps.PTLAll && !(ps.PTLOwn && ourTrack) {
 			continue
 		}
 
@@ -755,6 +756,7 @@ func (sp *STARSPane) drawRingsAndCones(ctx *panes.Context, transforms radar.Scop
 	for _, trk := range sp.visibleTracks {
 		color := ps.Brightness.TPA.ScaleRGB(sp.Colors.JRingCone)
 		state := sp.TrackState[trk.ADSBCallsign]
+		anno := sp.annotationsForTrack(ctx, trk)
 
 		// Format a radius/length for printing, ditching the ".0" if it's
 		// an integer value.
@@ -766,13 +768,13 @@ func (sp *STARSPane) drawRingsAndCones(ctx *panes.Context, transforms radar.Scop
 			}
 		}
 
-		if state.JRingRadius > 0 {
+		if anno.JRingRadius > 0 {
 			const nsegs = 360
 			pc := transforms.WindowFromLatLongP(state.track.Location)
-			radius := state.JRingRadius / transforms.PixelDistanceNM(ctx.NmPerLongitude)
+			radius := anno.JRingRadius / transforms.PixelDistanceNM(ctx.NmPerLongitude)
 			ld.AddCircle(pc, radius, nsegs, color)
 
-			if ps.DisplayTPASize || (state.DisplayTPASize != nil && *state.DisplayTPASize) {
+			if ps.DisplayTPASize || (anno.DisplayTPASize != nil && *anno.DisplayTPASize) {
 				// draw the ring size around 7.5 o'clock
 				// vector from center to the circle there
 				v := [2]float32{-.707106 * radius, -.707106 * radius} // -sqrt(2)/2
@@ -780,7 +782,7 @@ func (sp *STARSPane) drawRingsAndCones(ctx *panes.Context, transforms radar.Scop
 				v[1] += float32(font.Size) + 3
 				pt := math.Add2f(pc, v)
 				textStyle := renderer.TextStyle{Font: font, Color: color}
-				td.AddText(format(state.JRingRadius), pt, textStyle)
+				td.AddText(format(anno.JRingRadius), pt, textStyle)
 			}
 		}
 
@@ -794,22 +796,22 @@ func (sp *STARSPane) drawRingsAndCones(ctx *panes.Context, transforms radar.Scop
 		// If warning/alert cones are inhibited but monitor cones are not,
 		// we may still draw a monitor cone.
 		if (atpaStatus == ATPAStatusWarning || atpaStatus == ATPAStatusAlert) &&
-			(!ps.DisplayATPAWarningAlertCones || (state.DisplayATPAWarnAlert != nil && !*state.DisplayATPAWarnAlert)) {
+			(!ps.DisplayATPAWarningAlertCones || (anno.DisplayATPAWarnAlert != nil && !*anno.DisplayATPAWarnAlert)) {
 			atpaStatus = ATPAStatusMonitor
 		}
 
 		drawATPAMonitor := atpaStatus == ATPAStatusMonitor && ps.DisplayATPAMonitorCones &&
-			(state.DisplayATPAMonitor == nil || *state.DisplayATPAMonitor) &&
+			(anno.DisplayATPAMonitor == nil || *anno.DisplayATPAMonitor) &&
 			state.IntrailDistance-state.MinimumMIT <= 2 // monitor only if within 2nm of MIT requirement
 		drawATPAWarning := atpaStatus == ATPAStatusWarning && ps.DisplayATPAWarningAlertCones &&
-			(state.DisplayATPAWarnAlert == nil || *state.DisplayATPAWarnAlert)
+			(anno.DisplayATPAWarnAlert == nil || *anno.DisplayATPAWarnAlert)
 		drawATPAAlert := atpaStatus == ATPAStatusAlert && ps.DisplayATPAWarningAlertCones &&
-			(state.DisplayATPAWarnAlert == nil || *state.DisplayATPAWarnAlert)
+			(anno.DisplayATPAWarnAlert == nil || *anno.DisplayATPAWarnAlert)
 		drawATPACone := drawATPAMonitor || drawATPAWarning || drawATPAAlert
 
-		if state.HaveHeading() && (state.ConeLength > 0 || drawATPACone) {
+		if state.HaveHeading() && (anno.ConeLength > 0 || drawATPACone) {
 			// Find the length of the cone in pixel coordinates)
-			lengthNM := max(state.ConeLength, state.MinimumMIT)
+			lengthNM := max(anno.ConeLength, state.MinimumMIT)
 			length := lengthNM / transforms.PixelDistanceNM(ctx.NmPerLongitude)
 
 			// Form a triangle; the end of the cone is 10 pixels wide
@@ -852,7 +854,7 @@ func (sp *STARSPane) drawRingsAndCones(ctx *panes.Context, transforms radar.Scop
 
 			// FIXME: per 6.21.10, if disabled but dwell is enabled and the track is being dwelled,
 			// then display the size after all.
-			if ps.DisplayTPASize || (state.DisplayTPASize != nil && *state.DisplayTPASize) {
+			if ps.DisplayTPASize || (anno.DisplayTPASize != nil && *anno.DisplayTPASize) {
 				textStyle := renderer.TextStyle{Font: font, Color: coneColor}
 
 				pCenter := math.Add2f(pw, rot(math.Scale2f([2]float32{0, 0.5}, length)))
@@ -942,7 +944,7 @@ func (sp *STARSPane) drawWind(ctx *panes.Context, transforms radar.ScopeTransfor
 	const arrowLength = 25
 	const arrowheadSize = 8
 	step := 1
-	if r := sp.syncedRange(ctx); r > 80 {
+	if r := sp.currentPrefs().Range; r > 80 {
 		step = 4
 	} else if r > 45 {
 		step = 3

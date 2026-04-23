@@ -5,181 +5,203 @@
 package sim
 
 import (
-	"io"
-	"log/slog"
 	"testing"
 
+	av "github.com/mmp/vice/aviation"
 	"github.com/mmp/vice/log"
 	"github.com/mmp/vice/math"
 )
 
-func TestNewTCWDisplayStateSeedsFromScopeView(t *testing.T) {
-	seed := ScopeViewState{
-		Range:           30,
-		UserCenter:      math.Point2LL{-73.7, 40.6},
-		RangeRingRadius: 5,
-	}
-	s := NewTCWDisplayState(seed)
-	if s.Rev != 1 {
-		t.Errorf("Rev = %d, want 1", s.Rev)
-	}
-	if s.ScopeView != seed {
-		t.Errorf("ScopeView = %+v, want %+v", s.ScopeView, seed)
-	}
-}
+func TestSetTrackJRingRadiusCreatesEntry(t *testing.T) {
+	s := NewTestSim(log.New(true, "error", t.TempDir()))
+	tcw := TCW("N90")
+	acid := ACID("AAL123")
 
-func TestSetRangeBumpsRev(t *testing.T) {
-	s := NewTCWDisplayState(ScopeViewState{Range: 10})
-	r0 := s.Rev
-	s.SetRange(50)
-	if s.ScopeView.Range != 50 {
-		t.Errorf("Range = %v, want 50", s.ScopeView.Range)
+	if d := s.GetTCWDisplay(tcw); d != nil {
+		t.Fatalf("TCWDisplay pre-mutation = %+v, want nil", d)
 	}
-	if s.Rev != r0+1 {
-		t.Errorf("Rev = %d, want %d", s.Rev, r0+1)
-	}
-	// Idempotent writes still bump Rev (caller is responsible for dedup).
-	s.SetRange(50)
-	if s.Rev != r0+2 {
-		t.Errorf("Rev = %d, want %d", s.Rev, r0+2)
-	}
-}
 
-func TestSetUserCenterAndRangeRingRadius(t *testing.T) {
-	s := NewTCWDisplayState(ScopeViewState{})
-	s.SetUserCenter(math.Point2LL{1, 2})
-	if got := s.ScopeView.UserCenter; got != (math.Point2LL{1, 2}) {
-		t.Errorf("UserCenter = %+v", got)
-	}
-	s.SetRangeRingRadius(10)
-	if s.ScopeView.RangeRingRadius != 10 {
-		t.Errorf("RangeRingRadius = %v, want 10", s.ScopeView.RangeRingRadius)
-	}
-}
+	s.SetTrackJRingRadius(tcw, acid, 3.5)
 
-func TestSignOnSeedsTCWDisplay(t *testing.T) {
-	lg := &log.Logger{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
-	s := NewTestSim(lg)
-	tcw := E2ETCW()
-	s.State.Range = 25
-	s.State.Center = math.Point2LL{-73.7, 40.6}
-
-	if _, _, err := s.SignOn(tcw, nil); err != nil {
-		t.Fatalf("SignOn: %v", err)
-	}
 	d := s.GetTCWDisplay(tcw)
 	if d == nil {
-		t.Fatal("GetTCWDisplay returned nil after SignOn")
+		t.Fatalf("TCWDisplay nil after mutation")
 	}
-	if d.ScopeView.Range != 25 {
-		t.Errorf("seeded Range = %v, want 25", d.ScopeView.Range)
+	if got := d.Annotations[acid].JRingRadius; got != 3.5 {
+		t.Errorf("JRingRadius = %v, want 3.5", got)
 	}
-	if d.ScopeView.UserCenter != (math.Point2LL{-73.7, 40.6}) {
-		t.Errorf("seeded UserCenter = %+v, want {-73.7, 40.6}", d.ScopeView.UserCenter)
-	}
-
-	// Second SignOn (relief joiner) must not reseed.
-	s.TCWDisplay[tcw].SetRange(99)
-	if _, _, err := s.SignOn(tcw, nil); err != nil {
-		t.Fatalf("second SignOn: %v", err)
-	}
-	if got := s.GetTCWDisplay(tcw).ScopeView.Range; got != 99 {
-		t.Errorf("second SignOn reseeded Range to %v; should have left it at 99", got)
+	if d.Rev != 1 {
+		t.Errorf("Rev = %d, want 1", d.Rev)
 	}
 }
 
-func TestGetStateUpdateIncludesTCWDisplay(t *testing.T) {
-	lg := &log.Logger{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
-	s := NewTestSim(lg)
-	tcw := E2ETCW()
-	if _, _, err := s.SignOn(tcw, nil); err != nil {
-		t.Fatalf("SignOn: %v", err)
+func TestSetTrackBumpsRevOnEachMutation(t *testing.T) {
+	s := NewTestSim(log.New(true, "error", t.TempDir()))
+	tcw := TCW("N90")
+	acid := ACID("AAL123")
+
+	s.SetTrackJRingRadius(tcw, acid, 3)
+	s.SetTrackJRingRadius(tcw, acid, 5)
+	s.SetTrackConeLength(tcw, acid, 10)
+
+	d := s.GetTCWDisplay(tcw)
+	if d.Rev != 3 {
+		t.Errorf("Rev = %d, want 3", d.Rev)
 	}
-	up := s.GetStateUpdate(tcw)
-	if up.TCWDisplay == nil {
-		t.Fatal("StateUpdate.TCWDisplay is nil after SignOn")
+	if got := d.Annotations[acid].JRingRadius; got != 5 {
+		t.Errorf("JRingRadius = %v, want 5 (updated in place)", got)
 	}
-	// Mutate and re-poll.
-	s.TCWDisplay[tcw].SetRange(42)
-	up2 := s.GetStateUpdate(tcw)
-	if up2.TCWDisplay == nil || up2.TCWDisplay.ScopeView.Range != 42 {
-		t.Errorf("poll did not observe mutation; got %+v", up2.TCWDisplay)
-	}
-	// A poll for a TCW with no display state returns nil.
-	up3 := s.GetStateUpdate(TCW("UNKNOWN"))
-	if up3.TCWDisplay != nil {
-		t.Errorf("StateUpdate.TCWDisplay for unknown TCW = %+v, want nil", up3.TCWDisplay)
+	if got := d.Annotations[acid].ConeLength; got != 10 {
+		t.Errorf("ConeLength = %v, want 10", got)
 	}
 }
 
-func TestSimSetTCWRangeLocksAndBumpsRev(t *testing.T) {
-	lg := &log.Logger{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
-	s := NewTestSim(lg)
-	tcw := E2ETCW()
-	if _, _, err := s.SignOn(tcw, nil); err != nil {
-		t.Fatalf("SignOn: %v", err)
+func TestSetTrackIsolatesACIDs(t *testing.T) {
+	s := NewTestSim(log.New(true, "error", t.TempDir()))
+	tcw := TCW("N90")
+
+	s.SetTrackJRingRadius(tcw, "AAL123", 3)
+	s.SetTrackJRingRadius(tcw, "UAL456", 5)
+
+	d := s.GetTCWDisplay(tcw)
+	if got := d.Annotations["AAL123"].JRingRadius; got != 3 {
+		t.Errorf("AAL123 JRingRadius = %v, want 3", got)
 	}
-	rev0 := s.GetTCWDisplay(tcw).Rev
-	rev1 := s.SetTCWRange(tcw, 99)
-	if rev1 != rev0+1 {
-		t.Errorf("Rev = %d, want %d", rev1, rev0+1)
+	if got := d.Annotations["UAL456"].JRingRadius; got != 5 {
+		t.Errorf("UAL456 JRingRadius = %v, want 5", got)
 	}
-	if got := s.GetTCWDisplay(tcw).ScopeView.Range; got != 99 {
-		t.Errorf("Range = %v, want 99", got)
+	if len(d.Annotations) != 2 {
+		t.Errorf("len(Annotations) = %d, want 2", len(d.Annotations))
 	}
 }
 
-func TestSimSetTCWUserCenterLocksAndBumpsRev(t *testing.T) {
-	lg := &log.Logger{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
-	s := NewTestSim(lg)
-	tcw := E2ETCW()
-	if _, _, err := s.SignOn(tcw, nil); err != nil {
-		t.Fatalf("SignOn: %v", err)
+func TestSetTrackIsolatesTCWs(t *testing.T) {
+	s := NewTestSim(log.New(true, "error", t.TempDir()))
+	acid := ACID("AAL123")
+
+	s.SetTrackJRingRadius("N90", acid, 3)
+	s.SetTrackJRingRadius("N01", acid, 5)
+
+	if got := s.GetTCWDisplay("N90").Annotations[acid].JRingRadius; got != 3 {
+		t.Errorf("N90 JRingRadius = %v, want 3", got)
 	}
-	rev0 := s.GetTCWDisplay(tcw).Rev
-	p := math.Point2LL{-73.7, 40.6}
-	rev1 := s.SetTCWUserCenter(tcw, p)
-	if rev1 != rev0+1 {
-		t.Errorf("Rev = %d, want %d", rev1, rev0+1)
-	}
-	if got := s.GetTCWDisplay(tcw).ScopeView.UserCenter; got != p {
-		t.Errorf("UserCenter = %+v, want %+v", got, p)
+	if got := s.GetTCWDisplay("N01").Annotations[acid].JRingRadius; got != 5 {
+		t.Errorf("N01 JRingRadius = %v, want 5", got)
 	}
 }
 
-func TestSimSetTCWRangeRingRadiusLocksAndBumpsRev(t *testing.T) {
-	lg := &log.Logger{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
-	s := NewTestSim(lg)
-	tcw := E2ETCW()
-	if _, _, err := s.SignOn(tcw, nil); err != nil {
-		t.Fatalf("SignOn: %v", err)
+func TestSetTrackAllFields(t *testing.T) {
+	s := NewTestSim(log.New(true, "error", t.TempDir()))
+	tcw := TCW("N90")
+	acid := ACID("AAL123")
+
+	north := math.CardinalOrdinalDirection(math.North)
+	tru := true
+	fal := false
+
+	s.SetTrackJRingRadius(tcw, acid, 3.5)
+	s.SetTrackConeLength(tcw, acid, 7)
+	s.SetTrackLeaderLineDirection(tcw, acid, &north)
+	s.SetTrackFDAMLeaderLineDirection(tcw, acid, &north)
+	s.SetTrackUseGlobalLeaderLine(tcw, acid, true)
+	s.SetTrackDisplayFDB(tcw, acid, true)
+	s.SetTrackDisplayPTL(tcw, acid, true)
+	s.SetTrackDisplayTPASize(tcw, acid, &tru)
+	s.SetTrackDisplayATPAMonitor(tcw, acid, &tru)
+	s.SetTrackDisplayATPAWarnAlert(tcw, acid, &fal)
+	s.SetTrackDisplayRequestedAltitude(tcw, acid, &tru)
+	s.SetTrackDisplayLDBBeaconCode(tcw, acid, true)
+
+	a := s.GetTCWDisplay(tcw).Annotations[acid]
+	if a.JRingRadius != 3.5 || a.ConeLength != 7 {
+		t.Errorf("scalar fields: got %+v", a)
 	}
-	rev0 := s.GetTCWDisplay(tcw).Rev
-	rev1 := s.SetTCWRangeRingRadius(tcw, 10)
-	if rev1 != rev0+1 {
-		t.Errorf("Rev = %d, want %d", rev1, rev0+1)
+	if a.LeaderLineDirection == nil || *a.LeaderLineDirection != math.North {
+		t.Errorf("LeaderLineDirection = %v, want North", a.LeaderLineDirection)
 	}
-	if got := s.GetTCWDisplay(tcw).ScopeView.RangeRingRadius; got != 10 {
-		t.Errorf("RangeRingRadius = %v, want 10", got)
+	if a.FDAMLeaderLineDirection == nil || *a.FDAMLeaderLineDirection != math.North {
+		t.Errorf("FDAMLeaderLineDirection = %v, want North", a.FDAMLeaderLineDirection)
+	}
+	if !a.UseGlobalLeaderLine || !a.DisplayFDB || !a.DisplayPTL || !a.DisplayLDBBeaconCode {
+		t.Errorf("bool flags not all set: %+v", a)
+	}
+	if a.DisplayTPASize == nil || !*a.DisplayTPASize {
+		t.Errorf("DisplayTPASize = %v, want true", a.DisplayTPASize)
+	}
+	if a.DisplayATPAMonitor == nil || !*a.DisplayATPAMonitor {
+		t.Errorf("DisplayATPAMonitor = %v, want true", a.DisplayATPAMonitor)
+	}
+	if a.DisplayATPAWarnAlert == nil || *a.DisplayATPAWarnAlert {
+		t.Errorf("DisplayATPAWarnAlert = %v, want false", a.DisplayATPAWarnAlert)
+	}
+	if a.DisplayRequestedAltitude == nil || !*a.DisplayRequestedAltitude {
+		t.Errorf("DisplayRequestedAltitude = %v, want true", a.DisplayRequestedAltitude)
 	}
 }
 
-func TestSimEnsureTCWDisplayIsLazy(t *testing.T) {
-	s := &Sim{}
-	if got := s.GetTCWDisplay("N01"); got != nil {
-		t.Errorf("GetTCWDisplay before Ensure returned %+v, want nil", got)
+func TestPruneTCWDisplayAnnotationsRemovesDepartedACIDs(t *testing.T) {
+	s := NewTestSim(log.New(true, "error", t.TempDir()))
+	tcw := TCW("N90")
+
+	s.SetTrackJRingRadius(tcw, "LIVE", 3)
+	s.SetTrackJRingRadius(tcw, "GHOST", 5)
+
+	// Mark LIVE as present by adding an aircraft with a NASFlightPlan.
+	s.Aircraft["LIVE_CS"] = &Aircraft{
+		ADSBCallsign:  av.ADSBCallsign("LIVE_CS"),
+		NASFlightPlan: &NASFlightPlan{ACID: "LIVE"},
 	}
-	seed := ScopeViewState{Range: 20, RangeRingRadius: 5}
-	d := s.EnsureTCWDisplay("N01", seed)
-	if d == nil || d.ScopeView != seed {
-		t.Errorf("EnsureTCWDisplay returned %+v, want seeded state", d)
+
+	revBefore := s.GetTCWDisplay(tcw).Rev
+	s.pruneTCWDisplayAnnotations()
+	d := s.GetTCWDisplay(tcw)
+
+	if _, ok := d.Annotations["LIVE"]; !ok {
+		t.Errorf("LIVE pruned, want retained")
 	}
-	// Second call must return the same instance (no reseeding).
-	d2 := s.EnsureTCWDisplay("N01", ScopeViewState{Range: 999})
-	if d2 != d {
-		t.Errorf("EnsureTCWDisplay returned new instance on second call")
+	if _, ok := d.Annotations["GHOST"]; ok {
+		t.Errorf("GHOST retained, want pruned")
 	}
-	if d2.ScopeView.Range != 20 {
-		t.Errorf("second EnsureTCWDisplay clobbered existing state: Range=%v", d2.ScopeView.Range)
+	if d.Rev <= revBefore {
+		t.Errorf("Rev = %d, want > %d after pruning", d.Rev, revBefore)
+	}
+}
+
+func TestUpdateStatePrunesDepartedAnnotations(t *testing.T) {
+	// Verify the hook is wired: updateState's tail-end call to
+	// pruneTCWDisplayAnnotations should clear annotations whose ACIDs
+	// have no corresponding aircraft.
+	s := NewTestSim(log.New(true, "error", t.TempDir()))
+	tcw := TCW("TEST")
+
+	s.SetTrackJRingRadius(tcw, "GHOST", 3)
+	// No aircraft in s.Aircraft, so pruning should remove GHOST.
+
+	s.updateState()
+
+	d := s.GetTCWDisplay(tcw)
+	if _, ok := d.Annotations["GHOST"]; ok {
+		t.Errorf("GHOST retained after updateState(); want pruned via the tick-loop hook")
+	}
+}
+
+func TestPruneTCWDisplayAnnotationsNoopWhenAllLive(t *testing.T) {
+	s := NewTestSim(log.New(true, "error", t.TempDir()))
+	tcw := TCW("N90")
+
+	s.SetTrackJRingRadius(tcw, "LIVE1", 3)
+	s.SetTrackJRingRadius(tcw, "LIVE2", 5)
+	s.Aircraft["CS1"] = &Aircraft{NASFlightPlan: &NASFlightPlan{ACID: "LIVE1"}}
+	s.Aircraft["CS2"] = &Aircraft{NASFlightPlan: &NASFlightPlan{ACID: "LIVE2"}}
+
+	revBefore := s.GetTCWDisplay(tcw).Rev
+	s.pruneTCWDisplayAnnotations()
+	d := s.GetTCWDisplay(tcw)
+
+	if len(d.Annotations) != 2 {
+		t.Errorf("len(Annotations) = %d, want 2", len(d.Annotations))
+	}
+	if d.Rev != revBefore {
+		t.Errorf("Rev changed: %d -> %d, want unchanged", revBefore, d.Rev)
 	}
 }

@@ -42,8 +42,11 @@ func registerToolsCommands() {
 			return ErrSTARSIllegalTrack
 		}
 
-		state := sp.TrackState[trk.ADSBCallsign]
-		state.DisplayPTL = !state.DisplayPTL
+		if trk.IsAssociated() {
+			acid := trk.FlightPlan.ACID
+			cur := sp.annotations(ctx, acid).DisplayPTL
+			ctx.Client.SetTrackDisplayPTL(acid, !cur, func(err error) { sp.displayError(err, ctx, "") })
+		}
 		return nil
 	})
 
@@ -707,11 +710,15 @@ func registerToolsCommands() {
 
 	// 6.13.1 Specify datablock position for a single track (implied)
 	registerCommand(CommandModeNone, "[#][SLEW]",
-		func(sp *STARSPane, direction int, state *TrackState) error {
+		func(sp *STARSPane, ctx *panes.Context, direction int, trk *sim.Track) error {
 			if dir, ok := sp.numpadToDirection(direction); ok {
-				state.LeaderLineDirection = dir
-				if dir != nil {
-					state.UseGlobalLeaderLine = false
+				if trk.IsAssociated() {
+					acid := trk.FlightPlan.ACID
+					cb := func(err error) { sp.displayError(err, ctx, "") }
+					ctx.Client.SetTrackLeaderLineDirection(acid, dir, cb)
+					if dir != nil {
+						ctx.Client.SetTrackUseGlobalLeaderLine(acid, false, cb)
+					}
 				}
 				return nil
 			} else {
@@ -767,15 +774,14 @@ func registerToolsCommands() {
 	// 6.13.7 Toggle beacon code display for an unassociated track
 	// 6.13.8 Display associated track's ACID, RBC, and ABC in Preview area (p. 6-93)
 	// TODO: 5.6.15 Release assigned beacon code from inactive or suspended flight plan
-	registerCommand(CommandModeMultiFunc, "B[SLEW]", func(sp *STARSPane, trk *sim.Track) CommandStatus {
+	registerCommand(CommandModeMultiFunc, "B[SLEW]", func(sp *STARSPane, ctx *panes.Context, trk *sim.Track) CommandStatus {
 		if trk.IsAssociated() {
 			// Display ACID, RBC (received beacon code), ABC (assigned beacon code)
 			rbc := util.Select(trk.Mode == av.TransponderModeStandby, "    ", trk.Squawk.String())
 			return CommandStatus{Output: string(trk.FlightPlan.ACID) + " " + rbc + " " + trk.FlightPlan.AssignedSquawk.String()}
 		} else {
-			// 6.13.7 For unassociated tracks, toggle beacon code display in LDB
-			state := sp.TrackState[trk.ADSBCallsign]
-			state.DisplayLDBBeaconCode = !state.DisplayLDBBeaconCode
+			// 6.13.7 For unassociated tracks, beacon code display toggle is
+			// not synced across relief controllers (no ACID to key on).
 			return CommandStatus{}
 		}
 	})
@@ -855,15 +861,16 @@ func registerToolsCommands() {
 
 	// 6.13.17 Specify data block position for a single track
 	registerCommand(CommandModeMultiFunc, "L[#] [TRK_ACID]|L[#] [TRK_BCN]|L[#] [TRK_INDEX]|L[#][SLEW]",
-		func(sp *STARSPane, direction int, trk *sim.Track) error {
+		func(sp *STARSPane, ctx *panes.Context, direction int, trk *sim.Track) error {
 			if trk.IsUnassociated() {
 				return ErrSTARSIllegalTrack
 			}
 			if dir, ok := sp.numpadToDirection(direction); ok {
-				state := sp.TrackState[trk.ADSBCallsign]
-				state.LeaderLineDirection = dir
+				acid := trk.FlightPlan.ACID
+				cb := func(err error) { sp.displayError(err, ctx, "") }
+				ctx.Client.SetTrackLeaderLineDirection(acid, dir, cb)
 				if dir != nil {
-					state.UseGlobalLeaderLine = false
+					ctx.Client.SetTrackUseGlobalLeaderLine(acid, false, cb)
 				}
 			}
 			return nil
@@ -999,9 +1006,8 @@ func registerToolsCommands() {
 			if trk.FlightPlan.RequestedAltitude == 0 {
 				return ErrSTARSIllegalFunction
 			}
-			state := sp.TrackState[trk.ADSBCallsign]
 			b := true
-			state.DisplayRequestedAltitude = &b
+			ctx.Client.SetTrackDisplayRequestedAltitude(trk.FlightPlan.ACID, &b, func(err error) { sp.displayError(err, ctx, "") })
 			return nil
 		})
 	registerCommand(CommandModeMultiFunc, "RAI[SLEW]", func(sp *STARSPane, ctx *panes.Context, trk *sim.Track) error {
@@ -1011,9 +1017,8 @@ func registerToolsCommands() {
 		if trk.FlightPlan.RequestedAltitude == 0 {
 			return ErrSTARSIllegalFunction
 		}
-		state := sp.TrackState[trk.ADSBCallsign]
 		b := false
-		state.DisplayRequestedAltitude = &b
+		ctx.Client.SetTrackDisplayRequestedAltitude(trk.FlightPlan.ACID, &b, func(err error) { sp.displayError(err, ctx, "") })
 		return nil
 	})
 	registerCommand(CommandModeMultiFunc, "RA[SLEW]",
@@ -1025,12 +1030,15 @@ func registerToolsCommands() {
 				return ErrSTARSIllegalFunction
 			}
 
-			state := sp.TrackState[trk.ADSBCallsign]
-			if state.DisplayRequestedAltitude == nil {
-				b := sp.DisplayRequestedAltitude
-				state.DisplayRequestedAltitude = &b
+			acid := trk.FlightPlan.ACID
+			cur := sp.annotations(ctx, acid).DisplayRequestedAltitude
+			var next bool
+			if cur == nil {
+				next = !sp.DisplayRequestedAltitude
+			} else {
+				next = !*cur
 			}
-			*state.DisplayRequestedAltitude = !*state.DisplayRequestedAltitude
+			ctx.Client.SetTrackDisplayRequestedAltitude(acid, &next, func(err error) { sp.displayError(err, ctx, "") })
 			return nil
 		})
 
@@ -1090,95 +1098,128 @@ func registerToolsCommands() {
 
 	// 6.21.2 Display TPA J-Ring for a single track (implied)
 	// 6.21.3 Modify TPA J-Ring radius for single track (Implied command
-	registerCommand(CommandModeNone, "*J[TPA_FLOAT][SLEW]", func(radius float32, state *TrackState) error {
+	registerCommand(CommandModeNone, "*J[TPA_FLOAT][SLEW]", func(sp *STARSPane, ctx *panes.Context, radius float32, trk *sim.Track) error {
 		// FIXME: *J is not allowed if the track has a ghost
 
 		if radius < 1 || radius > 30 {
 			return ErrSTARSIllegalValue
 		}
-		state.JRingRadius = radius
-		state.ConeLength = 0 // can't have both
+		if trk.IsAssociated() {
+			acid := trk.FlightPlan.ACID
+			cb := func(err error) { sp.displayError(err, ctx, "") }
+			ctx.Client.SetTrackJRingRadius(acid, radius, cb)
+			ctx.Client.SetTrackConeLength(acid, 0, cb) // can't have both
+		}
 		return nil
 	})
 
 	// 6.21.4 Delete TPA J-Ring for single track (Implied command)
-	registerCommand(CommandModeNone, "*J[SLEW]", func(state *TrackState) {
-		state.JRingRadius = 0
+	registerCommand(CommandModeNone, "*J[SLEW]", func(sp *STARSPane, ctx *panes.Context, trk *sim.Track) {
+		if trk.IsAssociated() {
+			ctx.Client.SetTrackJRingRadius(trk.FlightPlan.ACID, 0, func(err error) { sp.displayError(err, ctx, "") })
+		}
 	})
 
 	// 6.21.5 Delete TPA J-Rings for all tracks (Implied command)
-	registerCommand(CommandModeNone, "**J", func(sp *STARSPane) {
-		for _, state := range sp.TrackState {
-			state.JRingRadius = 0
+	registerCommand(CommandModeNone, "**J", func(sp *STARSPane, ctx *panes.Context) {
+		cb := func(err error) { sp.displayError(err, ctx, "") }
+		for _, trk := range sp.visibleTracks {
+			if trk.IsAssociated() {
+				ctx.Client.SetTrackJRingRadius(trk.FlightPlan.ACID, 0, cb)
+			}
 		}
 	})
 
 	// 6.21.6 Display TPA cone for single track (implied)
 	// 6.21.7 Modify TPA Cone length for single track (Implied command)
-	registerCommand(CommandModeNone, "*P[TPA_FLOAT][SLEW]", func(length float32, state *TrackState) error {
+	registerCommand(CommandModeNone, "*P[TPA_FLOAT][SLEW]", func(sp *STARSPane, ctx *panes.Context, length float32, trk *sim.Track) error {
 		if length < 1 || length > 30 {
 			return ErrSTARSIllegalValue
 		}
 		// TODO: ILL FNCT if cone length is less than allowed in-trail separation (?)
-		state.ConeLength = length
-		state.JRingRadius = 0 // can't have both
+		if trk.IsAssociated() {
+			acid := trk.FlightPlan.ACID
+			cb := func(err error) { sp.displayError(err, ctx, "") }
+			ctx.Client.SetTrackConeLength(acid, length, cb)
+			ctx.Client.SetTrackJRingRadius(acid, 0, cb) // can't have both
+		}
 		return nil
 	})
 
 	// 6.21.8 Delete TPA Cone for single track (Implied command) (p. 6-178)
-	registerCommand(CommandModeNone, "*P[SLEW]", func(state *TrackState) {
-		state.ConeLength = 0
+	registerCommand(CommandModeNone, "*P[SLEW]", func(sp *STARSPane, ctx *panes.Context, trk *sim.Track) {
+		if trk.IsAssociated() {
+			ctx.Client.SetTrackConeLength(trk.FlightPlan.ACID, 0, func(err error) { sp.displayError(err, ctx, "") })
+		}
 	})
 
 	// 6.21.9 Delete TPA Cones for all tracks (Implied command) (p. 6-179)
-	registerCommand(CommandModeNone, "**P", func(sp *STARSPane) {
-		for _, state := range sp.TrackState {
-			state.ConeLength = 0
+	registerCommand(CommandModeNone, "**P", func(sp *STARSPane, ctx *panes.Context) {
+		cb := func(err error) { sp.displayError(err, ctx, "") }
+		for _, trk := range sp.visibleTracks {
+			if trk.IsAssociated() {
+				ctx.Client.SetTrackConeLength(trk.FlightPlan.ACID, 0, cb)
+			}
 		}
 	})
 
 	// 6.21.10 Toggle display of TPA / ATPA size data for single track (Implied command)
-	registerCommand(CommandModeNone, "*D+[SLEW]", func(ps *Preferences, state *TrackState) {
-		if state.DisplayTPASize == nil {
-			b := ps.DisplayTPASize // new variable; don't alias ps.DisplayTPASize!
-			state.DisplayTPASize = &b
+	registerCommand(CommandModeNone, "*D+[SLEW]", func(sp *STARSPane, ctx *panes.Context, ps *Preferences, trk *sim.Track) {
+		if !trk.IsAssociated() {
+			return
 		}
-		*state.DisplayTPASize = !*state.DisplayTPASize
+		acid := trk.FlightPlan.ACID
+		cur := sp.annotations(ctx, acid).DisplayTPASize
+		var next bool
+		if cur == nil {
+			next = !ps.DisplayTPASize
+		} else {
+			next = !*cur
+		}
+		ctx.Client.SetTrackDisplayTPASize(acid, &next, func(err error) { sp.displayError(err, ctx, "") })
 	})
-	registerCommand(CommandModeNone, "*D+E[SLEW]", func(state *TrackState) {
+	registerCommand(CommandModeNone, "*D+E[SLEW]", func(sp *STARSPane, ctx *panes.Context, trk *sim.Track) {
+		if !trk.IsAssociated() {
+			return
+		}
 		b := true
-		state.DisplayTPASize = &b
+		ctx.Client.SetTrackDisplayTPASize(trk.FlightPlan.ACID, &b, func(err error) { sp.displayError(err, ctx, "") })
 	})
-	registerCommand(CommandModeNone, "*D+I[SLEW]", func(state *TrackState) {
+	registerCommand(CommandModeNone, "*D+I[SLEW]", func(sp *STARSPane, ctx *panes.Context, trk *sim.Track) {
+		if !trk.IsAssociated() {
+			return
+		}
 		b := false
-		state.DisplayTPASize = &b
+		ctx.Client.SetTrackDisplayTPASize(trk.FlightPlan.ACID, &b, func(err error) { sp.displayError(err, ctx, "") })
 	})
 
 	// 6.21.11 Toggle display of TPA / ATPA size data for all tracks (Implied command)
-	registerCommand(CommandModeNone, "*D+", func(sp *STARSPane, ps *Preferences) CommandStatus {
-		ps.DisplayTPASize = !ps.DisplayTPASize
-		for _, state := range sp.TrackState {
-			state.DisplayTPASize = nil
+	clearAllTPASizeOverrides := func(sp *STARSPane, ctx *panes.Context) {
+		cb := func(err error) { sp.displayError(err, ctx, "") }
+		for _, trk := range sp.visibleTracks {
+			if trk.IsAssociated() {
+				ctx.Client.SetTrackDisplayTPASize(trk.FlightPlan.ACID, nil, cb)
+			}
 		}
+	}
+	registerCommand(CommandModeNone, "*D+", func(sp *STARSPane, ctx *panes.Context, ps *Preferences) CommandStatus {
+		ps.DisplayTPASize = !ps.DisplayTPASize
+		clearAllTPASizeOverrides(sp, ctx)
 		return CommandStatus{Output: util.Select(ps.DisplayTPASize, "TPA SIZE ON", "TPA SIZE OFF")}
 	})
-	registerCommand(CommandModeNone, "*D+E", func(sp *STARSPane, ps *Preferences) CommandStatus {
+	registerCommand(CommandModeNone, "*D+E", func(sp *STARSPane, ctx *panes.Context, ps *Preferences) CommandStatus {
 		ps.DisplayTPASize = true
-		for _, state := range sp.TrackState {
-			state.DisplayTPASize = nil
-		}
+		clearAllTPASizeOverrides(sp, ctx)
 		return CommandStatus{Output: "TPA SIZE ON"}
 	})
-	registerCommand(CommandModeNone, "*D+I", func(sp *STARSPane, ps *Preferences) CommandStatus {
+	registerCommand(CommandModeNone, "*D+I", func(sp *STARSPane, ctx *panes.Context, ps *Preferences) CommandStatus {
 		ps.DisplayTPASize = false
-		for _, state := range sp.TrackState {
-			state.DisplayTPASize = nil
-		}
+		clearAllTPASizeOverrides(sp, ctx)
 		return CommandStatus{Output: "TPA SIZE OFF"}
 	})
 
 	// 6.21.12 Enable / inhibit ATPA Warning and Alert Cones for single track (Implied command)
-	setATPAWarnAlertConeState := func(sp *STARSPane, ps *Preferences, trk *sim.Track, value bool) error {
+	setATPAWarnAlertConeState := func(sp *STARSPane, ctx *panes.Context, ps *Preferences, trk *sim.Track, value bool) error {
 		if !ps.DisplayATPAWarningAlertCones {
 			return ErrSTARSIllegalFunction
 		}
@@ -1187,15 +1228,14 @@ func registerToolsCommands() {
 		}
 		// TODO: ILL TRK if VFR or not in an ATPA approach volume
 
-		state := sp.TrackState[trk.ADSBCallsign]
-		state.DisplayATPAWarnAlert = &value
+		ctx.Client.SetTrackDisplayATPAWarnAlert(trk.FlightPlan.ACID, &value, func(err error) { sp.displayError(err, ctx, "") })
 		return nil
 	}
-	registerCommand(CommandModeNone, "*AE[SLEW]", func(sp *STARSPane, ps *Preferences, trk *sim.Track) error {
-		return setATPAWarnAlertConeState(sp, ps, trk, true)
+	registerCommand(CommandModeNone, "*AE[SLEW]", func(sp *STARSPane, ctx *panes.Context, ps *Preferences, trk *sim.Track) error {
+		return setATPAWarnAlertConeState(sp, ctx, ps, trk, true)
 	})
-	registerCommand(CommandModeNone, "*AI[SLEW]", func(sp *STARSPane, ps *Preferences, trk *sim.Track) error {
-		return setATPAWarnAlertConeState(sp, ps, trk, false)
+	registerCommand(CommandModeNone, "*AI[SLEW]", func(sp *STARSPane, ctx *panes.Context, ps *Preferences, trk *sim.Track) error {
+		return setATPAWarnAlertConeState(sp, ctx, ps, trk, false)
 	})
 
 	// 6.21.13 Enable / inhibit ATPA Warning and Alert Cones for this TCW/TDW (implied)
@@ -1215,8 +1255,7 @@ func registerToolsCommands() {
 			return ErrSTARSIllegalTrack
 		}
 
-		state := sp.TrackState[trk.ADSBCallsign]
-		state.DisplayATPAMonitor = &value
+		ctx.Client.SetTrackDisplayATPAMonitor(trk.FlightPlan.ACID, &value, func(err error) { sp.displayError(err, ctx, "") })
 		return nil
 	}
 	registerCommand(CommandModeNone, "*BE[SLEW]", func(sp *STARSPane, ctx *panes.Context, ps *Preferences, trk *sim.Track) error {

@@ -37,26 +37,14 @@ type TrackState struct {
 	historyTracks      [10]av.RadarTrack
 	historyTracksIndex int
 
-	FullLDBEndTime           sim.Time // If the LDB displays the groundspeed. When to stop
-	DisplayRequestedAltitude *bool    // nil if unspecified
+	FullLDBEndTime sim.Time // If the LDB displays the groundspeed. When to stop
 
 	IsSelected bool // middle click
-
-	// We handed it off, the other controller accepted it, we haven't yet
-	// slewed to make it a PDB.
-	DisplayFDB bool
 
 	// Hold for release aircraft released and deleted from the coordination
 	// list by the controller.
 	ReleaseDeleted bool
 
-	// Only drawn if non-zero
-	JRingRadius    float32
-	ConeLength     float32
-	DisplayTPASize *bool // unspecified->system default if nil
-
-	DisplayATPAMonitor        *bool // unspecified->system default if nil
-	DisplayATPAWarnAlert      *bool // unspecified->system default if nil
 	IntrailDistance           float32
 	InhibitDisplayInTrailDist bool
 	ATPAStatus                ATPAStatus
@@ -73,19 +61,10 @@ type TrackState struct {
 	AcceptedHandoffSector     string
 	AcceptedHandoffDisplayEnd sim.Time
 
-	// These are only set if a leader line direction was specified for this
-	// aircraft individually:
-	LeaderLineDirection     *math.CardinalOrdinalDirection
-	FDAMLeaderLineDirection *math.CardinalOrdinalDirection
-	UseGlobalLeaderLine     bool
-
 	Ghost struct {
 		PartialDatablock bool
 		State            GhostState
 	}
-
-	DisplayLDBBeaconCode bool
-	DisplayPTL           bool
 
 	MSAW             bool // minimum safe altitude warning
 	MSAWStart        sim.Time
@@ -232,12 +211,11 @@ func (sp *STARSPane) processEvents(ctx *panes.Context) {
 	for _, trk := range ctx.Client.State.Tracks {
 		if _, ok := sp.TrackState[trk.ADSBCallsign]; !ok {
 			// First we've seen it; create the *AircraftState for it
-			sa := &TrackState{}
-			if trk.IsAssociated() {
-				sa.UseGlobalLeaderLine = trk.FlightPlan.GlobalLeaderLineDirection != nil
+			sp.TrackState[trk.ADSBCallsign] = &TrackState{}
+			if trk.IsAssociated() && trk.FlightPlan.GlobalLeaderLineDirection != nil {
+				ctx.Client.SetTrackUseGlobalLeaderLine(trk.FlightPlan.ACID, true,
+					func(err error) { sp.displayError(err, ctx, "") })
 			}
-
-			sp.TrackState[trk.ADSBCallsign] = sa
 		}
 
 		if ok, _ := trk.Squawk.IsSPC(); ok && !sp.TrackState[trk.ADSBCallsign].SPCAlert {
@@ -339,10 +317,10 @@ func (sp *STARSPane) processEvents(ctx *panes.Context) {
 		case sim.FlightPlanAssociatedEvent:
 			if fp := ctx.Client.State.GetFlightPlanForACID(event.ACID); fp != nil {
 				if ctx.UserOwnsFlightPlan(fp) {
-					if state, ok := sp.trackStateForACID(ctx, event.ACID); ok {
-						state.DisplayFDB = true
-
-						if fp.QuickFlightPlan {
+					ctx.Client.SetTrackDisplayFDB(event.ACID, true,
+						func(err error) { sp.displayError(err, ctx, "") })
+					if fp.QuickFlightPlan {
+						if state, ok := sp.trackStateForACID(ctx, event.ACID); ok {
 							state.DatablockAlert = true // display in yellow until slewed
 						}
 					}
@@ -363,7 +341,8 @@ func (sp *STARSPane) processEvents(ctx *panes.Context) {
 					state.OutboundHandoffAccepted = true
 					dur := time.Duration(ctx.FacilityAdaptation.Datablocks.FDB.AcceptFlashDuration) * time.Second
 					state.OutboundHandoffFlashEnd = ctx.SimTime.Add(dur)
-					state.DisplayFDB = true
+					ctx.Client.SetTrackDisplayFDB(event.ACID, true,
+						func(err error) { sp.displayError(err, ctx, "") })
 
 					if event.Type == sim.AcceptedRedirectedHandoffEvent {
 						state.RDIndicatorEnd = ctx.SimTime.Add(30 * time.Second)
@@ -383,16 +362,14 @@ func (sp *STARSPane) processEvents(ctx *panes.Context) {
 
 		case sim.SetGlobalLeaderLineEvent:
 			if fp := ctx.Client.State.GetFlightPlanForACID(event.ACID); fp != nil {
-				if state, ok := sp.trackStateForACID(ctx, event.ACID); ok {
-					state.UseGlobalLeaderLine = fp.GlobalLeaderLineDirection != nil
-				}
+				ctx.Client.SetTrackUseGlobalLeaderLine(event.ACID, fp.GlobalLeaderLineDirection != nil,
+					func(err error) { sp.displayError(err, ctx, "") })
 			}
 
 		case sim.FDAMLeaderLineEvent:
 			if ctx.UserControlsPosition(event.ToController) {
-				if state, ok := sp.trackStateForACID(ctx, event.ACID); ok {
-					state.FDAMLeaderLineDirection = event.LeaderLineDirection
-				}
+				ctx.Client.SetTrackFDAMLeaderLineDirection(event.ACID, event.LeaderLineDirection,
+					func(err error) { sp.displayError(err, ctx, "") })
 			}
 
 		case sim.ForceQLEvent:
@@ -572,16 +549,17 @@ func (sp *STARSPane) updateQuicklookRegionTracks(ctx *panes.Context) {
 					fp, userPositions, acType, fa.SignificantPoints)
 			})
 
+		cb := func(err error) { sp.displayError(err, ctx, "") }
 		if inRegion && !state.InQLRegion {
 			// Entry: track just entered a quicklook region.
-			state.DisplayFDB = true
+			ctx.Client.SetTrackDisplayFDB(fp.ACID, true, cb)
 			state.InQLRegion = true
 		} else if !inRegion && state.InQLRegion {
 			// Exit: track just left a quicklook region.
 			// Don't clear DisplayFDB if it's being maintained by the
 			// outbound handoff acceptance logic.
 			if !state.OutboundHandoffAccepted {
-				state.DisplayFDB = false
+				ctx.Client.SetTrackDisplayFDB(fp.ACID, false, cb)
 			}
 			state.InQLRegion = false
 		}
@@ -1476,20 +1454,20 @@ func (sp *STARSPane) drawLeaderLines(ctx *panes.Context, dbs map[av.ADSBCallsign
 
 func (sp *STARSPane) getLeaderLineDirection(ctx *panes.Context, trk sim.Track) math.CardinalOrdinalDirection {
 	ps := sp.currentPrefs()
-	state := sp.TrackState[trk.ADSBCallsign]
 
 	if trk.IsAssociated() {
 		sfp := trk.FlightPlan
+		anno := sp.annotations(ctx, sfp.ACID)
 		if sfp.Suspended {
 			// Suspended are always north, evidently.
 			return math.North
-		} else if state.UseGlobalLeaderLine && sfp.GlobalLeaderLineDirection != nil {
+		} else if anno.UseGlobalLeaderLine && sfp.GlobalLeaderLineDirection != nil {
 			return *sfp.GlobalLeaderLineDirection
-		} else if state.LeaderLineDirection != nil {
+		} else if anno.LeaderLineDirection != nil {
 			// The direction was specified for the aircraft specifically
-			return *state.LeaderLineDirection
-		} else if state.FDAMLeaderLineDirection != nil {
-			return *state.FDAMLeaderLineDirection
+			return *anno.LeaderLineDirection
+		} else if anno.FDAMLeaderLineDirection != nil {
+			return *anno.FDAMLeaderLineDirection
 		}
 
 		// Check if the active configuration specifies a leader line
@@ -1519,10 +1497,9 @@ func (sp *STARSPane) getLeaderLineDirection(ctx *panes.Context, trk sim.Track) m
 			return *ps.OtherControllerLeaderLineDirection
 		}
 	} else { // unassociated
-		if state.LeaderLineDirection != nil {
-			// The direction was specified for the aircraft specifically
-			return *state.LeaderLineDirection
-		} else if ps.UnassociatedLeaderLineDirection != nil {
+		// Per-track leader line direction is not available for
+		// unassociated tracks (no ACID to key shared annotations on).
+		if ps.UnassociatedLeaderLineDirection != nil {
 			return *ps.UnassociatedLeaderLineDirection
 		}
 	}

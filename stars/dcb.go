@@ -199,10 +199,8 @@ func (sp *STARSPane) drawDCB(ctx *panes.Context, transforms radar.ScopeTransform
 		disableMain = isMainSubmenuMode(sp.commandMode)
 
 		sp.drawDCBSpinner(ctx, makeRadarRangeSpinner(
-			func() float32 { return sp.syncedRange(ctx) },
-			func(v float32) {
-				ctx.Client.SetTCWRange(math.Clamp(v, 6, 256), func(err error) { sp.displayError(err, ctx, "") })
-			},
+			func() float32 { return ps.Range },
+			func(v float32) { ps.Range = math.Clamp(v, 6, 256) },
 		), CommandModeRange, maybeDisable(buttonFull), buttonScale)
 		sp.drawDCBMouseDeltaButton(ctx, "PLACE\nCNTR", CommandModePlaceCenter, maybeDisable(buttonHalfVertical),
 			buttonScale,
@@ -211,16 +209,13 @@ func (sp *STARSPane) drawDCB(ctx *panes.Context, transforms radar.ScopeTransform
 			},
 			func(delta [2]float32) { /* update */
 				deltaLL := transforms.LatLongFromWindowV(delta)
-				ctx.Client.SetTCWUserCenter(math.Sub2f(sp.syncedUserCenter(ctx), deltaLL),
-					func(err error) { sp.displayError(err, ctx, "") })
+				ps.UserCenter = math.Sub2f(ps.UserCenter, deltaLL)
 			})
 
 		sp.toggleButton(ctx, "OFF\nCNTR", &ps.UseUserCenter, maybeDisable(buttonHalfVertical), buttonScale)
 		sp.drawDCBSpinner(ctx, makeRangeRingRadiusSpinner(
-			func() int { return sp.syncedRangeRingRadius(ctx) },
-			func(v int) {
-				ctx.Client.SetTCWRangeRingRadius(v, func(err error) { sp.displayError(err, ctx, "") })
-			},
+			func() int { return ps.RangeRingRadius },
+			func(v int) { ps.RangeRingRadius = v },
 		), CommandModeRangeRings, maybeDisable(buttonFull), buttonScale)
 		if sp.drawDCBButton(ctx, "PLACE\nRR", maybeDisable(buttonHalfVertical), buttonScale,
 			sp.commandMode == CommandModePlaceRangeRings) {

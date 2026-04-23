@@ -594,31 +594,91 @@ func (c *ControlClient) AnnotateFlightStrip(acid sim.ACID, annotations [9]string
 	}, nil, nil), nil))
 }
 
-// SetTCWRange updates the shared TCW display range on the server. The echoed
-// SimStateUpdate carries the new TCWDisplay snapshot, which the call machinery
-// applies to the local State so subsequent reads see the new value immediately.
-func (c *ControlClient) SetTCWRange(r float32, callback func(error)) {
+// Shared per-ACID track annotation mutations. Each RPC's echoed
+// SimStateUpdate carries the fresh TCWDisplay snapshot, which the call
+// machinery applies to the local State so subsequent reads see the
+// new value immediately.
+
+func (c *ControlClient) setTrackFloat(rpcName string, acid sim.ACID, v float32, callback func(error)) {
 	var update server.SimStateUpdate
-	c.addCall(makeStateUpdateRPCCall(c.client.Go(server.SetTCWRangeRPC, &server.SetTCWRangeArgs{
+	c.addCall(makeStateUpdateRPCCall(c.client.Go(rpcName, &server.SetTrackFloatArgs{
 		ControllerToken: c.controllerToken,
-		Range:           r,
+		ACID:            acid,
+		Value:           v,
 	}, &update, nil), &update, callback))
 }
 
-// SetTCWUserCenter updates the shared scope center on the server.
-func (c *ControlClient) SetTCWUserCenter(p math.Point2LL, callback func(error)) {
+func (c *ControlClient) setTrackBool(rpcName string, acid sim.ACID, v bool, callback func(error)) {
 	var update server.SimStateUpdate
-	c.addCall(makeStateUpdateRPCCall(c.client.Go(server.SetTCWUserCenterRPC, &server.SetTCWUserCenterArgs{
+	c.addCall(makeStateUpdateRPCCall(c.client.Go(rpcName, &server.SetTrackBoolArgs{
 		ControllerToken: c.controllerToken,
-		Center:          p,
+		ACID:            acid,
+		Value:           v,
 	}, &update, nil), &update, callback))
 }
 
-// SetTCWRangeRingRadius updates the shared range-ring radius (nm) on the server.
-func (c *ControlClient) SetTCWRangeRingRadius(r int, callback func(error)) {
+func (c *ControlClient) setTrackOptBool(rpcName string, acid sim.ACID, v *bool, callback func(error)) {
 	var update server.SimStateUpdate
-	c.addCall(makeStateUpdateRPCCall(c.client.Go(server.SetTCWRangeRingRadiusRPC, &server.SetTCWRangeRingRadiusArgs{
+	c.addCall(makeStateUpdateRPCCall(c.client.Go(rpcName, &server.SetTrackOptBoolArgs{
 		ControllerToken: c.controllerToken,
-		Radius:          r,
+		ACID:            acid,
+		Value:           v,
 	}, &update, nil), &update, callback))
+}
+
+func (c *ControlClient) setTrackLeaderLine(rpcName string, acid sim.ACID, d *math.CardinalOrdinalDirection, callback func(error)) {
+	var update server.SimStateUpdate
+	c.addCall(makeStateUpdateRPCCall(c.client.Go(rpcName, &server.SetTrackLeaderLineArgs{
+		ControllerToken: c.controllerToken,
+		ACID:            acid,
+		Direction:       d,
+	}, &update, nil), &update, callback))
+}
+
+func (c *ControlClient) SetTrackJRingRadius(acid sim.ACID, v float32, callback func(error)) {
+	c.setTrackFloat(server.SetTrackJRingRadiusRPC, acid, v, callback)
+}
+
+func (c *ControlClient) SetTrackConeLength(acid sim.ACID, v float32, callback func(error)) {
+	c.setTrackFloat(server.SetTrackConeLengthRPC, acid, v, callback)
+}
+
+func (c *ControlClient) SetTrackLeaderLineDirection(acid sim.ACID, d *math.CardinalOrdinalDirection, callback func(error)) {
+	c.setTrackLeaderLine(server.SetTrackLeaderLineDirectionRPC, acid, d, callback)
+}
+
+func (c *ControlClient) SetTrackFDAMLeaderLineDirection(acid sim.ACID, d *math.CardinalOrdinalDirection, callback func(error)) {
+	c.setTrackLeaderLine(server.SetTrackFDAMLeaderLineDirectionRPC, acid, d, callback)
+}
+
+func (c *ControlClient) SetTrackUseGlobalLeaderLine(acid sim.ACID, v bool, callback func(error)) {
+	c.setTrackBool(server.SetTrackUseGlobalLeaderLineRPC, acid, v, callback)
+}
+
+func (c *ControlClient) SetTrackDisplayFDB(acid sim.ACID, v bool, callback func(error)) {
+	c.setTrackBool(server.SetTrackDisplayFDBRPC, acid, v, callback)
+}
+
+func (c *ControlClient) SetTrackDisplayPTL(acid sim.ACID, v bool, callback func(error)) {
+	c.setTrackBool(server.SetTrackDisplayPTLRPC, acid, v, callback)
+}
+
+func (c *ControlClient) SetTrackDisplayTPASize(acid sim.ACID, v *bool, callback func(error)) {
+	c.setTrackOptBool(server.SetTrackDisplayTPASizeRPC, acid, v, callback)
+}
+
+func (c *ControlClient) SetTrackDisplayATPAMonitor(acid sim.ACID, v *bool, callback func(error)) {
+	c.setTrackOptBool(server.SetTrackDisplayATPAMonitorRPC, acid, v, callback)
+}
+
+func (c *ControlClient) SetTrackDisplayATPAWarnAlert(acid sim.ACID, v *bool, callback func(error)) {
+	c.setTrackOptBool(server.SetTrackDisplayATPAWarnAlertRPC, acid, v, callback)
+}
+
+func (c *ControlClient) SetTrackDisplayRequestedAltitude(acid sim.ACID, v *bool, callback func(error)) {
+	c.setTrackOptBool(server.SetTrackDisplayRequestedAltitudeRPC, acid, v, callback)
+}
+
+func (c *ControlClient) SetTrackDisplayLDBBeaconCode(acid sim.ACID, v bool, callback func(error)) {
+	c.setTrackBool(server.SetTrackDisplayLDBBeaconCodeRPC, acid, v, callback)
 }

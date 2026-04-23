@@ -180,7 +180,8 @@ func registerSlewCommands() {
 					return CommandStatus{}
 				} else {
 					// 6.13.4 Toggle quick look for a single track (implied)
-					state.DisplayFDB = !state.DisplayFDB
+					cur := sp.annotations(ctx, fp.ACID).DisplayFDB
+					ctx.Client.SetTrackDisplayFDB(fp.ACID, !cur, func(err error) { sp.displayError(err, ctx, "") })
 					return CommandStatus{}
 				}
 			}
