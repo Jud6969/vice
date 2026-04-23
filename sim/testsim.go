@@ -69,3 +69,11 @@ func MakeTestAircraft(callsign av.ADSBCallsign, runway string) *Aircraft {
 
 // E2ETCW returns the TCW used by NewTestSim.
 func E2ETCW() TCW { return TCW("TEST") }
+
+// PruneTCWDisplayAnnotationsForTest runs the prune pass cross-package
+// tests would otherwise trigger via the private tick loop.
+func (s *Sim) PruneTCWDisplayAnnotationsForTest() {
+	s.mu.Lock(s.lg)
+	defer s.mu.Unlock(s.lg)
+	s.pruneTCWDisplayAnnotations()
+}
