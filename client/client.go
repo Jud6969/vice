@@ -66,8 +66,9 @@ type ControlClient struct {
 	// SyncScopeState is the caller's hint at connect-time: "I ticked
 	// the Sync Scope Setup checkbox on the Join as Relief dialog."
 	// The server uses it to flip the TCW-wide ScopeSyncEnabled flag
-	// on. STARS read/write routing is gated on that server flag, not
-	// on this field.
+	// on. STARS also uses it locally to opt a relief client out of
+	// sync participation when the checkbox is off at join time, even
+	// if another relief has already flipped the TCW-wide flag on.
 	SyncScopeState bool
 
 	// IsRelief records whether this client joined through the

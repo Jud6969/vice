@@ -7,6 +7,7 @@ package stars
 import (
 	"bytes"
 	"encoding/json"
+	"time"
 
 	"github.com/mmp/vice/client"
 	"github.com/mmp/vice/panes"
@@ -29,10 +30,18 @@ import (
 //   - Otherwise, if our local prefs diverged from the last snapshot
 //     we pushed/applied, push a fresh blob.
 
-// scopeSyncActive reports whether the client's current TCW has
-// flipped to shared-scope mode.
+// scopeSyncActive reports whether this client participates in the
+// TCW's shared scope-prefs sync. The TCW-wide ScopeSyncEnabled flag
+// is sticky once anyone opts in, but a relief client that joined
+// without the "Sync Scope Setup" checkbox opts itself out so its
+// local prefs are not applied to or pushed from the shared blob.
+// The primary (non-relief) never sees the checkbox and always
+// participates while the flag is on.
 func scopeSyncActive(c *client.ControlClient) bool {
 	if c == nil {
+		return false
+	}
+	if c.IsRelief && !c.SyncScopeState {
 		return false
 	}
 	d := c.State.TCWDisplay
@@ -175,7 +184,11 @@ func (sp *STARSPane) syncScopePrefs(ctx *panes.Context) {
 	}
 
 	// Local-only path: detect divergence vs the last known shared
-	// blob and push if different.
+	// blob and push if different. Rate-limited so a user actively
+	// dragging pan/range/etc. at frame rate doesn't flood the server.
+	if time.Since(sp.lastScopePrefsPush) < scopePrefsPushInterval {
+		return
+	}
 	blob, err := encodeScopePrefs(ps)
 	if err != nil {
 		return
@@ -183,5 +196,12 @@ func (sp *STARSPane) syncScopePrefs(ctx *panes.Context) {
 	if !bytes.Equal(blob, sp.scopePrefsBaseline) {
 		c.SetScopePrefs(blob, func(err error) { sp.displayError(err, ctx, "") })
 		sp.scopePrefsBaseline = blob
+		sp.lastScopePrefsPush = time.Now()
 	}
 }
+
+// scopePrefsPushInterval caps how often a client pushes its local
+// scope prefs to the server. The observer's state-update poll is
+// capped at ~100ms, so pushing faster than that is wasted server
+// and network work with no visible improvement.
+const scopePrefsPushInterval = 100 * time.Millisecond

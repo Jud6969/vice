@@ -22,6 +22,9 @@ func TestScopeSyncActiveGatesOnTCWFlag(t *testing.T) {
 		{"nil TCWDisplay", newSyncTestClient(nil), false},
 		{"TCWDisplay present, flag off", newSyncTestClient(&sim.TCWDisplayState{}), false},
 		{"TCWDisplay present, flag on", newSyncTestClient(&sim.TCWDisplayState{ScopeSyncEnabled: true}), true},
+		{"relief opted out, flag on", newOptOutReliefClient(&sim.TCWDisplayState{ScopeSyncEnabled: true}), false},
+		{"relief opted in, flag on", newOptInReliefClient(&sim.TCWDisplayState{ScopeSyncEnabled: true}), true},
+		{"primary (not relief), flag on", newSyncTestClient(&sim.TCWDisplayState{ScopeSyncEnabled: true}), true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -125,5 +128,25 @@ func newSyncTestClient(tcw *sim.TCWDisplayState) *client.ControlClient {
 	c := &client.ControlClient{}
 	c.State = client.SimState{SimState: server.SimState{}}
 	c.State.TCWDisplay = tcw
+	return c
+}
+
+// newOptOutReliefClient builds a relief-joined ControlClient whose
+// user left the Sync Scope Setup checkbox off -- should not
+// participate in sync even if the TCW-wide flag is on.
+func newOptOutReliefClient(tcw *sim.TCWDisplayState) *client.ControlClient {
+	c := newSyncTestClient(tcw)
+	c.IsRelief = true
+	c.SyncScopeState = false
+	return c
+}
+
+// newOptInReliefClient builds a relief-joined ControlClient whose
+// user ticked the Sync Scope Setup checkbox -- should participate
+// in sync whenever the TCW-wide flag is on.
+func newOptInReliefClient(tcw *sim.TCWDisplayState) *client.ControlClient {
+	c := newSyncTestClient(tcw)
+	c.IsRelief = true
+	c.SyncScopeState = true
 	return c
 }

@@ -248,6 +248,10 @@ type STARSPane struct {
 	// whenever sync is off.
 	scopePrefsBaseline    []byte
 	scopePrefsBaselineRev uint64
+	// lastScopePrefsPush rate-limits push RPCs so a user actively
+	// dragging range/pan at frame rate doesn't flood the server. The
+	// observer polls at ~100ms, so pushing faster than that is wasted.
+	lastScopePrefsPush time.Time
 }
 
 func (sp *STARSPane) notePendingATISGITextUpdate(ctx *panes.Context, line int, atis, text *string) {
