@@ -5,17 +5,13 @@
 package sim
 
 import (
-	gomath "math"
 	"slices"
-	"strconv"
-	"strings"
 	"time"
 
 	av "github.com/mmp/vice/aviation"
 	"github.com/mmp/vice/math"
 	"github.com/mmp/vice/nav"
 	"github.com/mmp/vice/util"
-	"github.com/mmp/vice/wx"
 )
 
 // AirportInSightInquiry handles the bare "AP" command. The controller asks
@@ -28,7 +24,7 @@ func (s *Sim) AirportInSightInquiry(tcw TCW, callsign av.ADSBCallsign) (av.Comma
 
 	return s.dispatchControlledAircraftCommand(tcw, callsign,
 		func(tcw TCW, ac *Aircraft) av.CommandIntent {
-			if ac.FieldInSight || ac.RequestedVisual {
+			if ac.FieldInSight || ac.RequestedVisualApproach || ac.Nav.Approach.Cleared {
 				return av.LookForFieldFound
 			}
 			return s.handleAirportAdvisory(ac, 0, 0)
@@ -38,30 +34,15 @@ func (s *Sim) AirportInSightInquiry(tcw TCW, callsign av.ADSBCallsign) (av.Comma
 // AirportAdvisory handles the AP/{oclock}/{miles} command. The controller tells the
 // pilot where to look for the airport: "airport, {oclock} o'clock, {miles} miles".
 // The pilot responds with "field in sight", "looking", or an IMC indication.
-func (s *Sim) AirportAdvisory(tcw TCW, callsign av.ADSBCallsign, command string) (av.CommandIntent, error) {
+func (s *Sim) AirportAdvisory(tcw TCW, callsign av.ADSBCallsign, oclock, miles int) (av.CommandIntent, error) {
 	s.mu.Lock(s.lg)
 	defer s.mu.Unlock(s.lg)
 
-	// Parse command: AP/oclock/miles
-	parts := strings.Split(command, "/")
-	if len(parts) != 3 {
-		return nil, ErrInvalidCommandSyntax
-	}
-
-	oclock, err := strconv.Atoi(parts[1])
-	if err != nil || oclock < 1 || oclock > 12 {
-		return nil, ErrInvalidCommandSyntax
-	}
-
-	miles, err := strconv.Atoi(parts[2])
-	if err != nil || miles < 1 || miles > 50 {
-		return nil, ErrInvalidCommandSyntax
-	}
-
 	return s.dispatchControlledAircraftCommand(tcw, callsign,
 		func(tcw TCW, ac *Aircraft) av.CommandIntent {
-			// If the pilot already has the field in sight, just confirm.
-			if ac.FieldInSight || ac.RequestedVisual {
+			// If the pilot already has the field in sight — or is already
+			// cleared for an approach — just confirm.
+			if ac.FieldInSight || ac.RequestedVisualApproach || ac.Nav.Approach.Cleared {
 				return av.LookForFieldFound
 			}
 
@@ -74,13 +55,17 @@ func (s *Sim) AirportAdvisory(tcw TCW, callsign av.ADSBCallsign, command string)
 // checks, then layers on AP-specific logic (o'clock validation, probability,
 // looking delay).
 func (s *Sim) handleAirportAdvisory(ac *Aircraft, oclock int, miles int) av.CommandIntent {
+	// A fresh AP call supersedes any earlier "looking" event still queued
+	// for this aircraft; the enqueue helper will re-add one if appropriate.
+	s.cancelFutureFieldInSight(ac.ADSBCallsign)
+
 	// Use the shared eligibility check for VMC, ceiling, range, and bearing.
 	elig := s.checkVisualEligibility(ac)
 	if !elig.FieldInSight {
 		if elig.Reason == visualEligibilityIMC {
 			return av.LookForFieldLookingIMC
 		}
-		ac.FieldLookingUntil = s.State.SimTime.Add(time.Duration(10+s.Rand.Intn(10)) * time.Second)
+		s.enqueueFutureFieldInSight(ac.ADSBCallsign)
 		if elig.Reason == visualEligibilityObscured {
 			return av.LookForFieldLookingObscured
 		}
@@ -95,23 +80,55 @@ func (s *Sim) handleAirportAdvisory(ac *Aircraft, oclock int, miles int) av.Comm
 		reportedBearing := math.MagneticHeading(math.NormalizeHeading(float32(ac.Heading()) + oclockHeading))
 		bearingError := math.HeadingDifference(reportedBearing, elig.BearingToAirport)
 		if bearingError > 30 {
-			ac.FieldLookingUntil = s.State.SimTime.Add(time.Duration(10+s.Rand.Intn(10)) * time.Second)
+			s.enqueueFutureFieldInSight(ac.ADSBCallsign)
 			return av.LookForFieldLooking
 		}
 	}
 
-	// Probability increases as distance decreases relative to effective range.
-	seeProb := float32(0.95) * (1.0 - elig.Distance/elig.MaxRange*0.15)
-	seeProb = max(0.4, min(0.95, seeProb))
-
-	if s.Rand.Float32() < seeProb {
+	if s.Rand.Float32() < pilotSeeProb(elig.MaxRange, elig.Distance) {
 		ac.FieldInSight = true
 		return av.LookForFieldFound
 	}
 
 	// "Looking" — schedule possible delayed field-in-sight call.
-	ac.FieldLookingUntil = s.State.SimTime.Add(time.Duration(10+s.Rand.Intn(10)) * time.Second)
+	s.enqueueFutureFieldInSight(ac.ADSBCallsign)
 	return av.LookForFieldLooking
+}
+
+// samplePilotLookFireTime samples a future time at which a "looking" pilot
+// will speak up. Uniform within [pilotLookDurationMin, pilotLookDurationMax];
+// with probability pilotNoReportProb the pilot never speaks up this window
+// (ok=false) — preserving the "sometimes the pilot just doesn't report"
+// behaviour of the old per-tick dice roll.
+func (s *Sim) samplePilotLookFireTime() (Time, bool) {
+	if s.Rand.Float32() < pilotNoReportProb {
+		return Time{}, false
+	}
+	return s.State.SimTime.Add(s.Rand.DurationRange(pilotLookDurationMin, pilotLookDurationMax)), true
+}
+
+func (s *Sim) enqueueFutureFieldInSight(callsign av.ADSBCallsign) {
+	s.cancelFutureFieldInSight(callsign)
+	if t, ok := s.samplePilotLookFireTime(); ok {
+		s.FutureFieldInSights = append(s.FutureFieldInSights, FutureFieldInSight{callsign, t})
+	}
+}
+
+func (s *Sim) enqueueFutureTrafficInSight(callsign, traffic av.ADSBCallsign) {
+	s.cancelFutureTrafficInSight(callsign)
+	if t, ok := s.samplePilotLookFireTime(); ok {
+		s.FutureTrafficInSights = append(s.FutureTrafficInSights, FutureTrafficInSight{callsign, traffic, t})
+	}
+}
+
+func (s *Sim) cancelFutureFieldInSight(callsign av.ADSBCallsign) {
+	s.FutureFieldInSights = slices.DeleteFunc(s.FutureFieldInSights,
+		func(f FutureFieldInSight) bool { return f.ADSBCallsign == callsign })
+}
+
+func (s *Sim) cancelFutureTrafficInSight(callsign av.ADSBCallsign) {
+	s.FutureTrafficInSights = slices.DeleteFunc(s.FutureTrafficInSights,
+		func(f FutureTrafficInSight) bool { return f.ADSBCallsign == callsign })
 }
 
 func (s *Sim) ExpectApproach(tcw TCW, callsign av.ADSBCallsign, approach, lahsoRunway string) (av.CommandIntent, error) {
@@ -214,7 +231,7 @@ func (s *Sim) ClearedVisualApproach(tcw TCW, callsign av.ADSBCallsign, runway st
 			// Pilot must have the field or approach-cleared preceding
 			// traffic in sight before accepting a visual approach clearance.
 			traffic := s.recentApproachTrafficInSightForRunway(ac, runway)
-			if !ac.FieldInSight && !ac.RequestedVisual && traffic == nil {
+			if !ac.FieldInSight && !ac.RequestedVisualApproach && traffic == nil {
 				return av.MakeUnableIntent("unable, we don't have the field in sight")
 			}
 
@@ -323,41 +340,58 @@ func (s *Sim) recentApproachTrafficInSight(ac *Aircraft) *Aircraft {
 	return nil
 }
 
-// checkDelayedFieldInSight checks if an aircraft that said "looking" (in response to an
-// AP command) should now report "field in sight". Mirrors checkDelayedTrafficInSight.
-func (s *Sim) checkDelayedFieldInSight(ac *Aircraft) {
-	if ac.FieldLookingUntil.IsZero() {
-		return
-	}
+// FutureFieldInSight is enqueued when a pilot says "looking" in response to
+// an AP command. At fire time the processor re-validates eligibility and, if
+// good, reports the field in sight.
+type FutureFieldInSight struct {
+	ADSBCallsign av.ADSBCallsign
+	Time         Time
+}
 
-	if s.State.SimTime.After(ac.FieldLookingUntil) {
-		ac.FieldLookingUntil = Time{}
-		return
-	}
+// FutureTrafficInSight is enqueued when a pilot says "looking" in response to
+// a traffic call. At fire time the pilot reports traffic in sight (no
+// re-validation — matching the original behaviour).
+type FutureTrafficInSight struct {
+	ADSBCallsign    av.ADSBCallsign
+	TrafficCallsign av.ADSBCallsign
+	Time            Time
+}
 
-	// Already acquired — don't send a duplicate report.
-	if ac.FieldInSight {
-		return
-	}
+func (s *Sim) processFutureFieldInSight() {
+	s.FutureFieldInSights = util.FilterSliceInPlace(s.FutureFieldInSights,
+		func(f FutureFieldInSight) bool {
+			if !s.State.SimTime.After(f.Time) {
+				return true
+			}
+			ac, ok := s.Aircraft[f.ADSBCallsign]
+			if !ok || ac.FieldInSight || ac.ControllerFrequency == "" || ac.Nav.Approach.Cleared {
+				return false
+			}
+			if !s.checkVisualEligibility(ac).FieldInSight {
+				return false
+			}
+			ac.FieldInSight = true
+			s.enqueuePilotTransmission(ac.ADSBCallsign, TCP(ac.ControllerFrequency), PendingTransmissionFieldInSight)
+			return false
+		})
+}
 
-	if ac.ControllerFrequency == "" {
-		return
-	}
-
-	if s.Rand.Float32() >= 0.1 {
-		return
-	}
-
-	// Re-check that the field is actually visible now.
-	elig := s.checkVisualEligibility(ac)
-	if !elig.FieldInSight {
-		return
-	}
-
-	ac.FieldInSight = true
-	ac.FieldLookingUntil = Time{}
-
-	s.enqueuePilotTransmission(ac.ADSBCallsign, TCP(ac.ControllerFrequency), PendingTransmissionFieldInSight)
+func (s *Sim) processFutureTrafficInSight() {
+	s.FutureTrafficInSights = util.FilterSliceInPlace(s.FutureTrafficInSights,
+		func(f FutureTrafficInSight) bool {
+			if !s.State.SimTime.After(f.Time) {
+				return true
+			}
+			ac, ok := s.Aircraft[f.ADSBCallsign]
+			if !ok || ac.ControllerFrequency == "" {
+				return false
+			}
+			ac.TrafficInSight = true
+			ac.TrafficInSightCallsign = f.TrafficCallsign
+			ac.TrafficInSightTime = s.State.SimTime
+			s.enqueuePilotTransmission(ac.ADSBCallsign, TCP(ac.ControllerFrequency), PendingTransmissionTrafficInSight)
+			return false
+		})
 }
 
 // canRequestVisualApproach reports whether an aircraft is eligible to
@@ -365,7 +399,7 @@ func (s *Sim) checkDelayedFieldInSight(ac *Aircraft) {
 // arrival on frequency, assigned a non-visual approach that hasn't been
 // cleared yet, and must not have already made the request.
 func (ac *Aircraft) canRequestVisualApproach() bool {
-	if ac.IsDeparture() || ac.FieldInSight || ac.RequestedVisual || ac.ControllerFrequency == "" {
+	if ac.IsDeparture() || ac.FieldInSight || ac.RequestedVisualApproach || ac.ControllerFrequency == "" {
 		return false
 	}
 	if ac.Nav.Approach.Assigned == nil || ac.Nav.Approach.Cleared {
@@ -380,7 +414,6 @@ type visualEligibilityReason int
 
 const (
 	visualEligibilityOK visualEligibilityReason = iota
-	visualEligibilityNoAirport
 	visualEligibilityIMC
 	visualEligibilityOutOfRange
 	visualEligibilityObscured
@@ -405,9 +438,6 @@ type VisualEligibility struct {
 func (s *Sim) checkVisualEligibility(ac *Aircraft) VisualEligibility {
 	arrivalAirport := ac.FlightPlan.ArrivalAirport
 	ap := s.State.Airports[arrivalAirport]
-	if ap == nil {
-		return VisualEligibility{Reason: visualEligibilityNoAirport}
-	}
 
 	// Must be VMC at the arrival airport.
 	metar, ok := s.State.METAR[arrivalAirport]
@@ -432,10 +462,10 @@ func (s *Sim) checkVisualEligibility(ac *Aircraft) VisualEligibility {
 			altAGL = 0
 		}
 	}
-	maxRange := effectiveVisualRange(metar, altAGL)
+	maxRange := metar.EffectiveVisualRange(altAGL)
 	dist := math.NMDistance2LLFast(ac.Position(), ap.Location, ac.NmPerLongitude())
 	if dist > maxRange {
-		reason := util.Select(visualWeatherObscuresField(metar, dist), visualEligibilityObscured, visualEligibilityOutOfRange)
+		reason := util.Select(metar.HasObscuration(), visualEligibilityObscured, visualEligibilityOutOfRange)
 		return VisualEligibility{
 			Distance: dist,
 			MaxRange: maxRange,
@@ -469,116 +499,62 @@ func (s *Sim) checkVisualEligibility(ac *Aircraft) VisualEligibility {
 	}
 }
 
-// Tunables for the spontaneous visual-request model.
+// Tunables for the pilot-vision model.
 const (
-	visualMaxDistance   = float32(25)   // nm; absolute cap on field-in-sight range
-	hazeScaleHeight     = float32(2500) // ft; aerosol extinction e-folding height in the boundary layer
-	visualMaxBearingOff = float32(120)  // degrees off nose; forward visibility arc
-	visualFieldProb     = float32(0.10) // fraction of pilots who spontaneously report field in sight
-	visualRequestProb   = float32(0.10) // fraction of field-in-sight pilots who also request the visual
-	visualDelayMin      = 2             // seconds; min delay after field in sight
-	visualDelayMax      = 8             // seconds; max delay after field in sight
+	visualMaxBearingOff  = float32(120)  // degrees off nose; forward visibility arc
+	visualFieldProb      = float32(0.10) // fraction of pilots who spontaneously report field in sight
+	visualRequestProb    = float32(0.10) // fraction of field-in-sight pilots who also request the visual
+	pilotLookDurationMin = 10 * time.Second
+	pilotLookDurationMax = 20 * time.Second
+	pilotNoReportProb    = float32(0.12) // probability a "looking" pilot never speaks up this window
 )
 
-// effectiveVisualRange returns the maximum distance (in nautical miles) at
-// which a pilot can identify the field, based on METAR visibility and
-// aircraft altitude AGL.
-//
-// METAR visibility is a ground-level measurement. Aerosol concentration
-// (and thus the extinction coefficient σ) decays exponentially with
-// altitude: σ(z) = σ₀ × exp(-z/H), where H is the haze scale height
-// (~2500 ft in the boundary layer). Integrating σ along the slant path
-// from the aircraft at altitude h to the airport at ground level
-// (Beer-Lambert law), and using Koschmieder to convert METAR visibility
-// to σ₀ (σ₀ = 3.912/V_surface), gives:
-//
-//	effectiveRange = surfaceVisibility × h / (H × (1 - exp(-h/H)))
-//
-// As h→0 this reduces to surfaceVisibility (L'Hôpital). At altitude the
-// pilot looks through proportionally less of the dense haze layer, so
-// effective range increases. The result is capped at visualMaxDistance.
-func effectiveVisualRange(metar wx.METAR, altitudeAGL float32) float32 {
-	vis, err := metar.Visibility()
-	if err != nil {
-		return visualMaxDistance
+// pilotSeeProb returns a probability (0..1) that a pilot can visually
+// identify a target at distNM, given the effective visual range (NM). Zero
+// beyond effective range; tapers linearly below it.
+func pilotSeeProb(effectiveRangeNM, distNM float32) float32 {
+	if effectiveRangeNM <= 0 || distNM > effectiveRangeNM {
+		return 0
 	}
-	// In automated U.S. METARs, 10SM means "10 or more"; model it as 15SM.
-	if vis >= 10 {
-		vis = 15
-	}
-	visNM := vis * math.StatuteMilesToNauticalMiles
-	if metar.HasObscuration() {
-		visNM *= 0.85
-	}
-
-	// Apply the slant-path extinction integral.
-	if altitudeAGL > 1 { // avoid division by zero; at ground level factor is 1
-		h := float64(altitudeAGL)
-		H := float64(hazeScaleHeight)
-		visNM *= float32(h / (H * (1 - gomath.Exp(-h/H))))
-	}
-
-	if visNM > visualMaxDistance {
-		return visualMaxDistance
-	}
-	return visNM
+	return max(0.4, 0.95*(1-0.5*distNM/effectiveRangeNM))
 }
 
-func visualWeatherObscuresField(metar wx.METAR, dist float32) bool {
-	if dist > visualMaxDistance {
-		return false
-	}
-
-	if metar.HasObscuration() {
-		return true
-	}
-
-	vis, err := metar.Visibility()
-	return err == nil && vis < 10
-}
-
-// checkSpontaneousVisualRequest checks if an arrival aircraft should
-// spontaneously report "field in sight" or request the visual approach.
-// WantsVisual/WantsVisualRequest are decided at aircraft creation time.
-// A short random delay (2-8s) after the field first comes into sight
-// simulates identification and reaction time.
+// checkSpontaneousVisualRequest handles two per-tick behaviours for an
+// arrival that has spontaneous-report flags set at spawn:
+//
+//  1. If VisualRequestDistance > 0 and the aircraft is closer to the arrival
+//     airport than that, perform a single visibility check; request the
+//     visual approach if the field is in sight, otherwise give up.
+//     VisualRequestDistance is zeroed either way to prevent retries.
+//
+//  2. Otherwise, if WantsVisual, report "field in sight" the first tick the
+//     field becomes visible. FieldInSight is then set, which disarms this
+//     function via canRequestVisualApproach.
 func (s *Sim) checkSpontaneousVisualRequest(ac *Aircraft) {
-	if !ac.canRequestVisualApproach() {
+	if !ac.canRequestVisualApproach() || s.hasPendingCheckIn(ac.ADSBCallsign) {
 		return
 	}
 
-	// Don't report before the pilot has checked in.
-	if s.hasPendingCheckIn(ac.ADSBCallsign) {
+	if ac.VisualApproachRequestDistance > 0 {
+		ap, ok := s.State.Airports[ac.FlightPlan.ArrivalAirport]
+		if !ok {
+			return
+		}
+		dist := math.NMDistance2LLFast(ac.Position(), ap.Location, ac.NmPerLongitude())
+		if dist > ac.VisualApproachRequestDistance {
+			return
+		}
+		if s.checkVisualEligibility(ac).FieldInSight {
+			ac.FieldInSight = true
+			ac.RequestedVisualApproach = true
+			s.enqueuePilotTransmission(ac.ADSBCallsign, ac.ControllerFrequency, PendingTransmissionRequestVisual)
+		}
+		ac.VisualApproachRequestDistance = 0
 		return
 	}
 
-	if !ac.WantsVisual {
-		return
-	}
-
-	elig := s.checkVisualEligibility(ac)
-	if !elig.FieldInSight {
-		ac.VisualRequestTime = Time{} // reset if field lost
-		return
-	}
-
-	// Set a random delay the first time the field comes into sight.
-	if ac.VisualRequestTime.IsZero() {
-		delay := visualDelayMin + s.Rand.Intn(visualDelayMax-visualDelayMin+1)
-		ac.VisualRequestTime = s.State.SimTime.Add(time.Duration(delay) * time.Second)
-		return
-	}
-	if s.State.SimTime.Before(ac.VisualRequestTime) {
-		return
-	}
-
-	ac.FieldInSight = true
-
-	// Visual request is a superset of field-in-sight; prefer it if both won.
-	if ac.WantsVisualRequest {
-		ac.RequestedVisual = true
-		s.enqueuePilotTransmission(ac.ADSBCallsign, TCP(ac.ControllerFrequency), PendingTransmissionRequestVisual)
-	} else {
-		s.enqueuePilotTransmission(ac.ADSBCallsign, TCP(ac.ControllerFrequency), PendingTransmissionFieldInSight)
+	if ac.WantsVisualApproach && s.checkVisualEligibility(ac).FieldInSight {
+		ac.FieldInSight = true
+		s.enqueuePilotTransmission(ac.ADSBCallsign, ac.ControllerFrequency, PendingTransmissionFieldInSight)
 	}
 }
