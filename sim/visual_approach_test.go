@@ -1,7 +1,6 @@
 package sim
 
 import (
-	"fmt"
 	"io"
 	"log/slog"
 	"slices"
@@ -76,8 +75,8 @@ func NewVisualScenario(t *testing.T, airportLoc math.Point2LL, runway string, ac
 				ArrivalAirportElevation: 13,
 			},
 			Approach: nav.NavApproach{
-				AssignedId: "I" + runway,
 				Assigned: &av.Approach{
+					Id:     "I" + runway,
 					Type:   av.ILSApproach,
 					Runway: runway,
 				},
@@ -136,10 +135,9 @@ func (vs *VisualScenario) SetAltitude(alt float32) {
 // AirportAdvisory issues an AP command and returns the intent.
 func (vs *VisualScenario) AirportAdvisory(oclock, miles int) av.CommandIntent {
 	vs.t.Helper()
-	cmd := fmt.Sprintf("AP/%d/%d", oclock, miles)
-	intent, err := vs.Sim.AirportAdvisory(vs.tcw, vs.callsign, cmd)
+	intent, err := vs.Sim.AirportAdvisory(vs.tcw, vs.callsign, oclock, miles)
 	if err != nil {
-		vs.t.Fatalf("AirportAdvisory(%s) error: %v", cmd, err)
+		vs.t.Fatalf("AirportAdvisory(%d,%d) error: %v", oclock, miles, err)
 	}
 	return intent
 }
@@ -155,9 +153,9 @@ func (vs *VisualScenario) AdvanceTime(d time.Duration) {
 	vs.Sim.State.SimTime = vs.Sim.State.SimTime.Add(d)
 }
 
-// CheckDelayedFieldInSight runs the delayed field-in-sight check.
+// CheckDelayedFieldInSight runs the delayed field-in-sight processor.
 func (vs *VisualScenario) CheckDelayedFieldInSight() {
-	vs.Sim.checkDelayedFieldInSight(vs.AC)
+	vs.Sim.processFutureFieldInSight()
 }
 
 // CheckSpontaneousVisual runs the spontaneous visual request check.
@@ -254,8 +252,8 @@ func makeVisualTestAircraftAlt(pos math.Point2LL, heading math.MagneticHeading, 
 				MagneticVariation: 0,
 			},
 			Approach: nav.NavApproach{
-				AssignedId: "I13L",
 				Assigned: &av.Approach{
+					Id:     "I13L",
 					Type:   av.ILSApproach,
 					Runway: "13L",
 				},
@@ -357,16 +355,6 @@ func TestCheckVisualEligibility(t *testing.T) {
 			wantField: true,
 		},
 		{
-			name: "Unknown arrival airport",
-			sim: func() *Sim {
-				s := makeVisualTestSim(airportLoc, "13L")
-				delete(s.State.Airports, "KJFK")
-				return s
-			}(),
-			ac:        makeVisualTestAircraft(math.Point2LL{0, 5.0 / 60}, 180),
-			wantField: false,
-		},
-		{
 			name: "Low visibility, aircraft beyond vis range",
 			sim: func() *Sim {
 				s := makeVisualTestSim(airportLoc, "13L")
@@ -463,7 +451,7 @@ func TestCanRequestVisualApproach(t *testing.T) {
 			name: "Already requested visual",
 			ac: func() *Aircraft {
 				ac := makeVisualTestAircraft(math.Point2LL{}, 180)
-				ac.RequestedVisual = true
+				ac.RequestedVisualApproach = true
 				return ac
 			}(),
 			want: false,
@@ -481,7 +469,6 @@ func TestCanRequestVisualApproach(t *testing.T) {
 			name: "No approach assigned",
 			ac: func() *Aircraft {
 				ac := makeVisualTestAircraft(math.Point2LL{}, 180)
-				ac.Nav.Approach.AssignedId = ""
 				ac.Nav.Approach.Assigned = nil
 				return ac
 			}(),
@@ -590,7 +577,10 @@ func TestVisualApproachWaypoints(t *testing.T) {
 	}
 	setupTestRunway(t, "KTEST", rwy)
 
-	nmPerLong := float32(52) // ~40°N
+	// Test positions sit near lat=0, so nmPerLong must match
+	// math.NMPerLongitudeAt(pos) ≈ 60 for the ray/route helpers to project
+	// coordinates consistently with the rest of the nav pipeline.
+	nmPerLong := float32(60)
 
 	reference := &av.Approach{
 		Type:      av.ILSApproach,
@@ -667,8 +657,7 @@ func TestVisualApproachWaypoints(t *testing.T) {
 					ArrivalAirport:    av.Waypoint{Fix: "KTEST"},
 				},
 				Approach: nav.NavApproach{
-					AssignedId: "V36",
-					Assigned:   &av.Approach{Type: av.ChartedVisualApproach, Runway: "36"},
+					Assigned: &av.Approach{Id: "V36", Type: av.ChartedVisualApproach, Runway: "36"},
 				},
 			}
 			if tt.assigned != nil {
@@ -865,8 +854,7 @@ func TestVisualApproachFollowingTrafficTurnsBase(t *testing.T) {
 			ArrivalAirport:    av.Waypoint{Fix: "KTEST"},
 		},
 		Approach: nav.NavApproach{
-			AssignedId: "V36",
-			Assigned:   &av.Approach{Type: av.ChartedVisualApproach, Runway: "36"},
+			Assigned: &av.Approach{Id: "V36", Type: av.ChartedVisualApproach, Runway: "36"},
 		},
 	}
 
@@ -1130,17 +1118,18 @@ func TestAirportAdvisoryLowVisibility(t *testing.T) {
 	airportLoc := math.Point2LL{0, 0}
 	setupTestRunway(t, "KJFK", av.Runway{Id: "13L", Heading: 130, Threshold: airportLoc})
 	sim := makeVisualTestSim(airportLoc, "13L")
-	sim.State.METAR["KJFK"] = wx.METAR{Raw: "KJFK 5SM BKN050"} // 5SM visibility
+	sim.State.METAR["KJFK"] = wx.METAR{Raw: "KJFK 5SM BKN050"} // 5SM visibility, no obscuration phenomena
 
-	// Aircraft at 8nm, beyond 5SM visibility → should be "looking".
+	// Aircraft at 8nm, beyond 5SM visibility → "looking" with out-of-range reason
+	// (reduced surface vis alone without an obscuration phenomenon is "too far", not "obscured").
 	ac := makeVisualTestAircraft(math.Point2LL{0, 8.0 / 60}, 180)
 	intent := sim.handleAirportAdvisory(ac, 12, 8)
 	fi, ok := intent.(av.LookForFieldIntent)
 	if !ok {
 		t.Fatalf("expected LookForFieldIntent, got %T", intent)
 	}
-	if fi != av.LookForFieldLookingObscured {
-		t.Errorf("expected LookForFieldLookingObscured for aircraft beyond visibility range, got %v", fi)
+	if fi != av.LookForFieldLooking {
+		t.Errorf("expected LookForFieldLooking for aircraft beyond visibility range, got %v", fi)
 	}
 }
 
@@ -1166,50 +1155,83 @@ func TestEffectiveVisualRangeObscurationPenalty(t *testing.T) {
 	clear := wx.METAR{Raw: "KJFK 10SM BKN050"}
 	haze := wx.METAR{Raw: "KJFK 10SM HZ BKN050"}
 
-	clearRange := effectiveVisualRange(clear, 0)
-	hazeRange := effectiveVisualRange(haze, 0)
+	clearRange := clear.EffectiveVisualRange(0)
+	hazeRange := haze.EffectiveVisualRange(0)
 	if hazeRange >= clearRange {
 		t.Fatalf("obscured range = %.2f, clear range = %.2f; expected obscuration penalty", hazeRange, clearRange)
 	}
 }
 
-func TestDelayedFieldInSightCanExpireWithoutSeeingField(t *testing.T) {
+func TestFutureFieldInSightDropsWhenFieldNotVisible(t *testing.T) {
+	// Field is out of range → processor fires at event.Time but drops without
+	// setting FieldInSight. Event is removed from the queue.
 	airportLoc := math.Point2LL{0, 0}
 	setupTestRunway(t, "KJFK", av.Runway{Id: "13L", Heading: 130, Threshold: airportLoc})
 	sim := makeVisualTestSim(airportLoc, "13L")
 	sim.State.SimTime = NewSimTime(time.Now())
 
-	ac := makeVisualTestAircraft(math.Point2LL{0, 5.0 / 60}, 180) // 5nm north heading south
-	ac.FieldLookingUntil = sim.State.SimTime.Add(-time.Second)
+	ac := makeVisualTestAircraft(math.Point2LL{0, 30.0 / 60}, 180) // 30nm — beyond effective range
 	sim.Aircraft = map[av.ADSBCallsign]*Aircraft{"AAL123": ac}
 	sim.PendingContacts = make(map[TCP][]PendingContact)
 
-	sim.checkDelayedFieldInSight(ac)
+	sim.FutureFieldInSights = []FutureFieldInSight{{ac.ADSBCallsign, sim.State.SimTime.Add(-time.Second)}}
+
+	sim.processFutureFieldInSight()
 	if ac.FieldInSight {
-		t.Fatal("expired looking window should not guarantee field in sight")
+		t.Fatal("aircraft beyond effective range should not report field in sight")
 	}
-	if !ac.FieldLookingUntil.IsZero() {
-		t.Fatal("expired looking window should be cleared")
+	if len(sim.FutureFieldInSights) != 0 {
+		t.Fatal("fired event should be removed from queue")
 	}
 }
 
-func TestDelayedTrafficInSightCanExpireWithoutSeeingTraffic(t *testing.T) {
+func TestFutureTrafficInSightFiresAtDeadline(t *testing.T) {
 	airportLoc := math.Point2LL{0, 0}
+	setupTestRunway(t, "KJFK", av.Runway{Id: "13L", Heading: 130, Threshold: airportLoc})
 	sim := makeVisualTestSim(airportLoc, "13L")
 	sim.State.SimTime = NewSimTime(time.Now())
 	sim.PendingContacts = make(map[TCP][]PendingContact)
 
 	ac := makeVisualTestAircraft(math.Point2LL{0, 5.0 / 60}, 180)
-	ac.TrafficLookingCallsign = "DAL456"
-	ac.TrafficLookingUntil = sim.State.SimTime.Add(-time.Second)
-
-	sim.checkDelayedTrafficInSight(ac)
-
-	if ac.TrafficInSight {
-		t.Fatal("expired looking window should not guarantee traffic in sight")
+	sim.Aircraft = map[av.ADSBCallsign]*Aircraft{ac.ADSBCallsign: ac}
+	sim.FutureTrafficInSights = []FutureTrafficInSight{
+		{ac.ADSBCallsign, "DAL456", sim.State.SimTime.Add(-time.Second)},
 	}
-	if !ac.TrafficLookingUntil.IsZero() || ac.TrafficLookingCallsign != "" {
-		t.Fatal("expired looking window should be cleared")
+
+	sim.processFutureTrafficInSight()
+
+	if !ac.TrafficInSight || ac.TrafficInSightCallsign != "DAL456" {
+		t.Fatalf("expected traffic in sight set to DAL456, got %v/%q", ac.TrafficInSight, ac.TrafficInSightCallsign)
+	}
+	if len(sim.FutureTrafficInSights) != 0 {
+		t.Fatal("fired event should be removed from queue")
+	}
+}
+
+// A fresh TRAFFIC advisory must cancel any earlier queued "looking" event for
+// the same aircraft — otherwise the pilot could later report the stale target.
+func TestFutureTrafficInSightSupersededByNewAdvisory(t *testing.T) {
+	airportLoc := math.Point2LL{0, 0}
+	setupTestRunway(t, "KJFK", av.Runway{Id: "13L", Heading: 130, Threshold: airportLoc})
+	sim := makeVisualTestSim(airportLoc, "13L")
+	sim.State.SimTime = NewSimTime(time.Now())
+	sim.PendingContacts = make(map[TCP][]PendingContact)
+
+	ac := makeVisualTestAircraft(math.Point2LL{0, 5.0 / 60}, 180)
+	sim.Aircraft = map[av.ADSBCallsign]*Aircraft{ac.ADSBCallsign: ac}
+
+	// Stale event from an earlier advisory.
+	sim.FutureTrafficInSights = []FutureTrafficInSight{
+		{ac.ADSBCallsign, "OLD456", sim.State.SimTime.Add(10 * time.Second)},
+	}
+
+	// Any new advisory path must purge the stale entry.
+	sim.handleTrafficAdvisory(ac, 12, 5, ac.Altitude())
+
+	for _, f := range sim.FutureTrafficInSights {
+		if f.TrafficCallsign == "OLD456" {
+			t.Fatal("stale FutureTrafficInSight for OLD456 should be purged by a new advisory")
+		}
 	}
 }
 
@@ -1297,8 +1319,8 @@ func TestCVARequiresFieldInSight(t *testing.T) {
 			wantAllow: true,
 		},
 		{
-			name:      "RequestedVisual set → allowed",
-			setup:     func(ac *Aircraft) { ac.RequestedVisual = true },
+			name:      "RequestedVisualApproach set → allowed",
+			setup:     func(ac *Aircraft) { ac.RequestedVisualApproach = true },
 			wantAllow: true,
 		},
 	}
@@ -1309,7 +1331,7 @@ func TestCVARequiresFieldInSight(t *testing.T) {
 			tt.setup(ac)
 
 			// Mirror the gate check in ClearedVisualApproach.
-			allowed := ac.FieldInSight || ac.RequestedVisual
+			allowed := ac.FieldInSight || ac.RequestedVisualApproach
 			if allowed != tt.wantAllow {
 				t.Errorf("CVA gate: allowed=%v, want %v", allowed, tt.wantAllow)
 			}
@@ -1453,7 +1475,6 @@ func TestScenarioCVATooCloseIsUnable(t *testing.T) {
 	vs := NewVisualScenario(t, airportLoc, "36", math.Point2LL{0, 1.0 / 60}, 360)
 	vs.AC.FieldInSight = true
 	vs.AC.Nav.Approach.Assigned = nil
-	vs.AC.Nav.Approach.AssignedId = ""
 
 	intent, err := vs.ClearedVisual("36")
 	if err != nil {
@@ -1645,24 +1666,12 @@ func TestScenarioSpontaneousFieldInSight(t *testing.T) {
 	setupTestRunway(t, "KJFK", av.Runway{Id: "13L", Heading: 130, Threshold: airportLoc, Elevation: 13})
 
 	vs := NewVisualScenario(t, airportLoc, "13L", math.Point2LL{0, 5.0 / 60}, 180)
-	vs.AC.WantsVisual = true
-	vs.AC.WantsVisualRequest = false
+	vs.AC.WantsVisualApproach = true
 
-	// First check sets VisualRequestTime (delay).
-	vs.CheckSpontaneousVisual()
-	if vs.AC.FieldInSight {
-		t.Fatal("field in sight should not be immediate — delay expected")
-	}
-	if vs.AC.VisualRequestTime.IsZero() {
-		t.Fatal("VisualRequestTime should be set after first eligibility check")
-	}
-
-	// Advance past the delay.
-	vs.AdvanceTime(10 * time.Second)
 	vs.CheckSpontaneousVisual()
 
 	if !vs.AC.FieldInSight {
-		t.Error("expected FieldInSight after delay expired")
+		t.Error("expected FieldInSight once eligibility holds")
 	}
 	if !vs.HasPendingTransmission(PendingTransmissionFieldInSight) {
 		t.Error("expected PendingTransmissionFieldInSight to be enqueued")
@@ -1673,25 +1682,42 @@ func TestScenarioSpontaneousVisualRequest(t *testing.T) {
 	airportLoc := math.Point2LL{0, 0}
 	setupTestRunway(t, "KJFK", av.Runway{Id: "13L", Heading: 130, Threshold: airportLoc, Elevation: 13})
 
+	// Aircraft starts 5nm north — well inside the request distance.
 	vs := NewVisualScenario(t, airportLoc, "13L", math.Point2LL{0, 5.0 / 60}, 180)
-	vs.AC.WantsVisual = true
-	vs.AC.WantsVisualRequest = true
+	vs.AC.VisualApproachRequestDistance = 10
 
-	// First check → sets delay.
-	vs.CheckSpontaneousVisual()
-
-	// Advance past delay.
-	vs.AdvanceTime(10 * time.Second)
 	vs.CheckSpontaneousVisual()
 
 	if !vs.AC.FieldInSight {
 		t.Error("expected FieldInSight")
 	}
-	if !vs.AC.RequestedVisual {
-		t.Error("expected RequestedVisual when WantsVisualRequest=true")
+	if !vs.AC.RequestedVisualApproach {
+		t.Error("expected RequestedVisualApproach when within VisualApproachRequestDistance")
+	}
+	if vs.AC.VisualApproachRequestDistance != 0 {
+		t.Error("expected VisualApproachRequestDistance cleared after check")
 	}
 	if !vs.HasPendingTransmission(PendingTransmissionRequestVisual) {
 		t.Error("expected PendingTransmissionRequestVisual to be enqueued")
+	}
+}
+
+func TestScenarioVisualRequestGivesUpIfFieldNotVisible(t *testing.T) {
+	airportLoc := math.Point2LL{0, 0}
+	setupTestRunway(t, "KJFK", av.Runway{Id: "13L", Heading: 130, Threshold: airportLoc, Elevation: 13})
+
+	// Aircraft within request distance but with the airport obscured.
+	vs := NewVisualScenario(t, airportLoc, "13L", math.Point2LL{0, 5.0 / 60}, 180)
+	vs.SetMETAR("KJFK 1SM FG OVC003") // IMC + obscuration
+	vs.AC.VisualApproachRequestDistance = 10
+
+	vs.CheckSpontaneousVisual()
+
+	if vs.AC.RequestedVisualApproach {
+		t.Error("should not request visual when field not visible")
+	}
+	if vs.AC.VisualApproachRequestDistance != 0 {
+		t.Error("VisualApproachRequestDistance should be cleared after the one-shot check")
 	}
 }
 
