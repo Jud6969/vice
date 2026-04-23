@@ -93,9 +93,6 @@ type Aircraft struct {
 	ReportDepartureHeading   bool    // true if runway has multiple exit headings
 	ReportDepartureSID       bool    // true if runway has multiple SIDs
 
-	// The controller who gave approach clearance
-	ApproachTCP TCP
-
 	FirstSeen Time
 
 	RequestedFlightFollowing bool
@@ -120,30 +117,22 @@ type Aircraft struct {
 	TrafficInSight          bool            // True if aircraft has reported traffic in sight
 	TrafficInSightCallsign  av.ADSBCallsign // Traffic the aircraft has reported in sight
 	TrafficInSightTime      Time            // When traffic was reported in sight
-	TrafficLookingCallsign  av.ADSBCallsign // Traffic the aircraft is looking for
-	TrafficLookingUntil     Time            // If non-zero, aircraft may report traffic in sight before this time
 	OfferedVisualSeparation bool            // True if the pilot volunteered to maintain visual separation
 
 	// FieldInSight is set when the pilot has confirmed the airport is in sight
 	// (either via AP command response or spontaneous report).
 	FieldInSight bool
-	// FieldLookingUntil is non-zero when the pilot said "looking" in response
-	// to an AP command and may report "field in sight" before this time.
-	FieldLookingUntil Time
 
-	// RequestedVisual is set when the pilot has spontaneously requested
+	// RequestedVisualApproach is set when the pilot has spontaneously requested
 	// the visual approach (field in sight). Prevents repeated requests.
-	RequestedVisual bool
-	// WantsVisual is decided at aircraft creation: whether this pilot
-	// spontaneously reports field in sight when eligible.
-	WantsVisual bool
-	// WantsVisualRequest is decided at aircraft creation: whether this
-	// pilot spontaneously requests the visual approach (implies field in sight).
-	WantsVisualRequest bool
-	// VisualRequestTime is when the pilot will key the mic to report the
-	// field in sight, set once the field first comes into view (adds a short
-	// random delay to simulate identification and reaction time).
-	VisualRequestTime Time
+	RequestedVisualApproach bool
+	// WantsVisualApproach is decided at aircraft creation: whether this pilot spontaneously reports
+	// field in sight when eligible.
+	WantsVisualApproach bool
+	// VisualApproachRequestDistance, if non-zero, is the distance (NM) from the arrival airport at
+	// which the pilot will perform a single visibility check and request the visual approach if the
+	// field is in sight. Set to zero after the check (requested or given up) to prevent retries.
+	VisualApproachRequestDistance float32
 
 	TouchAndGosRemaining int // >0 means pattern aircraft; decremented each lap
 }
@@ -249,7 +238,7 @@ func (ac *Aircraft) PilotMixUp() av.CommandIntent {
 }
 
 func (ac *Aircraft) Ident(now Time) av.CommandIntent {
-	ac.IdentStartTime = now.Add(time.Duration(2+ac.Nav.Rand.Intn(3)) * time.Second) // delay the start a bit
+	ac.IdentStartTime = now.Add(ac.Nav.Rand.DurationRange(2*time.Second, 5*time.Second)) // delay the start a bit
 	ac.IdentEndTime = ac.IdentStartTime.Add(10 * time.Second)
 	return av.TransponderIntent{Ident: true}
 }
@@ -418,23 +407,15 @@ func (ac *Aircraft) AtFixIntercept(fix string, lg *log.Logger) av.CommandIntent 
 	return ac.Nav.AtFixIntercept(fix, ac.FlightPlan.ArrivalAirport, lg)
 }
 
-func (ac *Aircraft) ClearedApproach(id string, simTime Time, lg *log.Logger) (av.CommandIntent, bool) {
+func (ac *Aircraft) ClearedApproach(id string, simTime Time, lg *log.Logger) av.CommandIntent {
 	return ac.Nav.ClearedApproach(ac.FlightPlan.ArrivalAirport, id, false, simTime.NavTime())
 }
 
-func (ac *Aircraft) ClearedDirectVisual(runway string, referenceApproach *av.Approach, lahsoRunway string, simTime Time) (av.CommandIntent, bool) {
-	return ac.Nav.ClearedDirectVisual(runway, referenceApproach, lahsoRunway, simTime.Time())
+func (ac *Aircraft) ClearedVisualApproach(runway string, follow *nav.FollowTraffic, refs []*av.Approach, lahsoRunway string, simTime Time) av.CommandIntent {
+	return ac.Nav.ClearedVisualApproach(runway, follow, refs, lahsoRunway, simTime.NavTime())
 }
 
-func (ac *Aircraft) ClearedDirectVisualFollowingTraffic(runway string, trafficPosition math.Point2LL, referenceApproach *av.Approach, lahsoRunway string, simTime Time) (av.CommandIntent, bool) {
-	return ac.Nav.ClearedDirectVisualFollowingTraffic(runway, trafficPosition, referenceApproach, lahsoRunway, simTime.Time())
-}
-
-func (ac *Aircraft) ClearedDirectVisualFollowingTrafficRoute(runway string, trafficPosition math.Point2LL, trafficRoute av.WaypointArray, lahsoRunway string, simTime Time) (av.CommandIntent, bool) {
-	return ac.Nav.ClearedDirectVisualFollowingTrafficRoute(runway, trafficPosition, trafficRoute, lahsoRunway, simTime.Time())
-}
-
-func (ac *Aircraft) ClearedStraightInApproach(id string, simTime Time, lg *log.Logger) (av.CommandIntent, bool) {
+func (ac *Aircraft) ClearedStraightInApproach(id string, simTime Time, lg *log.Logger) av.CommandIntent {
 	return ac.Nav.ClearedApproach(ac.FlightPlan.ArrivalAirport, id, true, simTime.NavTime())
 }
 
@@ -796,7 +777,7 @@ func PlausibleFinalAltitude(fp av.FlightPlan, perf av.AircraftPerformance, nmPer
 	}
 
 	// Randomize the altitude a bit
-	alt = (alt - delta + r.Intn(2*delta+1))
+	alt = r.IntRange(alt-delta, alt+delta)
 
 	// Round ceiling down to odd 1000s.
 	ceiling := int(perf.Ceiling) / 1000
@@ -962,4 +943,9 @@ func (va *VoiceAssigner) GetVoice(callsign av.ADSBCallsign, r *rand.Rand) string
 	}
 
 	return getVoice("default")
+}
+
+type AircraftDisplayState struct {
+	Spew        string // for debugging
+	FlightState string // for display when paused
 }
