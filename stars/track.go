@@ -129,12 +129,15 @@ const (
 	ATPAStatusAlert
 )
 
-type GhostState int
+// GhostState now lives in sim (see sim/track_ghost.go) because it is
+// part of per-ACID annotations that are synchronized server-side. The
+// alias + const re-exports keep existing stars.GhostState callers working.
+type GhostState = sim.GhostState
 
 const (
-	GhostStateRegular = iota
-	GhostStateSuppressed
-	GhostStateForced
+	GhostStateRegular    = sim.GhostStateRegular
+	GhostStateSuppressed = sim.GhostStateSuppressed
+	GhostStateForced     = sim.GhostStateForced
 )
 
 const (
