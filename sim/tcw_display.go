@@ -356,16 +356,6 @@ func (s *Sim) SetScopePrefsBlob(tcw TCW, blob []byte) {
 	d.Rev++
 }
 
-// Deprecated: sync is now automatic; kept for gob compat until a later cleanup.
-func (s *Sim) EnableScopeSync(tcw TCW) {
-	s.mu.Lock(s.lg)
-	defer s.mu.Unlock(s.lg)
-
-	d := s.EnsureTCWDisplay(tcw)
-	d.ScopeSyncEnabled = true
-	d.Rev++
-}
-
 // SetFused flips the TCW-wide Fused flag and bumps Rev.
 func (s *Sim) SetFused(tcw TCW, v bool) {
 	s.mu.Lock(s.lg)
