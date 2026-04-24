@@ -210,6 +210,115 @@ func (s *Sim) SetTrackDisplayLDBBeaconCode(tcw TCW, acid ACID, v bool) {
 	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.DisplayLDBBeaconCode = v })
 }
 
+// --- Display-type overrides ---
+func (s *Sim) SetTrackDatablockAlert(tcw TCW, acid ACID, v bool) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.DatablockAlert = v })
+}
+func (s *Sim) SetTrackInhibitACTypeDisplay(tcw TCW, acid ACID, v *bool) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.InhibitACTypeDisplay = v })
+}
+func (s *Sim) SetTrackForceACTypeDisplayEndTime(tcw TCW, acid ACID, v Time) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.ForceACTypeDisplayEndTime = v })
+}
+
+// --- Handoff display state ---
+func (s *Sim) SetTrackAcceptedHandoffSector(tcw TCW, acid ACID, v string) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.AcceptedHandoffSector = v })
+}
+func (s *Sim) SetTrackAcceptedHandoffDisplayEnd(tcw TCW, acid ACID, v Time) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.AcceptedHandoffDisplayEnd = v })
+}
+func (s *Sim) SetTrackOutboundHandoffAccepted(tcw TCW, acid ACID, v bool) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.OutboundHandoffAccepted = v })
+}
+func (s *Sim) SetTrackOutboundHandoffFlashEnd(tcw TCW, acid ACID, v Time) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.OutboundHandoffFlashEnd = v })
+}
+func (s *Sim) SetTrackRDIndicatorEnd(tcw TCW, acid ACID, v Time) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.RDIndicatorEnd = v })
+}
+
+// --- Flash timers ---
+func (s *Sim) SetTrackPOFlashingEndTime(tcw TCW, acid ACID, v Time) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.POFlashingEndTime = v })
+}
+func (s *Sim) SetTrackUNFlashingEndTime(tcw TCW, acid ACID, v Time) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.UNFlashingEndTime = v })
+}
+func (s *Sim) SetTrackIFFlashing(tcw TCW, acid ACID, v bool) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.IFFlashing = v })
+}
+func (s *Sim) SetTrackSuspendedShowAltitudeEndTime(tcw TCW, acid ACID, v Time) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.SuspendedShowAltitudeEndTime = v })
+}
+func (s *Sim) SetTrackFullLDBEndTime(tcw TCW, acid ACID, v Time) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.FullLDBEndTime = v })
+}
+
+// --- Alerts + acks ---
+func (s *Sim) SetTrackMSAW(tcw TCW, acid ACID, v bool) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.MSAW = v })
+}
+func (s *Sim) SetTrackMSAWStart(tcw TCW, acid ACID, v Time) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.MSAWStart = v })
+}
+func (s *Sim) SetTrackInhibitMSAW(tcw TCW, acid ACID, v bool) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.InhibitMSAW = v })
+}
+func (s *Sim) SetTrackMSAWAcknowledged(tcw TCW, acid ACID, v bool) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.MSAWAcknowledged = v })
+}
+func (s *Sim) SetTrackMSAWSoundEnd(tcw TCW, acid ACID, v Time) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.MSAWSoundEnd = v })
+}
+func (s *Sim) SetTrackSPCAlert(tcw TCW, acid ACID, v bool) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.SPCAlert = v })
+}
+func (s *Sim) SetTrackSPCAcknowledged(tcw TCW, acid ACID, v bool) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.SPCAcknowledged = v })
+}
+func (s *Sim) SetTrackSPCSoundEnd(tcw TCW, acid ACID, v Time) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.SPCSoundEnd = v })
+}
+func (s *Sim) SetTrackMissingFlightPlanAcknowledged(tcw TCW, acid ACID, v bool) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.MissingFlightPlanAcknowledged = v })
+}
+func (s *Sim) SetTrackDBAcknowledged(tcw TCW, acid ACID, v av.Squawk) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.DBAcknowledged = v })
+}
+
+// --- Pointouts ---
+func (s *Sim) SetTrackPointOutAcknowledged(tcw TCW, acid ACID, v bool) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.PointOutAcknowledged = v })
+}
+func (s *Sim) SetTrackForceQL(tcw TCW, acid ACID, v bool) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.ForceQL = v })
+}
+func (s *Sim) SetTrackInQLRegion(tcw TCW, acid ACID, v bool) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.InQLRegion = v })
+}
+
+// --- ATPA user toggle ---
+func (s *Sim) SetTrackInhibitDisplayInTrailDist(tcw TCW, acid ACID, v bool) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.InhibitDisplayInTrailDist = v })
+}
+
+// --- Misc ---
+func (s *Sim) SetTrackIsSelected(tcw TCW, acid ACID, v bool) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.IsSelected = v })
+}
+func (s *Sim) SetTrackReleaseDeleted(tcw TCW, acid ACID, v bool) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.ReleaseDeleted = v })
+}
+func (s *Sim) SetTrackGhost(tcw TCW, acid ACID, pdb bool, state GhostState) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) {
+		a.Ghost = TrackGhost{PartialDatablock: pdb, State: state}
+	})
+}
+func (s *Sim) SetTrackClearedScratchpadAlternate(tcw TCW, acid ACID, v bool) {
+	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.ClearedScratchpadAlternate = v })
+}
+
 // SetScopePrefsBlob replaces the TCW-wide scope prefs blob with the
 // caller's payload and bumps both ScopePrefsRev and Rev. The server
 // does not interpret the bytes -- it just fans them out to everyone
