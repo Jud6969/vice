@@ -1309,3 +1309,21 @@ func (sd *dispatcher) SetScopePrefsBlob(args *SetScopePrefsBlobArgs, update *Sim
 	*update = c.GetStateUpdate()
 	return nil
 }
+
+type SetFusedArgs struct {
+	ControllerToken string
+	Value           bool
+}
+
+const SetFusedRPC = "Sim.SetFused"
+
+func (sd *dispatcher) SetFused(args *SetFusedArgs, update *SimStateUpdate) error {
+	defer sd.sm.lg.CatchAndReportCrash()
+	c := sd.sm.LookupController(args.ControllerToken)
+	if c == nil {
+		return ErrNoSimForControllerToken
+	}
+	c.sim.SetFused(c.tcw, args.Value)
+	*update = c.GetStateUpdate()
+	return nil
+}

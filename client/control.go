@@ -694,3 +694,11 @@ func (c *ControlClient) SetScopePrefs(blob []byte, callback func(error)) {
 		Blob:            blob,
 	}, &update, nil), &update, callback))
 }
+
+func (c *ControlClient) SetFused(v bool, callback func(error)) {
+	var update server.SimStateUpdate
+	c.addCall(makeStateUpdateRPCCall(c.client.Go(server.SetFusedRPC, &server.SetFusedArgs{
+		ControllerToken: c.controllerToken,
+		Value:           v,
+	}, &update, nil), &update, callback))
+}
