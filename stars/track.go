@@ -189,6 +189,28 @@ func (sp *STARSPane) trackStateForACID(ctx *panes.Context, acid sim.ACID) (*Trac
 	return nil, false
 }
 
+// annotations returns the shared TCW annotations for the given ACID,
+// or a zero-value TrackAnnotations if no entry exists. Callers read
+// fields unconditionally; the zero value is the semantic default for
+// every synced field.
+func (sp *STARSPane) annotations(ctx *panes.Context, acid sim.ACID) sim.TrackAnnotations {
+	d := ctx.Client.State.TCWDisplay
+	if d == nil || d.Annotations == nil {
+		return sim.TrackAnnotations{}
+	}
+	return d.Annotations[acid]
+}
+
+// annotationsForTrack returns the shared TCW annotations for an
+// associated track, or a zero-value TrackAnnotations for unassociated
+// tracks (which have no ACID to key on).
+func (sp *STARSPane) annotationsForTrack(ctx *panes.Context, trk sim.Track) sim.TrackAnnotations {
+	if !trk.IsAssociated() {
+		return sim.TrackAnnotations{}
+	}
+	return sp.annotations(ctx, trk.FlightPlan.ACID)
+}
+
 func (sp *STARSPane) processEvents(ctx *panes.Context) {
 	for i := range ctx.Client.State.ATIS {
 		if sp.LastATIS[i] != ctx.Client.State.ATIS[i] || sp.LastGIText[i] != ctx.Client.State.GIText[i] {

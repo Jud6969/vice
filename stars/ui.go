@@ -530,10 +530,9 @@ func (sp *STARSPane) DrawInfo(c *client.ControlClient, p platform.Platform, lg *
 		candidateHolds := make(map[string]av.Hold)
 		ps := sp.currentPrefs()
 		ctr := util.Select(ps.UseUserCenter, ps.UserCenter, ps.DefaultCenter)
-		rng := ps.Range
 		for fix, holds := range util.SortedMap(av.DB.EnrouteHolds) {
 			loc, _ := av.DB.LookupWaypoint(fix)
-			if dist := math.NMDistance2LL(ctr, loc); dist <= rng {
+			if dist := math.NMDistance2LL(ctr, loc); dist <= ps.Range {
 				for _, h := range holds {
 					// Only show holds that aren't part of procedures
 					// (holds with Procedure set are drawn with their procedures)
