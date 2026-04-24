@@ -49,8 +49,8 @@ func TestUpdateModeCFlagsUnreasonableRate(t *testing.T) {
 	// Current altitude: 10000; previous: 9000 one second ago. That's
 	// 1000 ft / (1/60) min = 60,000 fpm >> FPMThreshold (8400).
 	ac := makeModeCAircraft("TST001", 10000)
-	ac.previousTransponderAlt = 9000
-	ac.previousTransponderTime = s.State.SimTime.Add(-1 * time.Second)
+	ac.PreviousTransponderAlt = 9000
+	ac.PreviousTransponderTime = s.State.SimTime.Add(-1 * time.Second)
 	s.Aircraft[ac.ADSBCallsign] = ac
 
 	s.updateModeC()
@@ -58,9 +58,9 @@ func TestUpdateModeCFlagsUnreasonableRate(t *testing.T) {
 	if !ac.UnreasonableModeC {
 		t.Fatalf("expected UnreasonableModeC=true after 60000 fpm jump, got false")
 	}
-	if ac.consecutiveNormalTracks != 0 {
-		t.Errorf("expected consecutiveNormalTracks=0 after flag set, got %d",
-			ac.consecutiveNormalTracks)
+	if ac.ConsecutiveNormalTracks != 0 {
+		t.Errorf("expected ConsecutiveNormalTracks=0 after flag set, got %d",
+			ac.ConsecutiveNormalTracks)
 	}
 }
 
@@ -76,9 +76,9 @@ func TestUpdateModeCClearsAfterFiveNormalTicks(t *testing.T) {
 	// so rate = 0 fpm — well under threshold.
 	ac := makeModeCAircraft("TST002", 10000)
 	ac.UnreasonableModeC = true
-	ac.consecutiveNormalTracks = 0
-	ac.previousTransponderAlt = 10000
-	ac.previousTransponderTime = s.State.SimTime.Add(-1 * time.Second)
+	ac.ConsecutiveNormalTracks = 0
+	ac.PreviousTransponderAlt = 10000
+	ac.PreviousTransponderTime = s.State.SimTime.Add(-1 * time.Second)
 	s.Aircraft[ac.ADSBCallsign] = ac
 
 	// First four normal ticks: counter increments, flag stays on.
@@ -89,9 +89,9 @@ func TestUpdateModeCClearsAfterFiveNormalTicks(t *testing.T) {
 		if !ac.UnreasonableModeC {
 			t.Fatalf("tick %d: expected UnreasonableModeC=true, got false", i)
 		}
-		if ac.consecutiveNormalTracks != i {
-			t.Fatalf("tick %d: expected consecutiveNormalTracks=%d, got %d",
-				i, i, ac.consecutiveNormalTracks)
+		if ac.ConsecutiveNormalTracks != i {
+			t.Fatalf("tick %d: expected ConsecutiveNormalTracks=%d, got %d",
+				i, i, ac.ConsecutiveNormalTracks)
 		}
 	}
 
@@ -101,9 +101,9 @@ func TestUpdateModeCClearsAfterFiveNormalTicks(t *testing.T) {
 	if ac.UnreasonableModeC {
 		t.Errorf("tick 5: expected UnreasonableModeC=false after clear, got true")
 	}
-	if ac.consecutiveNormalTracks != 0 {
-		t.Errorf("tick 5: expected consecutiveNormalTracks=0 after clear, got %d",
-			ac.consecutiveNormalTracks)
+	if ac.ConsecutiveNormalTracks != 0 {
+		t.Errorf("tick 5: expected ConsecutiveNormalTracks=0 after clear, got %d",
+			ac.ConsecutiveNormalTracks)
 	}
 }
 
@@ -117,9 +117,9 @@ func TestUpdateModeCResetsWhenModeCUnavailable(t *testing.T) {
 	ac := makeModeCAircraft("TST003", 10000)
 	ac.Mode = av.TransponderModeStandby // Mode-C unavailable
 	ac.UnreasonableModeC = true
-	ac.consecutiveNormalTracks = 3
-	ac.previousTransponderAlt = 9000
-	ac.previousTransponderTime = s.State.SimTime.Add(-1 * time.Second)
+	ac.ConsecutiveNormalTracks = 3
+	ac.PreviousTransponderAlt = 9000
+	ac.PreviousTransponderTime = s.State.SimTime.Add(-1 * time.Second)
 	s.Aircraft[ac.ADSBCallsign] = ac
 
 	s.updateModeC()
@@ -127,8 +127,8 @@ func TestUpdateModeCResetsWhenModeCUnavailable(t *testing.T) {
 	if ac.UnreasonableModeC {
 		t.Errorf("expected UnreasonableModeC=false when Mode-C unavailable, got true")
 	}
-	if ac.consecutiveNormalTracks != 0 {
-		t.Errorf("expected consecutiveNormalTracks=0 when Mode-C unavailable, got %d",
-			ac.consecutiveNormalTracks)
+	if ac.ConsecutiveNormalTracks != 0 {
+		t.Errorf("expected ConsecutiveNormalTracks=0 when Mode-C unavailable, got %d",
+			ac.ConsecutiveNormalTracks)
 	}
 }

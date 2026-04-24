@@ -33,16 +33,16 @@ func (s *Sim) updateModeC() {
 		// Capture previous reading before advancing; the stars-side
 		// updateRadarTracks advances state.previousTrack/state.track
 		// unconditionally every tick before running the check.
-		prevAlt := ac.previousTransponderAlt
-		prevTime := ac.previousTransponderTime
-		ac.previousTransponderAlt = cur.TransponderAltitude
-		ac.previousTransponderTime = now
+		prevAlt := ac.PreviousTransponderAlt
+		prevTime := ac.PreviousTransponderTime
+		ac.PreviousTransponderAlt = cur.TransponderAltitude
+		ac.PreviousTransponderTime = now
 
 		// Mode-C unavailable on current or previous reading: reset.
 		if cur.Mode != av.TransponderModeAltitude || cur.TransponderAltitude == 0 ||
 			prevAlt == 0 {
 			ac.UnreasonableModeC = false
-			ac.consecutiveNormalTracks = 0
+			ac.ConsecutiveNormalTracks = 0
 			continue
 		}
 
@@ -58,12 +58,12 @@ func (s *Sim) updateModeC() {
 		rate := math.Abs(deltaAlt / float32(deltaMinutes))
 		if rate > FPMThreshold {
 			ac.UnreasonableModeC = true
-			ac.consecutiveNormalTracks = 0
+			ac.ConsecutiveNormalTracks = 0
 		} else if ac.UnreasonableModeC {
-			ac.consecutiveNormalTracks++
-			if ac.consecutiveNormalTracks >= 5 {
+			ac.ConsecutiveNormalTracks++
+			if ac.ConsecutiveNormalTracks >= 5 {
 				ac.UnreasonableModeC = false
-				ac.consecutiveNormalTracks = 0
+				ac.ConsecutiveNormalTracks = 0
 			}
 		}
 	}

@@ -144,9 +144,12 @@ type Aircraft struct {
 	// because (*Sim).GetStateUpdate copies it onto sim.Track for clients
 	// to render; the other three fields are internal bookkeeping used by
 	// (*Sim).updateModeC to compute altitude rate across sim ticks.
-	consecutiveNormalTracks int
-	previousTransponderAlt  float32
-	previousTransponderTime Time
+	// Exported so they survive any gob round-trip of Aircraft
+	// (snapshot/debug dump); without that the running Mode-C state
+	// would zero out on reload.
+	ConsecutiveNormalTracks int
+	PreviousTransponderAlt  float32
+	PreviousTransponderTime Time
 	UnreasonableModeC       bool
 
 	// FirstRadarTrackTime is stamped on the first sim tick the aircraft
