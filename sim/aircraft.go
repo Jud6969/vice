@@ -157,13 +157,14 @@ type Aircraft struct {
 	// Exposed via sim.Track so clients read it instead of computing it.
 	FirstRadarTrackTime Time
 
-	// EnteredOurAirspace flips true once the aircraft's position is
-	// inside any airspace volume owned by the TCW that owns this
-	// aircraft's ControllerFrequency (previously stamped client-side per
-	// TrackState, keyed on the viewer's UserTCW). Server-owned so all
-	// clients see the same value; once true it stays true for the rest
-	// of the aircraft's life.
-	EnteredOurAirspace bool
+	// EnteredAirspace tracks, per TCW, whether the aircraft's position
+	// has ever been inside any airspace volume owned by that TCW. Keyed
+	// per-TCW so a new owner after a handoff does not inherit the
+	// previous owner's latched-true bit: each TCW has its own monotonic
+	// flag that flips true the first tick the aircraft is inside one of
+	// that TCW's volumes and stays true thereafter. Initialized lazily
+	// in (*Sim).updateVisibility.
+	EnteredAirspace map[TCW]bool
 }
 
 func (ac *Aircraft) GetRadarTrack(now Time) av.RadarTrack {

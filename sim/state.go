@@ -164,8 +164,9 @@ func (cs *CommonState) GetInitialCenterForTCW(tcw TCW) math.Point2LL {
 
 // makeDerivedState creates a DerivedState from the current simulation state.  It builds Tracks from
 // Aircraft and gathers flight plan information from STARSComputer. This is called when preparing
-// state updates for clients.
-func makeDerivedState(s *Sim) DerivedState {
+// state updates for clients. The tcw argument selects which TCW's per-viewer bits (currently
+// EnteredOurAirspace) are populated onto each Track; passing "" leaves those bits zero.
+func makeDerivedState(s *Sim, tcw TCW) DerivedState {
 	ds := DerivedState{
 		UnassociatedFlightPlans: s.STARSComputer.FlightPlans,
 	}
@@ -234,7 +235,7 @@ func makeDerivedState(s *Sim) DerivedState {
 			DrawATPAGraphics:          ac.ATPADerived.DrawATPAGraphics,
 			UnreasonableModeC:         ac.UnreasonableModeC,
 			FirstRadarTrackTime:       ac.FirstRadarTrackTime,
-			EnteredOurAirspace:        ac.EnteredOurAirspace,
+			EnteredOurAirspace:        tcw != "" && ac.EnteredAirspace[tcw],
 		}
 
 		if perf, ok := av.DB.AircraftPerformance[ac.FlightPlan.AircraftType]; ok {
@@ -603,8 +604,11 @@ type Track struct {
 	// first sim tick the aircraft is radar-visible. Zero until then.
 	FirstRadarTrackTime Time
 
-	// EnteredOurAirspace flips true once the aircraft has entered any
-	// airspace volume owned by the TCW that owns its ControllerFrequency
-	// position. Set by (*Sim).updateVisibility; once true it stays true.
+	// EnteredOurAirspace reports whether the aircraft has ever been
+	// inside any airspace volume owned by the consumer's TCW (the one
+	// passed to makeDerivedState). Backed server-side by
+	// Aircraft.EnteredAirspace[tcw]; each TCW has its own monotonic
+	// bit so a handoff target does not inherit the previous owner's
+	// latched-true value.
 	EnteredOurAirspace bool
 }

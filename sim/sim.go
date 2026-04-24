@@ -634,7 +634,7 @@ func (s *Sim) GetStateUpdate(tcw TCW) StateUpdate {
 
 	update := StateUpdate{
 		DynamicState:     s.State.DynamicState,
-		DerivedState:     makeDerivedState(s),
+		DerivedState:     makeDerivedState(s, tcw),
 		FlightStripACIDs: s.flightStripACIDsForTCW(tcw),
 		TCWDisplay:       s.TCWDisplay[tcw],
 	}
@@ -1784,7 +1784,7 @@ func (s *Sim) GetUserState() *UserState {
 
 	state := UserState{
 		CommonState:  *s.State,
-		DerivedState: makeDerivedState(s),
+		DerivedState: makeDerivedState(s, ""),
 	}
 
 	// Make a deep copy so that any state changes after the lock is released aren't included.

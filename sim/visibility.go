@@ -16,9 +16,12 @@ import (
 //     radar-visible. This mirrors what stars.updateVisibleTracks did
 //     per-client/per-frame. Server-side we stamp on the first live tick
 //     since isRadarVisible-culled aircraft are excluded from Tracks.
-//   - EnteredOurAirspace: flips true the first time the aircraft is
-//     inside any airspace volume owned by the TCW that owns its
-//     ControllerFrequency. Once true it stays true.
+//   - EnteredAirspace: a per-TCW bool map. For each TCW that currently
+//     has at least one controller position hosted at the TCW, flips
+//     the bit true the first tick the aircraft is inside any airspace
+//     volume owned by that TCW. Each TCW has its own monotonic bit so
+//     a handoff target does not inherit the previous owner's
+//     latched-true value.
 //
 // Both are exposed on sim.Track via (*Sim).GetStateUpdate.
 //
@@ -34,34 +37,32 @@ func (s *Sim) updateVisibility() {
 			ac.FirstRadarTrackTime = now
 		}
 
-		if ac.EnteredOurAirspace {
-			continue
-		}
+		pos := ac.Position()
+		alt := ac.Altitude()
 
-		// Resolve the TCW owning this aircraft's controller-frequency
-		// position, then walk that TCW's airspace volumes. This mirrors
-		// the client-side ctx.Client.AirspaceForTCW(ctx.UserTCW) walk
-		// but keyed on the aircraft's current controller rather than
-		// the viewer. For tracks owned by a human-allocatable TCW this
-		// is what the client-side check was really answering since
-		// WarnOutsideAirspace bails when the viewer does not own the
-		// flight plan.
-		tcw := s.State.TCWForPosition(ac.ControllerFrequency)
-		if tcw == "" {
-			continue
-		}
-		var vols []av.ControllerAirspaceVolume
-		for _, pos := range s.State.GetPositionsForTCW(tcw) {
-			for _, avol := range util.SortedMap(s.State.Airspace[pos]) {
-				vols = append(vols, avol...)
+		// Iterate every TCW that currently has a display (human presence
+		// at that TCW) and maintain a per-TCW monotonic entered bit.
+		// Skip TCWs whose bit is already latched true.
+		for tcw := range s.TCWDisplay {
+			if ac.EnteredAirspace[tcw] {
+				continue
 			}
-		}
-		if len(vols) == 0 {
-			continue
-		}
-		inside, _ := av.InAirspace(ac.Position(), ac.Altitude(), vols)
-		if inside {
-			ac.EnteredOurAirspace = true
+			var vols []av.ControllerAirspaceVolume
+			for _, p := range s.State.GetPositionsForTCW(tcw) {
+				for _, avol := range util.SortedMap(s.State.Airspace[p]) {
+					vols = append(vols, avol...)
+				}
+			}
+			if len(vols) == 0 {
+				continue
+			}
+			inside, _ := av.InAirspace(pos, alt, vols)
+			if inside {
+				if ac.EnteredAirspace == nil {
+					ac.EnteredAirspace = make(map[TCW]bool)
+				}
+				ac.EnteredAirspace[tcw] = true
+			}
 		}
 	}
 }
