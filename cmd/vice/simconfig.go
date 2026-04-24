@@ -1086,7 +1086,6 @@ func (c *NewSimConfiguration) DrawScenarioSelectionUI(p platform.Platform, confi
 				// Clear selection when mode changes
 				c.selectedTCW = ""
 				c.selectedTCPs = nil
-				c.joinRequest.SyncScopeState = false
 			}
 			if imgui.IsItemHovered() {
 				imgui.SetTooltip("Relief sign-in shares control with existing controller")
@@ -1193,19 +1192,6 @@ func (c *NewSimConfiguration) DrawScenarioSelectionUI(p platform.Platform, confi
 				imgui.Checkbox("Instructor", &c.Privileged)
 				if imgui.IsItemHovered() {
 					imgui.SetTooltip("Allows control of any aircraft regardless of position ownership")
-				}
-			}
-
-			// Row 2b: Sync Scope Setup (relief only)
-			if c.selectedTCW != "" && c.showReliefPositions {
-				imgui.TableNextRow()
-				imgui.TableNextColumn()
-				imgui.Text("Sync Scope Setup:")
-				imgui.TableNextColumn()
-				imgui.Checkbox("##sync-scope", &c.joinRequest.SyncScopeState)
-				if imgui.IsItemHovered() {
-					imgui.SetTooltip("Mirror the primary's scope range, pan, and range-ring radius. " +
-						"Changes made by either controller update the shared view.")
 				}
 			}
 
@@ -1469,7 +1455,6 @@ func (c *NewSimConfiguration) Start(config *Config) error {
 				}
 			}
 			c.joinRequest.SelectedTCPs = tcps
-			c.joinRequest.SyncScopeState = false
 		}
 		c.joinRequest.Initials = config.ControllerInitials
 		if err := c.mgr.ConnectToSim(c.joinRequest, config.ControllerInitials, c.selectedServer, c.lg); err != nil {

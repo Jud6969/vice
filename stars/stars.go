@@ -248,10 +248,10 @@ type STARSPane struct {
 	ldbArena util.ObjectArena[limitedDatablock]
 	sdbArena util.ObjectArena[suspendedDatablock]
 
-	// Scope-prefs sync state -- only used while ScopeSyncEnabled.
-	// scopePrefsBaseline is the last blob we either pushed or adopted,
-	// kept so we can detect local divergence vs shared state. Cleared
-	// whenever sync is off.
+	// Scope-prefs sync state -- always active whenever TCWDisplay
+	// exists. scopePrefsBaseline is the last blob we either pushed or
+	// adopted, kept so we can detect local divergence vs shared state.
+	// Cleared whenever sync is inactive (TCWDisplay nil).
 	scopePrefsBaseline    []byte
 	scopePrefsBaselineRev uint64
 	// lastScopePrefsPush rate-limits push RPCs so a user actively

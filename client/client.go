@@ -62,20 +62,6 @@ type ControlClient struct {
 	// This is all read-only data that we expect other parts of the system
 	// to access directly.
 	State SimState
-
-	// SyncScopeState is the caller's hint at connect-time: "I ticked
-	// the Sync Scope Setup checkbox on the Join as Relief dialog."
-	// The server uses it to flip the TCW-wide ScopeSyncEnabled flag
-	// on. STARS also uses it locally to opt a relief client out of
-	// sync participation when the checkbox is off at join time, even
-	// if another relief has already flipped the TCW-wide flag on.
-	SyncScopeState bool
-
-	// IsRelief records whether this client joined through the
-	// JoiningAsRelief path. STARS uses it to break the first-tick tie
-	// in scope-prefs sync: the primary seeds the shared state on
-	// enable, reliefs wait for the seed.
-	IsRelief bool
 }
 
 // This is the client-side representation of a server (perhaps could be better-named...)
@@ -210,15 +196,13 @@ func (p *pendingCall) InvokeCallback(es *sim.EventStream, state *SimState) {
 }
 
 func NewControlClient(ss server.SimState, controllerToken string, disableTTSPtr *bool, initials string,
-	syncScopeState, isRelief bool, client *RPCClient, lg *log.Logger) *ControlClient {
+	client *RPCClient, lg *log.Logger) *ControlClient {
 	cc := &ControlClient{
 		controllerToken:   controllerToken,
 		client:            client,
 		lg:                lg,
 		lastUpdateRequest: time.Now(),
 		State:             SimState{ss},
-		SyncScopeState:    syncScopeState,
-		IsRelief:          isRelief,
 		transmissions:     NewTransmissionManager(lg),
 		disableTTSPtr:     disableTTSPtr,
 		sttTranscriber:    stt.NewTranscriber(lg),

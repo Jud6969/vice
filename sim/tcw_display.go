@@ -35,12 +35,7 @@ type TCWDisplayState struct {
 	// blob every frame.
 	ScopePrefsRev uint64
 
-	// ScopeSyncEnabled is a TCW-wide flag flipped to true the first
-	// time a relief joins with the "Sync Scope Setup" checkbox on.
-	// While true, every client at the TCW (including the primary who
-	// never saw the checkbox) reads/writes the shared scope prefs
-	// blob instead of their local-only STARS preference. Sticky for
-	// the session.
+	// Deprecated: sync is now automatic; kept for gob compat until a later cleanup.
 	ScopeSyncEnabled bool
 
 	// Monotonic revision, bumped on every mutation. Clients can send
@@ -333,10 +328,7 @@ func (s *Sim) SetScopePrefsBlob(tcw TCW, blob []byte) {
 	d.Rev++
 }
 
-// EnableScopeSync flips the TCW-wide ScopeSyncEnabled flag on and bumps
-// Rev so every connected client learns about it on the next state
-// update. Idempotent: re-enabling on an already-enabled TCW still bumps
-// Rev so late joiners see the flag promptly.
+// Deprecated: sync is now automatic; kept for gob compat until a later cleanup.
 func (s *Sim) EnableScopeSync(tcw TCW) {
 	s.mu.Lock(s.lg)
 	defer s.mu.Unlock(s.lg)

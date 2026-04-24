@@ -20,32 +20,23 @@ import (
 // Per-user settings -- character size, audio, dwell mode, cursor
 // home, DCB visibility -- are excluded and remain local.
 //
+// Sync is automatic: two controllers at the same TCW are modeled as
+// sharing one physical radar scope, so whenever a TCWDisplay snapshot
+// is present on the client, the reconciliation loop runs.
+//
 // The loop runs once per STARSPane Draw:
-//   - When sync goes on and shared is already seeded, adopt the
-//     shared blob into local prefs.
-//   - When sync goes on and shared is empty, the primary seeds; the
-//     relief that ticked the checkbox waits.
-//   - While sync is on, if shared's Rev advanced since we last saw
-//     it, apply the shared blob to local.
-//   - Otherwise, if our local prefs diverged from the last snapshot
-//     we pushed/applied, push a fresh blob.
+//   - First tick with the shared blob already seeded: adopt it.
+//   - First tick with shared blob empty: push local prefs (first-in
+//     seeds the shared state).
+//   - Subsequent ticks: if server's Rev advanced, apply the shared
+//     blob; else push if local prefs diverged.
 
 // scopeSyncActive reports whether this client participates in the
-// TCW's shared scope-prefs sync. The TCW-wide ScopeSyncEnabled flag
-// is sticky once anyone opts in, but a relief client that joined
-// without the "Sync Scope Setup" checkbox opts itself out so its
-// local prefs are not applied to or pushed from the shared blob.
-// The primary (non-relief) never sees the checkbox and always
-// participates while the flag is on.
+// TCW's shared scope-prefs sync. Two controllers at the same TCW are
+// modeled as sharing one physical radar scope, so sync is always on
+// whenever a TCWDisplay snapshot is present on the client.
 func scopeSyncActive(c *client.ControlClient) bool {
-	if c == nil {
-		return false
-	}
-	if c.IsRelief && !c.SyncScopeState {
-		return false
-	}
-	d := c.State.TCWDisplay
-	return d != nil && d.ScopeSyncEnabled
+	return c != nil && c.State.TCWDisplay != nil
 }
 
 // scopeLocalOnly snapshots the STARS preference fields that must
@@ -153,12 +144,8 @@ func (sp *STARSPane) syncScopePrefs(ctx *panes.Context) {
 			sp.scopePrefsBaselineRev = d.ScopePrefsRev
 			return
 		}
-		// Shared empty. The primary seeds; the relief that flipped
-		// the switch waits for the primary's push so its defaults
-		// don't race in first and clobber the primary's view.
-		if c.IsRelief {
-			return
-		}
+		// Shared empty -- first client in seeds the shared blob with
+		// its own local prefs.
 		blob, err := encodeScopePrefs(ps)
 		if err != nil {
 			return
