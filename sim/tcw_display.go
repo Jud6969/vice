@@ -9,6 +9,28 @@ import (
 	"github.com/mmp/vice/math"
 )
 
+// Track annotation mutations use two code paths:
+//
+//   - Per-field setters (SetTrackMSAW, SetTrackJRingRadius, ...) are
+//     used by server-driven transitions that happen inside the sim
+//     update loop (handoff accept, pointout ack, etc.) and by
+//     client-side per-frame write paths (MSAW detection,
+//     InQLRegion) where touching one field at a time avoids racing
+//     against server writes of neighboring fields.
+//
+//   - SetTrackAnnotations (whole-struct write) is used by human-
+//     driven client actions (acknowledge an alert, drop a J-ring,
+//     slew a datablock) where the client reads the current
+//     annotation, mutates the handful of fields that belong to the
+//     action, and pushes the updated struct back in one round-trip.
+//     Races with the per-frame paths above are avoided because the
+//     per-frame paths do not overlap the fields touched by human
+//     actions.
+//
+// New call sites should prefer the per-field setters when only one
+// field changes, and SetTrackAnnotations when multiple fields
+// change atomically as part of one user action.
+
 // TCWDisplayState is the set of STARS display state that is shared
 // across all relief controllers occupying a single TCW. One exists per
 // active TCW on the Sim. It is not persisted to disk -- it lives for
