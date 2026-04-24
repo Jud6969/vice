@@ -51,7 +51,12 @@ func (s *Sim) updateModeC() {
 
 		if deltaMinutes == 0 {
 			// No elapsed time: can't compute a rate; leave flag as-is
-			// (matches the stars-side early return).
+			// (matches the stars-side early return). Note that the
+			// previous-reading writes above (PreviousTransponderAlt /
+			// PreviousTransponderTime) have already been advanced to
+			// the current tick's values, so a subsequent tick at a
+			// later sim time will have a non-zero delta and can
+			// compute the rate normally.
 			continue
 		}
 
