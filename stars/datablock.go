@@ -422,7 +422,7 @@ func (sp *STARSPane) getDatablock(ctx *panes.Context, trk sim.Track, sfp *sim.NA
 	squawkingSPC, _ := trk.Squawk.IsSPC()
 
 	altitude, pilotReportedAltitude := formatAltitude(trk, sfp,
-		state != nil && state.UnreasonableModeC)
+		trk.UnreasonableModeC)
 
 	displayBeaconCode := ctx.SimTime.Before(sp.DisplayBeaconCodeEndTime) && trk.Squawk == sp.DisplayBeaconCode
 

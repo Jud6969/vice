@@ -139,6 +139,15 @@ type Aircraft struct {
 	// ATPADerived is populated once per sim tick by (*Sim).updateATPA and
 	// copied through to sim.Track so clients do not re-walk every frame.
 	ATPADerived ATPADerived
+
+	// Server-internal Mode-C tracking state. UnreasonableModeC is exposed
+	// because (*Sim).GetStateUpdate copies it onto sim.Track for clients
+	// to render; the other three fields are internal bookkeeping used by
+	// (*Sim).updateModeC to compute altitude rate across sim ticks.
+	consecutiveNormalTracks int
+	previousTransponderAlt  float32
+	previousTransponderTime Time
+	UnreasonableModeC       bool
 }
 
 func (ac *Aircraft) GetRadarTrack(now Time) av.RadarTrack {

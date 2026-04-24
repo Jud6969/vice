@@ -1217,6 +1217,7 @@ func (s *Sim) updateState() {
 	}
 
 	s.updateATPA()
+	s.updateModeC()
 	s.pruneTCWDisplayAnnotations()
 }
 

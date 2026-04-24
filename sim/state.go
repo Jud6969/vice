@@ -232,6 +232,7 @@ func makeDerivedState(s *Sim) DerivedState {
 			ATPAStatus:                ac.ATPADerived.ATPAStatus,
 			ATPALeadAircraftCallsign:  ac.ATPADerived.ATPALeadAircraftCallsign,
 			DrawATPAGraphics:          ac.ATPADerived.DrawATPAGraphics,
+			UnreasonableModeC:         ac.UnreasonableModeC,
 		}
 
 		if perf, ok := av.DB.AircraftPerformance[ac.FlightPlan.AircraftType]; ok {
@@ -590,4 +591,9 @@ type Track struct {
 	ATPAStatus               ATPAStatus
 	ATPALeadAircraftCallsign av.ADSBCallsign
 	DrawATPAGraphics         bool
+
+	// UnreasonableModeC is flagged server-side once per tick by
+	// (*Sim).updateModeC when the implied altitude rate exceeds
+	// FPMThreshold. Clients render it; they do not compute it.
+	UnreasonableModeC bool
 }

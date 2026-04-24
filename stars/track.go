@@ -142,10 +142,6 @@ const (
 	GhostStateForced     = sim.GhostStateForced
 )
 
-const (
-	FPMThreshold = 8400
-)
-
 func (ts *TrackState) TrackDeltaAltitude() int {
 	if ts.previousTrack.Location.IsZero() {
 		// No previous track
@@ -559,7 +555,8 @@ func (sp *STARSPane) updateRadarTracks(ctx *panes.Context) {
 		state.track = trk.RadarTrack
 		state.trackTime = ctx.SimTime
 
-		sp.checkUnreasonableModeC(state)
+		// UnreasonableModeC is computed server-side by (*sim.Sim).updateModeC
+		// and read from trk.UnreasonableModeC where needed.
 	}
 
 	// Check quicklook regions
@@ -637,34 +634,6 @@ func (sp *STARSPane) updateQuicklookRegionTracks(ctx *panes.Context) {
 			}
 			anno.InQLRegion = false
 			ctx.Client.SetTrackAnnotations(trk.ADSBCallsign, anno, cb)
-		}
-	}
-}
-
-func (sp *STARSPane) checkUnreasonableModeC(state *TrackState) {
-	if state.track.Mode != av.TransponderModeAltitude || state.track.TransponderAltitude == 0 ||
-		state.previousTrack.TransponderAltitude == 0 {
-		state.UnreasonableModeC = false
-		state.ConsecutiveNormalTracks = 0
-		return
-	}
-
-	deltaAlt := state.previousTrack.TransponderAltitude - state.track.TransponderAltitude
-	deltaMinutes := state.previousTrackTime.Sub(state.trackTime).Minutes()
-
-	if deltaMinutes == 0 {
-		return
-	}
-
-	rate := math.Abs(deltaAlt / float32(deltaMinutes))
-	if rate > FPMThreshold {
-		state.UnreasonableModeC = true
-		state.ConsecutiveNormalTracks = 0
-	} else if state.UnreasonableModeC {
-		state.ConsecutiveNormalTracks++
-		if state.ConsecutiveNormalTracks >= 5 {
-			state.UnreasonableModeC = false
-			state.ConsecutiveNormalTracks = 0
 		}
 	}
 }
