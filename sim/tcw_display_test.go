@@ -15,19 +15,19 @@ import (
 func TestSetTrackJRingRadiusCreatesEntry(t *testing.T) {
 	s := NewTestSim(log.New(true, "error", t.TempDir()))
 	tcw := TCW("N90")
-	acid := ACID("AAL123")
+	callsign := av.ADSBCallsign("AAL123")
 
 	if d := s.GetTCWDisplay(tcw); d != nil {
 		t.Fatalf("TCWDisplay pre-mutation = %+v, want nil", d)
 	}
 
-	s.SetTrackJRingRadius(tcw, acid, 3.5)
+	s.SetTrackJRingRadius(tcw, callsign, 3.5)
 
 	d := s.GetTCWDisplay(tcw)
 	if d == nil {
 		t.Fatalf("TCWDisplay nil after mutation")
 	}
-	if got := d.Annotations[acid].JRingRadius; got != 3.5 {
+	if got := d.Annotations[callsign].JRingRadius; got != 3.5 {
 		t.Errorf("JRingRadius = %v, want 3.5", got)
 	}
 	if d.Rev != 1 {
@@ -38,25 +38,25 @@ func TestSetTrackJRingRadiusCreatesEntry(t *testing.T) {
 func TestSetTrackBumpsRevOnEachMutation(t *testing.T) {
 	s := NewTestSim(log.New(true, "error", t.TempDir()))
 	tcw := TCW("N90")
-	acid := ACID("AAL123")
+	callsign := av.ADSBCallsign("AAL123")
 
-	s.SetTrackJRingRadius(tcw, acid, 3)
-	s.SetTrackJRingRadius(tcw, acid, 5)
-	s.SetTrackConeLength(tcw, acid, 10)
+	s.SetTrackJRingRadius(tcw, callsign, 3)
+	s.SetTrackJRingRadius(tcw, callsign, 5)
+	s.SetTrackConeLength(tcw, callsign, 10)
 
 	d := s.GetTCWDisplay(tcw)
 	if d.Rev != 3 {
 		t.Errorf("Rev = %d, want 3", d.Rev)
 	}
-	if got := d.Annotations[acid].JRingRadius; got != 5 {
+	if got := d.Annotations[callsign].JRingRadius; got != 5 {
 		t.Errorf("JRingRadius = %v, want 5 (updated in place)", got)
 	}
-	if got := d.Annotations[acid].ConeLength; got != 10 {
+	if got := d.Annotations[callsign].ConeLength; got != 10 {
 		t.Errorf("ConeLength = %v, want 10", got)
 	}
 }
 
-func TestSetTrackIsolatesACIDs(t *testing.T) {
+func TestSetTrackIsolatesCallsigns(t *testing.T) {
 	s := NewTestSim(log.New(true, "error", t.TempDir()))
 	tcw := TCW("N90")
 
@@ -77,15 +77,15 @@ func TestSetTrackIsolatesACIDs(t *testing.T) {
 
 func TestSetTrackIsolatesTCWs(t *testing.T) {
 	s := NewTestSim(log.New(true, "error", t.TempDir()))
-	acid := ACID("AAL123")
+	callsign := av.ADSBCallsign("AAL123")
 
-	s.SetTrackJRingRadius("N90", acid, 3)
-	s.SetTrackJRingRadius("N01", acid, 5)
+	s.SetTrackJRingRadius("N90", callsign, 3)
+	s.SetTrackJRingRadius("N01", callsign, 5)
 
-	if got := s.GetTCWDisplay("N90").Annotations[acid].JRingRadius; got != 3 {
+	if got := s.GetTCWDisplay("N90").Annotations[callsign].JRingRadius; got != 3 {
 		t.Errorf("N90 JRingRadius = %v, want 3", got)
 	}
-	if got := s.GetTCWDisplay("N01").Annotations[acid].JRingRadius; got != 5 {
+	if got := s.GetTCWDisplay("N01").Annotations[callsign].JRingRadius; got != 5 {
 		t.Errorf("N01 JRingRadius = %v, want 5", got)
 	}
 }
@@ -93,26 +93,26 @@ func TestSetTrackIsolatesTCWs(t *testing.T) {
 func TestSetTrackAllFields(t *testing.T) {
 	s := NewTestSim(log.New(true, "error", t.TempDir()))
 	tcw := TCW("N90")
-	acid := ACID("AAL123")
+	callsign := av.ADSBCallsign("AAL123")
 
 	north := math.CardinalOrdinalDirection(math.North)
 	tru := true
 	fal := false
 
-	s.SetTrackJRingRadius(tcw, acid, 3.5)
-	s.SetTrackConeLength(tcw, acid, 7)
-	s.SetTrackLeaderLineDirection(tcw, acid, &north)
-	s.SetTrackFDAMLeaderLineDirection(tcw, acid, &north)
-	s.SetTrackUseGlobalLeaderLine(tcw, acid, true)
-	s.SetTrackDisplayFDB(tcw, acid, true)
-	s.SetTrackDisplayPTL(tcw, acid, true)
-	s.SetTrackDisplayTPASize(tcw, acid, &tru)
-	s.SetTrackDisplayATPAMonitor(tcw, acid, &tru)
-	s.SetTrackDisplayATPAWarnAlert(tcw, acid, &fal)
-	s.SetTrackDisplayRequestedAltitude(tcw, acid, &tru)
-	s.SetTrackDisplayLDBBeaconCode(tcw, acid, true)
+	s.SetTrackJRingRadius(tcw, callsign, 3.5)
+	s.SetTrackConeLength(tcw, callsign, 7)
+	s.SetTrackLeaderLineDirection(tcw, callsign, &north)
+	s.SetTrackFDAMLeaderLineDirection(tcw, callsign, &north)
+	s.SetTrackUseGlobalLeaderLine(tcw, callsign, true)
+	s.SetTrackDisplayFDB(tcw, callsign, true)
+	s.SetTrackDisplayPTL(tcw, callsign, true)
+	s.SetTrackDisplayTPASize(tcw, callsign, &tru)
+	s.SetTrackDisplayATPAMonitor(tcw, callsign, &tru)
+	s.SetTrackDisplayATPAWarnAlert(tcw, callsign, &fal)
+	s.SetTrackDisplayRequestedAltitude(tcw, callsign, &tru)
+	s.SetTrackDisplayLDBBeaconCode(tcw, callsign, true)
 
-	a := s.GetTCWDisplay(tcw).Annotations[acid]
+	a := s.GetTCWDisplay(tcw).Annotations[callsign]
 	if a.JRingRadius != 3.5 || a.ConeLength != 7 {
 		t.Errorf("scalar fields: got %+v", a)
 	}
@@ -139,17 +139,16 @@ func TestSetTrackAllFields(t *testing.T) {
 	}
 }
 
-func TestPruneTCWDisplayAnnotationsRemovesDepartedACIDs(t *testing.T) {
+func TestPruneTCWDisplayAnnotationsRemovesDepartedCallsigns(t *testing.T) {
 	s := NewTestSim(log.New(true, "error", t.TempDir()))
 	tcw := TCW("N90")
 
 	s.SetTrackJRingRadius(tcw, "LIVE", 3)
 	s.SetTrackJRingRadius(tcw, "GHOST", 5)
 
-	// Mark LIVE as present by adding an aircraft with a NASFlightPlan.
-	s.Aircraft["LIVE_CS"] = &Aircraft{
-		ADSBCallsign:  av.ADSBCallsign("LIVE_CS"),
-		NASFlightPlan: &NASFlightPlan{ACID: "LIVE"},
+	// Mark LIVE as present by adding an aircraft with that callsign.
+	s.Aircraft["LIVE"] = &Aircraft{
+		ADSBCallsign: av.ADSBCallsign("LIVE"),
 	}
 
 	revBefore := s.GetTCWDisplay(tcw).Rev
@@ -169,8 +168,8 @@ func TestPruneTCWDisplayAnnotationsRemovesDepartedACIDs(t *testing.T) {
 
 func TestUpdateStatePrunesDepartedAnnotations(t *testing.T) {
 	// Verify the hook is wired: updateState's tail-end call to
-	// pruneTCWDisplayAnnotations should clear annotations whose ACIDs
-	// have no corresponding aircraft.
+	// pruneTCWDisplayAnnotations should clear annotations whose
+	// callsigns have no corresponding aircraft.
 	s := NewTestSim(log.New(true, "error", t.TempDir()))
 	tcw := TCW("TEST")
 
@@ -191,8 +190,8 @@ func TestPruneTCWDisplayAnnotationsNoopWhenAllLive(t *testing.T) {
 
 	s.SetTrackJRingRadius(tcw, "LIVE1", 3)
 	s.SetTrackJRingRadius(tcw, "LIVE2", 5)
-	s.Aircraft["CS1"] = &Aircraft{NASFlightPlan: &NASFlightPlan{ACID: "LIVE1"}}
-	s.Aircraft["CS2"] = &Aircraft{NASFlightPlan: &NASFlightPlan{ACID: "LIVE2"}}
+	s.Aircraft["LIVE1"] = &Aircraft{ADSBCallsign: av.ADSBCallsign("LIVE1")}
+	s.Aircraft["LIVE2"] = &Aircraft{ADSBCallsign: av.ADSBCallsign("LIVE2")}
 
 	revBefore := s.GetTCWDisplay(tcw).Rev
 	s.pruneTCWDisplayAnnotations()

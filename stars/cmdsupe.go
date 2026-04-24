@@ -268,7 +268,7 @@ func registerSupeCommands() {
 					cb := func(err error) { sp.displayError(err, ctx, "") }
 					for _, trk := range sp.visibleTracks {
 						if trk.IsAssociated() {
-							ctx.Client.SetTrackDisplayATPAWarnAlert(trk.FlightPlan.ACID, nil, cb)
+							ctx.Client.SetTrackDisplayATPAWarnAlert(trk.ADSBCallsign, nil, cb)
 						}
 					}
 					return configureATPA(sp, ctx, sim.ATPADisableVolume, vol)

@@ -43,9 +43,8 @@ func registerToolsCommands() {
 		}
 
 		if trk.IsAssociated() {
-			acid := trk.FlightPlan.ACID
-			cur := sp.annotations(ctx, acid).DisplayPTL
-			ctx.Client.SetTrackDisplayPTL(acid, !cur, func(err error) { sp.displayError(err, ctx, "") })
+			cur := sp.annotations(ctx, trk.ADSBCallsign).DisplayPTL
+			ctx.Client.SetTrackDisplayPTL(trk.ADSBCallsign, !cur, func(err error) { sp.displayError(err, ctx, "") })
 		}
 		return nil
 	})
@@ -713,11 +712,10 @@ func registerToolsCommands() {
 		func(sp *STARSPane, ctx *panes.Context, direction int, trk *sim.Track) error {
 			if dir, ok := sp.numpadToDirection(direction); ok {
 				if trk.IsAssociated() {
-					acid := trk.FlightPlan.ACID
 					cb := func(err error) { sp.displayError(err, ctx, "") }
-					ctx.Client.SetTrackLeaderLineDirection(acid, dir, cb)
+					ctx.Client.SetTrackLeaderLineDirection(trk.ADSBCallsign, dir, cb)
 					if dir != nil {
-						ctx.Client.SetTrackUseGlobalLeaderLine(acid, false, cb)
+						ctx.Client.SetTrackUseGlobalLeaderLine(trk.ADSBCallsign, false, cb)
 					}
 				}
 				return nil
@@ -866,11 +864,10 @@ func registerToolsCommands() {
 				return ErrSTARSIllegalTrack
 			}
 			if dir, ok := sp.numpadToDirection(direction); ok {
-				acid := trk.FlightPlan.ACID
 				cb := func(err error) { sp.displayError(err, ctx, "") }
-				ctx.Client.SetTrackLeaderLineDirection(acid, dir, cb)
+				ctx.Client.SetTrackLeaderLineDirection(trk.ADSBCallsign, dir, cb)
 				if dir != nil {
-					ctx.Client.SetTrackUseGlobalLeaderLine(acid, false, cb)
+					ctx.Client.SetTrackUseGlobalLeaderLine(trk.ADSBCallsign, false, cb)
 				}
 			}
 			return nil
@@ -1007,7 +1004,7 @@ func registerToolsCommands() {
 				return ErrSTARSIllegalFunction
 			}
 			b := true
-			ctx.Client.SetTrackDisplayRequestedAltitude(trk.FlightPlan.ACID, &b, func(err error) { sp.displayError(err, ctx, "") })
+			ctx.Client.SetTrackDisplayRequestedAltitude(trk.ADSBCallsign, &b, func(err error) { sp.displayError(err, ctx, "") })
 			return nil
 		})
 	registerCommand(CommandModeMultiFunc, "RAI[SLEW]", func(sp *STARSPane, ctx *panes.Context, trk *sim.Track) error {
@@ -1018,7 +1015,7 @@ func registerToolsCommands() {
 			return ErrSTARSIllegalFunction
 		}
 		b := false
-		ctx.Client.SetTrackDisplayRequestedAltitude(trk.FlightPlan.ACID, &b, func(err error) { sp.displayError(err, ctx, "") })
+		ctx.Client.SetTrackDisplayRequestedAltitude(trk.ADSBCallsign, &b, func(err error) { sp.displayError(err, ctx, "") })
 		return nil
 	})
 	registerCommand(CommandModeMultiFunc, "RA[SLEW]",
@@ -1030,15 +1027,14 @@ func registerToolsCommands() {
 				return ErrSTARSIllegalFunction
 			}
 
-			acid := trk.FlightPlan.ACID
-			cur := sp.annotations(ctx, acid).DisplayRequestedAltitude
+			cur := sp.annotations(ctx, trk.ADSBCallsign).DisplayRequestedAltitude
 			var next bool
 			if cur == nil {
 				next = !sp.DisplayRequestedAltitude
 			} else {
 				next = !*cur
 			}
-			ctx.Client.SetTrackDisplayRequestedAltitude(acid, &next, func(err error) { sp.displayError(err, ctx, "") })
+			ctx.Client.SetTrackDisplayRequestedAltitude(trk.ADSBCallsign, &next, func(err error) { sp.displayError(err, ctx, "") })
 			return nil
 		})
 
@@ -1104,29 +1100,22 @@ func registerToolsCommands() {
 		if radius < 1 || radius > 30 {
 			return ErrSTARSIllegalValue
 		}
-		if trk.IsAssociated() {
-			acid := trk.FlightPlan.ACID
-			cb := func(err error) { sp.displayError(err, ctx, "") }
-			ctx.Client.SetTrackJRingRadius(acid, radius, cb)
-			ctx.Client.SetTrackConeLength(acid, 0, cb) // can't have both
-		}
+		cb := func(err error) { sp.displayError(err, ctx, "") }
+		ctx.Client.SetTrackJRingRadius(trk.ADSBCallsign, radius, cb)
+		ctx.Client.SetTrackConeLength(trk.ADSBCallsign, 0, cb) // can't have both
 		return nil
 	})
 
 	// 6.21.4 Delete TPA J-Ring for single track (Implied command)
 	registerCommand(CommandModeNone, "*J[SLEW]", func(sp *STARSPane, ctx *panes.Context, trk *sim.Track) {
-		if trk.IsAssociated() {
-			ctx.Client.SetTrackJRingRadius(trk.FlightPlan.ACID, 0, func(err error) { sp.displayError(err, ctx, "") })
-		}
+		ctx.Client.SetTrackJRingRadius(trk.ADSBCallsign, 0, func(err error) { sp.displayError(err, ctx, "") })
 	})
 
 	// 6.21.5 Delete TPA J-Rings for all tracks (Implied command)
 	registerCommand(CommandModeNone, "**J", func(sp *STARSPane, ctx *panes.Context) {
 		cb := func(err error) { sp.displayError(err, ctx, "") }
 		for _, trk := range sp.visibleTracks {
-			if trk.IsAssociated() {
-				ctx.Client.SetTrackJRingRadius(trk.FlightPlan.ACID, 0, cb)
-			}
+			ctx.Client.SetTrackJRingRadius(trk.ADSBCallsign, 0, cb)
 		}
 	})
 
@@ -1137,29 +1126,22 @@ func registerToolsCommands() {
 			return ErrSTARSIllegalValue
 		}
 		// TODO: ILL FNCT if cone length is less than allowed in-trail separation (?)
-		if trk.IsAssociated() {
-			acid := trk.FlightPlan.ACID
-			cb := func(err error) { sp.displayError(err, ctx, "") }
-			ctx.Client.SetTrackConeLength(acid, length, cb)
-			ctx.Client.SetTrackJRingRadius(acid, 0, cb) // can't have both
-		}
+		cb := func(err error) { sp.displayError(err, ctx, "") }
+		ctx.Client.SetTrackConeLength(trk.ADSBCallsign, length, cb)
+		ctx.Client.SetTrackJRingRadius(trk.ADSBCallsign, 0, cb) // can't have both
 		return nil
 	})
 
 	// 6.21.8 Delete TPA Cone for single track (Implied command) (p. 6-178)
 	registerCommand(CommandModeNone, "*P[SLEW]", func(sp *STARSPane, ctx *panes.Context, trk *sim.Track) {
-		if trk.IsAssociated() {
-			ctx.Client.SetTrackConeLength(trk.FlightPlan.ACID, 0, func(err error) { sp.displayError(err, ctx, "") })
-		}
+		ctx.Client.SetTrackConeLength(trk.ADSBCallsign, 0, func(err error) { sp.displayError(err, ctx, "") })
 	})
 
 	// 6.21.9 Delete TPA Cones for all tracks (Implied command) (p. 6-179)
 	registerCommand(CommandModeNone, "**P", func(sp *STARSPane, ctx *panes.Context) {
 		cb := func(err error) { sp.displayError(err, ctx, "") }
 		for _, trk := range sp.visibleTracks {
-			if trk.IsAssociated() {
-				ctx.Client.SetTrackConeLength(trk.FlightPlan.ACID, 0, cb)
-			}
+			ctx.Client.SetTrackConeLength(trk.ADSBCallsign, 0, cb)
 		}
 	})
 
@@ -1168,29 +1150,28 @@ func registerToolsCommands() {
 		if !trk.IsAssociated() {
 			return
 		}
-		acid := trk.FlightPlan.ACID
-		cur := sp.annotations(ctx, acid).DisplayTPASize
+		cur := sp.annotations(ctx, trk.ADSBCallsign).DisplayTPASize
 		var next bool
 		if cur == nil {
 			next = !ps.DisplayTPASize
 		} else {
 			next = !*cur
 		}
-		ctx.Client.SetTrackDisplayTPASize(acid, &next, func(err error) { sp.displayError(err, ctx, "") })
+		ctx.Client.SetTrackDisplayTPASize(trk.ADSBCallsign, &next, func(err error) { sp.displayError(err, ctx, "") })
 	})
 	registerCommand(CommandModeNone, "*D+E[SLEW]", func(sp *STARSPane, ctx *panes.Context, trk *sim.Track) {
 		if !trk.IsAssociated() {
 			return
 		}
 		b := true
-		ctx.Client.SetTrackDisplayTPASize(trk.FlightPlan.ACID, &b, func(err error) { sp.displayError(err, ctx, "") })
+		ctx.Client.SetTrackDisplayTPASize(trk.ADSBCallsign, &b, func(err error) { sp.displayError(err, ctx, "") })
 	})
 	registerCommand(CommandModeNone, "*D+I[SLEW]", func(sp *STARSPane, ctx *panes.Context, trk *sim.Track) {
 		if !trk.IsAssociated() {
 			return
 		}
 		b := false
-		ctx.Client.SetTrackDisplayTPASize(trk.FlightPlan.ACID, &b, func(err error) { sp.displayError(err, ctx, "") })
+		ctx.Client.SetTrackDisplayTPASize(trk.ADSBCallsign, &b, func(err error) { sp.displayError(err, ctx, "") })
 	})
 
 	// 6.21.11 Toggle display of TPA / ATPA size data for all tracks (Implied command)
@@ -1198,7 +1179,7 @@ func registerToolsCommands() {
 		cb := func(err error) { sp.displayError(err, ctx, "") }
 		for _, trk := range sp.visibleTracks {
 			if trk.IsAssociated() {
-				ctx.Client.SetTrackDisplayTPASize(trk.FlightPlan.ACID, nil, cb)
+				ctx.Client.SetTrackDisplayTPASize(trk.ADSBCallsign, nil, cb)
 			}
 		}
 	}
@@ -1228,7 +1209,7 @@ func registerToolsCommands() {
 		}
 		// TODO: ILL TRK if VFR or not in an ATPA approach volume
 
-		ctx.Client.SetTrackDisplayATPAWarnAlert(trk.FlightPlan.ACID, &value, func(err error) { sp.displayError(err, ctx, "") })
+		ctx.Client.SetTrackDisplayATPAWarnAlert(trk.ADSBCallsign, &value, func(err error) { sp.displayError(err, ctx, "") })
 		return nil
 	}
 	registerCommand(CommandModeNone, "*AE[SLEW]", func(sp *STARSPane, ctx *panes.Context, ps *Preferences, trk *sim.Track) error {
@@ -1255,7 +1236,7 @@ func registerToolsCommands() {
 			return ErrSTARSIllegalTrack
 		}
 
-		ctx.Client.SetTrackDisplayATPAMonitor(trk.FlightPlan.ACID, &value, func(err error) { sp.displayError(err, ctx, "") })
+		ctx.Client.SetTrackDisplayATPAMonitor(trk.ADSBCallsign, &value, func(err error) { sp.displayError(err, ctx, "") })
 		return nil
 	}
 	registerCommand(CommandModeNone, "*BE[SLEW]", func(sp *STARSPane, ctx *panes.Context, ps *Preferences, trk *sim.Track) error {

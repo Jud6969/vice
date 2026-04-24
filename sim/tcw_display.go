@@ -15,9 +15,12 @@ import (
 // the sim session only.
 type TCWDisplayState struct {
 	// Annotations holds per-aircraft STARS track annotations keyed by
-	// ACID. Entries are created lazily when a controller first sets a
-	// field for an ACID, and pruned when the aircraft leaves the sim.
-	Annotations map[ACID]TrackAnnotations
+	// ADSBCallsign. The callsign is stable across associated and
+	// unassociated tracks, so annotations can attach to unassociated
+	// VFR tracks as well as associated IFR tracks. Entries are created
+	// lazily when a controller first sets a field for a callsign, and
+	// pruned when the aircraft leaves the sim.
+	Annotations map[av.ADSBCallsign]TrackAnnotations
 
 	// ScopePrefsBlob is an opaque JSON-encoded STARS Preferences
 	// snapshot: the whole struct sans a handful of per-user fields
@@ -137,199 +140,199 @@ func (s *Sim) EnsureTCWDisplay(tcw TCW) *TCWDisplayState {
 		return d
 	}
 	d := &TCWDisplayState{
-		Annotations: make(map[ACID]TrackAnnotations),
+		Annotations: make(map[av.ADSBCallsign]TrackAnnotations),
 	}
 	s.TCWDisplay[tcw] = d
 	return d
 }
 
 // mutateTrackAnnotation acquires the sim lock, ensures a TCWDisplay +
-// per-ACID entry exist, applies `f` to the entry in place, writes it
-// back, and bumps Rev. All SetTrack* helpers below share this shape.
-func (s *Sim) mutateTrackAnnotation(tcw TCW, acid ACID, f func(*TrackAnnotations)) {
+// per-callsign entry exist, applies `f` to the entry in place, writes
+// it back, and bumps Rev. All SetTrack* helpers below share this shape.
+func (s *Sim) mutateTrackAnnotation(tcw TCW, callsign av.ADSBCallsign, f func(*TrackAnnotations)) {
 	s.mu.Lock(s.lg)
 	defer s.mu.Unlock(s.lg)
 
 	d := s.EnsureTCWDisplay(tcw)
-	entry := d.Annotations[acid]
+	entry := d.Annotations[callsign]
 	f(&entry)
-	d.Annotations[acid] = entry
+	d.Annotations[callsign] = entry
 	d.Rev++
 }
 
-// SetTrackAnnotations overwrites the per-ACID annotation entry
+// SetTrackAnnotations overwrites the per-callsign annotation entry
 // wholesale and bumps Rev. Used by the unified client -> server RPC
 // (one round-trip per logical change). Server-driven transitions
 // still use the per-field mutators above; this is the client-initiated
 // write path. Last-write-wins on simultaneous mutations from multiple
 // clients (acceptable at human-click cadence).
-func (s *Sim) SetTrackAnnotations(tcw TCW, acid ACID, annot TrackAnnotations) {
+func (s *Sim) SetTrackAnnotations(tcw TCW, callsign av.ADSBCallsign, annot TrackAnnotations) {
 	s.mu.Lock(s.lg)
 	defer s.mu.Unlock(s.lg)
 
 	d := s.EnsureTCWDisplay(tcw)
 	if d.Annotations == nil {
-		d.Annotations = make(map[ACID]TrackAnnotations)
+		d.Annotations = make(map[av.ADSBCallsign]TrackAnnotations)
 	}
-	d.Annotations[acid] = annot
+	d.Annotations[callsign] = annot
 	d.Rev++
 }
 
-func (s *Sim) SetTrackJRingRadius(tcw TCW, acid ACID, v float32) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.JRingRadius = v })
+func (s *Sim) SetTrackJRingRadius(tcw TCW, callsign av.ADSBCallsign, v float32) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.JRingRadius = v })
 }
 
-func (s *Sim) SetTrackConeLength(tcw TCW, acid ACID, v float32) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.ConeLength = v })
+func (s *Sim) SetTrackConeLength(tcw TCW, callsign av.ADSBCallsign, v float32) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.ConeLength = v })
 }
 
-func (s *Sim) SetTrackLeaderLineDirection(tcw TCW, acid ACID, v *math.CardinalOrdinalDirection) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.LeaderLineDirection = v })
+func (s *Sim) SetTrackLeaderLineDirection(tcw TCW, callsign av.ADSBCallsign, v *math.CardinalOrdinalDirection) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.LeaderLineDirection = v })
 }
 
-func (s *Sim) SetTrackFDAMLeaderLineDirection(tcw TCW, acid ACID, v *math.CardinalOrdinalDirection) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.FDAMLeaderLineDirection = v })
+func (s *Sim) SetTrackFDAMLeaderLineDirection(tcw TCW, callsign av.ADSBCallsign, v *math.CardinalOrdinalDirection) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.FDAMLeaderLineDirection = v })
 }
 
-func (s *Sim) SetTrackUseGlobalLeaderLine(tcw TCW, acid ACID, v bool) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.UseGlobalLeaderLine = v })
+func (s *Sim) SetTrackUseGlobalLeaderLine(tcw TCW, callsign av.ADSBCallsign, v bool) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.UseGlobalLeaderLine = v })
 }
 
-func (s *Sim) SetTrackDisplayFDB(tcw TCW, acid ACID, v bool) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.DisplayFDB = v })
+func (s *Sim) SetTrackDisplayFDB(tcw TCW, callsign av.ADSBCallsign, v bool) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.DisplayFDB = v })
 }
 
-func (s *Sim) SetTrackDisplayPTL(tcw TCW, acid ACID, v bool) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.DisplayPTL = v })
+func (s *Sim) SetTrackDisplayPTL(tcw TCW, callsign av.ADSBCallsign, v bool) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.DisplayPTL = v })
 }
 
-func (s *Sim) SetTrackDisplayTPASize(tcw TCW, acid ACID, v *bool) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.DisplayTPASize = v })
+func (s *Sim) SetTrackDisplayTPASize(tcw TCW, callsign av.ADSBCallsign, v *bool) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.DisplayTPASize = v })
 }
 
-func (s *Sim) SetTrackDisplayATPAMonitor(tcw TCW, acid ACID, v *bool) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.DisplayATPAMonitor = v })
+func (s *Sim) SetTrackDisplayATPAMonitor(tcw TCW, callsign av.ADSBCallsign, v *bool) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.DisplayATPAMonitor = v })
 }
 
-func (s *Sim) SetTrackDisplayATPAWarnAlert(tcw TCW, acid ACID, v *bool) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.DisplayATPAWarnAlert = v })
+func (s *Sim) SetTrackDisplayATPAWarnAlert(tcw TCW, callsign av.ADSBCallsign, v *bool) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.DisplayATPAWarnAlert = v })
 }
 
-func (s *Sim) SetTrackDisplayRequestedAltitude(tcw TCW, acid ACID, v *bool) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.DisplayRequestedAltitude = v })
+func (s *Sim) SetTrackDisplayRequestedAltitude(tcw TCW, callsign av.ADSBCallsign, v *bool) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.DisplayRequestedAltitude = v })
 }
 
-func (s *Sim) SetTrackDisplayLDBBeaconCode(tcw TCW, acid ACID, v bool) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.DisplayLDBBeaconCode = v })
+func (s *Sim) SetTrackDisplayLDBBeaconCode(tcw TCW, callsign av.ADSBCallsign, v bool) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.DisplayLDBBeaconCode = v })
 }
 
 // --- Display-type overrides ---
-func (s *Sim) SetTrackDatablockAlert(tcw TCW, acid ACID, v bool) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.DatablockAlert = v })
+func (s *Sim) SetTrackDatablockAlert(tcw TCW, callsign av.ADSBCallsign, v bool) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.DatablockAlert = v })
 }
-func (s *Sim) SetTrackInhibitACTypeDisplay(tcw TCW, acid ACID, v *bool) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.InhibitACTypeDisplay = v })
+func (s *Sim) SetTrackInhibitACTypeDisplay(tcw TCW, callsign av.ADSBCallsign, v *bool) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.InhibitACTypeDisplay = v })
 }
-func (s *Sim) SetTrackForceACTypeDisplayEndTime(tcw TCW, acid ACID, v Time) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.ForceACTypeDisplayEndTime = v })
+func (s *Sim) SetTrackForceACTypeDisplayEndTime(tcw TCW, callsign av.ADSBCallsign, v Time) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.ForceACTypeDisplayEndTime = v })
 }
 
 // --- Handoff display state ---
-func (s *Sim) SetTrackAcceptedHandoffSector(tcw TCW, acid ACID, v string) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.AcceptedHandoffSector = v })
+func (s *Sim) SetTrackAcceptedHandoffSector(tcw TCW, callsign av.ADSBCallsign, v string) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.AcceptedHandoffSector = v })
 }
-func (s *Sim) SetTrackAcceptedHandoffDisplayEnd(tcw TCW, acid ACID, v Time) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.AcceptedHandoffDisplayEnd = v })
+func (s *Sim) SetTrackAcceptedHandoffDisplayEnd(tcw TCW, callsign av.ADSBCallsign, v Time) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.AcceptedHandoffDisplayEnd = v })
 }
-func (s *Sim) SetTrackOutboundHandoffAccepted(tcw TCW, acid ACID, v bool) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.OutboundHandoffAccepted = v })
+func (s *Sim) SetTrackOutboundHandoffAccepted(tcw TCW, callsign av.ADSBCallsign, v bool) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.OutboundHandoffAccepted = v })
 }
-func (s *Sim) SetTrackOutboundHandoffFlashEnd(tcw TCW, acid ACID, v Time) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.OutboundHandoffFlashEnd = v })
+func (s *Sim) SetTrackOutboundHandoffFlashEnd(tcw TCW, callsign av.ADSBCallsign, v Time) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.OutboundHandoffFlashEnd = v })
 }
-func (s *Sim) SetTrackRDIndicatorEnd(tcw TCW, acid ACID, v Time) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.RDIndicatorEnd = v })
+func (s *Sim) SetTrackRDIndicatorEnd(tcw TCW, callsign av.ADSBCallsign, v Time) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.RDIndicatorEnd = v })
 }
 
 // --- Flash timers ---
-func (s *Sim) SetTrackPOFlashingEndTime(tcw TCW, acid ACID, v Time) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.POFlashingEndTime = v })
+func (s *Sim) SetTrackPOFlashingEndTime(tcw TCW, callsign av.ADSBCallsign, v Time) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.POFlashingEndTime = v })
 }
-func (s *Sim) SetTrackUNFlashingEndTime(tcw TCW, acid ACID, v Time) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.UNFlashingEndTime = v })
+func (s *Sim) SetTrackUNFlashingEndTime(tcw TCW, callsign av.ADSBCallsign, v Time) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.UNFlashingEndTime = v })
 }
-func (s *Sim) SetTrackIFFlashing(tcw TCW, acid ACID, v bool) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.IFFlashing = v })
+func (s *Sim) SetTrackIFFlashing(tcw TCW, callsign av.ADSBCallsign, v bool) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.IFFlashing = v })
 }
-func (s *Sim) SetTrackSuspendedShowAltitudeEndTime(tcw TCW, acid ACID, v Time) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.SuspendedShowAltitudeEndTime = v })
+func (s *Sim) SetTrackSuspendedShowAltitudeEndTime(tcw TCW, callsign av.ADSBCallsign, v Time) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.SuspendedShowAltitudeEndTime = v })
 }
-func (s *Sim) SetTrackFullLDBEndTime(tcw TCW, acid ACID, v Time) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.FullLDBEndTime = v })
+func (s *Sim) SetTrackFullLDBEndTime(tcw TCW, callsign av.ADSBCallsign, v Time) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.FullLDBEndTime = v })
 }
 
 // --- Alerts + acks ---
-func (s *Sim) SetTrackMSAW(tcw TCW, acid ACID, v bool) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.MSAW = v })
+func (s *Sim) SetTrackMSAW(tcw TCW, callsign av.ADSBCallsign, v bool) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.MSAW = v })
 }
-func (s *Sim) SetTrackMSAWStart(tcw TCW, acid ACID, v Time) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.MSAWStart = v })
+func (s *Sim) SetTrackMSAWStart(tcw TCW, callsign av.ADSBCallsign, v Time) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.MSAWStart = v })
 }
-func (s *Sim) SetTrackInhibitMSAW(tcw TCW, acid ACID, v bool) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.InhibitMSAW = v })
+func (s *Sim) SetTrackInhibitMSAW(tcw TCW, callsign av.ADSBCallsign, v bool) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.InhibitMSAW = v })
 }
-func (s *Sim) SetTrackMSAWAcknowledged(tcw TCW, acid ACID, v bool) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.MSAWAcknowledged = v })
+func (s *Sim) SetTrackMSAWAcknowledged(tcw TCW, callsign av.ADSBCallsign, v bool) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.MSAWAcknowledged = v })
 }
-func (s *Sim) SetTrackMSAWSoundEnd(tcw TCW, acid ACID, v Time) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.MSAWSoundEnd = v })
+func (s *Sim) SetTrackMSAWSoundEnd(tcw TCW, callsign av.ADSBCallsign, v Time) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.MSAWSoundEnd = v })
 }
-func (s *Sim) SetTrackSPCAlert(tcw TCW, acid ACID, v bool) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.SPCAlert = v })
+func (s *Sim) SetTrackSPCAlert(tcw TCW, callsign av.ADSBCallsign, v bool) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.SPCAlert = v })
 }
-func (s *Sim) SetTrackSPCAcknowledged(tcw TCW, acid ACID, v bool) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.SPCAcknowledged = v })
+func (s *Sim) SetTrackSPCAcknowledged(tcw TCW, callsign av.ADSBCallsign, v bool) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.SPCAcknowledged = v })
 }
-func (s *Sim) SetTrackSPCSoundEnd(tcw TCW, acid ACID, v Time) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.SPCSoundEnd = v })
+func (s *Sim) SetTrackSPCSoundEnd(tcw TCW, callsign av.ADSBCallsign, v Time) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.SPCSoundEnd = v })
 }
-func (s *Sim) SetTrackMissingFlightPlanAcknowledged(tcw TCW, acid ACID, v bool) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.MissingFlightPlanAcknowledged = v })
+func (s *Sim) SetTrackMissingFlightPlanAcknowledged(tcw TCW, callsign av.ADSBCallsign, v bool) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.MissingFlightPlanAcknowledged = v })
 }
-func (s *Sim) SetTrackDBAcknowledged(tcw TCW, acid ACID, v av.Squawk) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.DBAcknowledged = v })
+func (s *Sim) SetTrackDBAcknowledged(tcw TCW, callsign av.ADSBCallsign, v av.Squawk) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.DBAcknowledged = v })
 }
 
 // --- Pointouts ---
-func (s *Sim) SetTrackPointOutAcknowledged(tcw TCW, acid ACID, v bool) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.PointOutAcknowledged = v })
+func (s *Sim) SetTrackPointOutAcknowledged(tcw TCW, callsign av.ADSBCallsign, v bool) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.PointOutAcknowledged = v })
 }
-func (s *Sim) SetTrackForceQL(tcw TCW, acid ACID, v bool) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.ForceQL = v })
+func (s *Sim) SetTrackForceQL(tcw TCW, callsign av.ADSBCallsign, v bool) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.ForceQL = v })
 }
-func (s *Sim) SetTrackInQLRegion(tcw TCW, acid ACID, v bool) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.InQLRegion = v })
+func (s *Sim) SetTrackInQLRegion(tcw TCW, callsign av.ADSBCallsign, v bool) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.InQLRegion = v })
 }
 
 // --- ATPA user toggle ---
-func (s *Sim) SetTrackInhibitDisplayInTrailDist(tcw TCW, acid ACID, v bool) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.InhibitDisplayInTrailDist = v })
+func (s *Sim) SetTrackInhibitDisplayInTrailDist(tcw TCW, callsign av.ADSBCallsign, v bool) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.InhibitDisplayInTrailDist = v })
 }
 
 // --- Misc ---
-func (s *Sim) SetTrackIsSelected(tcw TCW, acid ACID, v bool) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.IsSelected = v })
+func (s *Sim) SetTrackIsSelected(tcw TCW, callsign av.ADSBCallsign, v bool) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.IsSelected = v })
 }
-func (s *Sim) SetTrackReleaseDeleted(tcw TCW, acid ACID, v bool) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.ReleaseDeleted = v })
+func (s *Sim) SetTrackReleaseDeleted(tcw TCW, callsign av.ADSBCallsign, v bool) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.ReleaseDeleted = v })
 }
-func (s *Sim) SetTrackGhost(tcw TCW, acid ACID, pdb bool, state GhostState) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) {
+func (s *Sim) SetTrackGhost(tcw TCW, callsign av.ADSBCallsign, pdb bool, state GhostState) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) {
 		a.Ghost = TrackGhost{PartialDatablock: pdb, State: state}
 	})
 }
-func (s *Sim) SetTrackClearedScratchpadAlternate(tcw TCW, acid ACID, v bool) {
-	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.ClearedScratchpadAlternate = v })
+func (s *Sim) SetTrackClearedScratchpadAlternate(tcw TCW, callsign av.ADSBCallsign, v bool) {
+	s.mutateTrackAnnotation(tcw, callsign, func(a *TrackAnnotations) { a.ClearedScratchpadAlternate = v })
 }
 
 // SetScopePrefsBlob replaces the TCW-wide scope prefs blob with the
@@ -366,23 +369,17 @@ func (s *Sim) SetFused(tcw TCW, v bool) {
 	d.Rev++
 }
 
-// pruneTCWDisplayAnnotations removes per-ACID annotation entries whose
-// ACID is no longer present in the sim's track set. Called from the
-// tick loop. Caller must hold s.mu.
+// pruneTCWDisplayAnnotations removes per-callsign annotation entries
+// whose ADSBCallsign is no longer present in s.Aircraft. Called from
+// the tick loop. Caller must hold s.mu.
 func (s *Sim) pruneTCWDisplayAnnotations() {
 	if len(s.TCWDisplay) == 0 {
 		return
 	}
-	live := make(map[ACID]bool)
-	for _, ac := range s.Aircraft {
-		if fp := ac.NASFlightPlan; fp != nil {
-			live[fp.ACID] = true
-		}
-	}
 	for _, d := range s.TCWDisplay {
-		for acid := range d.Annotations {
-			if !live[acid] {
-				delete(d.Annotations, acid)
+		for callsign := range d.Annotations {
+			if _, ok := s.Aircraft[callsign]; !ok {
+				delete(d.Annotations, callsign)
 				d.Rev++
 			}
 		}

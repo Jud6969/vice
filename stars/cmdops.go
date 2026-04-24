@@ -1067,8 +1067,10 @@ func modifyFlightPlan(sp *STARSPane, ctx *panes.Context, acid sim.ACID, spec sim
 		func(err error) {
 			if err == nil {
 				if spec.RequestedAltitude.IsSet {
-					t := true
-					ctx.Client.SetTrackDisplayRequestedAltitude(acid, &t, func(err error) { sp.displayError(err, ctx, "") })
+					if trk, ok := ctx.Client.State.GetTrackByACID(acid); ok {
+						t := true
+						ctx.Client.SetTrackDisplayRequestedAltitude(trk.ADSBCallsign, &t, func(err error) { sp.displayError(err, ctx, "") })
+					}
 				}
 				if spec.Scratchpad.IsSet && spec.Scratchpad.Get() == "" {
 					if state, ok := sp.trackStateForACID(ctx, acid); ok {

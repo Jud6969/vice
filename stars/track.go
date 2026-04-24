@@ -192,26 +192,23 @@ func (sp *STARSPane) trackStateForACID(ctx *panes.Context, acid sim.ACID) (*Trac
 	return nil, false
 }
 
-// annotations returns the shared TCW annotations for the given ACID,
-// or a zero-value TrackAnnotations if no entry exists. Callers read
-// fields unconditionally; the zero value is the semantic default for
-// every synced field.
-func (sp *STARSPane) annotations(ctx *panes.Context, acid sim.ACID) sim.TrackAnnotations {
+// annotations returns the shared TCW annotations for the given
+// callsign, or a zero-value TrackAnnotations if no entry exists.
+// Callers read fields unconditionally; the zero value is the semantic
+// default for every synced field.
+func (sp *STARSPane) annotations(ctx *panes.Context, callsign av.ADSBCallsign) sim.TrackAnnotations {
 	d := ctx.Client.State.TCWDisplay
 	if d == nil || d.Annotations == nil {
 		return sim.TrackAnnotations{}
 	}
-	return d.Annotations[acid]
+	return d.Annotations[callsign]
 }
 
-// annotationsForTrack returns the shared TCW annotations for an
-// associated track, or a zero-value TrackAnnotations for unassociated
-// tracks (which have no ACID to key on).
+// annotationsForTrack returns the shared TCW annotations for a track.
+// ADSBCallsign is always present on a track (associated or not) so no
+// IsAssociated guard is needed.
 func (sp *STARSPane) annotationsForTrack(ctx *panes.Context, trk sim.Track) sim.TrackAnnotations {
-	if !trk.IsAssociated() {
-		return sim.TrackAnnotations{}
-	}
-	return sp.annotations(ctx, trk.FlightPlan.ACID)
+	return sp.annotations(ctx, trk.ADSBCallsign)
 }
 
 func (sp *STARSPane) processEvents(ctx *panes.Context) {
@@ -238,7 +235,7 @@ func (sp *STARSPane) processEvents(ctx *panes.Context) {
 			// First we've seen it; create the *AircraftState for it
 			sp.TrackState[trk.ADSBCallsign] = &TrackState{}
 			if trk.IsAssociated() && trk.FlightPlan.GlobalLeaderLineDirection != nil {
-				ctx.Client.SetTrackUseGlobalLeaderLine(trk.FlightPlan.ACID, true,
+				ctx.Client.SetTrackUseGlobalLeaderLine(trk.ADSBCallsign, true,
 					func(err error) { sp.displayError(err, ctx, "") })
 			}
 		}
@@ -342,8 +339,10 @@ func (sp *STARSPane) processEvents(ctx *panes.Context) {
 		case sim.FlightPlanAssociatedEvent:
 			if fp := ctx.Client.State.GetFlightPlanForACID(event.ACID); fp != nil {
 				if ctx.UserOwnsFlightPlan(fp) {
-					ctx.Client.SetTrackDisplayFDB(event.ACID, true,
-						func(err error) { sp.displayError(err, ctx, "") })
+					if trk, ok := ctx.Client.State.GetTrackByACID(event.ACID); ok {
+						ctx.Client.SetTrackDisplayFDB(trk.ADSBCallsign, true,
+							func(err error) { sp.displayError(err, ctx, "") })
+					}
 					if fp.QuickFlightPlan {
 						if state, ok := sp.trackStateForACID(ctx, event.ACID); ok {
 							state.DatablockAlert = true // display in yellow until slewed
@@ -366,8 +365,10 @@ func (sp *STARSPane) processEvents(ctx *panes.Context) {
 					state.OutboundHandoffAccepted = true
 					dur := time.Duration(ctx.FacilityAdaptation.Datablocks.FDB.AcceptFlashDuration) * time.Second
 					state.OutboundHandoffFlashEnd = ctx.SimTime.Add(dur)
-					ctx.Client.SetTrackDisplayFDB(event.ACID, true,
-						func(err error) { sp.displayError(err, ctx, "") })
+					if trk, ok := ctx.Client.State.GetTrackByACID(event.ACID); ok {
+						ctx.Client.SetTrackDisplayFDB(trk.ADSBCallsign, true,
+							func(err error) { sp.displayError(err, ctx, "") })
+					}
 
 					if event.Type == sim.AcceptedRedirectedHandoffEvent {
 						state.RDIndicatorEnd = ctx.SimTime.Add(30 * time.Second)
@@ -387,14 +388,18 @@ func (sp *STARSPane) processEvents(ctx *panes.Context) {
 
 		case sim.SetGlobalLeaderLineEvent:
 			if fp := ctx.Client.State.GetFlightPlanForACID(event.ACID); fp != nil {
-				ctx.Client.SetTrackUseGlobalLeaderLine(event.ACID, fp.GlobalLeaderLineDirection != nil,
-					func(err error) { sp.displayError(err, ctx, "") })
+				if trk, ok := ctx.Client.State.GetTrackByACID(event.ACID); ok {
+					ctx.Client.SetTrackUseGlobalLeaderLine(trk.ADSBCallsign, fp.GlobalLeaderLineDirection != nil,
+						func(err error) { sp.displayError(err, ctx, "") })
+				}
 			}
 
 		case sim.FDAMLeaderLineEvent:
 			if ctx.UserControlsPosition(event.ToController) {
-				ctx.Client.SetTrackFDAMLeaderLineDirection(event.ACID, event.LeaderLineDirection,
-					func(err error) { sp.displayError(err, ctx, "") })
+				if trk, ok := ctx.Client.State.GetTrackByACID(event.ACID); ok {
+					ctx.Client.SetTrackFDAMLeaderLineDirection(trk.ADSBCallsign, event.LeaderLineDirection,
+						func(err error) { sp.displayError(err, ctx, "") })
+				}
 			}
 
 		case sim.ForceQLEvent:
@@ -577,14 +582,14 @@ func (sp *STARSPane) updateQuicklookRegionTracks(ctx *panes.Context) {
 		cb := func(err error) { sp.displayError(err, ctx, "") }
 		if inRegion && !state.InQLRegion {
 			// Entry: track just entered a quicklook region.
-			ctx.Client.SetTrackDisplayFDB(fp.ACID, true, cb)
+			ctx.Client.SetTrackDisplayFDB(trk.ADSBCallsign, true, cb)
 			state.InQLRegion = true
 		} else if !inRegion && state.InQLRegion {
 			// Exit: track just left a quicklook region.
 			// Don't clear DisplayFDB if it's being maintained by the
 			// outbound handoff acceptance logic.
 			if !state.OutboundHandoffAccepted {
-				ctx.Client.SetTrackDisplayFDB(fp.ACID, false, cb)
+				ctx.Client.SetTrackDisplayFDB(trk.ADSBCallsign, false, cb)
 			}
 			state.InQLRegion = false
 		}
@@ -1482,7 +1487,7 @@ func (sp *STARSPane) getLeaderLineDirection(ctx *panes.Context, trk sim.Track) m
 
 	if trk.IsAssociated() {
 		sfp := trk.FlightPlan
-		anno := sp.annotations(ctx, sfp.ACID)
+		anno := sp.annotations(ctx, trk.ADSBCallsign)
 		if sfp.Suspended {
 			// Suspended are always north, evidently.
 			return math.North

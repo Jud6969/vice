@@ -334,7 +334,7 @@ func (sp *STARSPane) datablockType(ctx *panes.Context, trk sim.Track) DatablockT
 			return FullDatablock
 		}
 
-		if sp.annotations(ctx, trk.FlightPlan.ACID).DisplayFDB {
+		if sp.annotations(ctx, trk.ADSBCallsign).DisplayFDB {
 			// Outbound handoff or we slewed a PDB to make it a FDB
 			return FullDatablock
 		}

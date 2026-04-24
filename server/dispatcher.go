@@ -1109,25 +1109,25 @@ func (sd *dispatcher) AnnotateFlightStrip(args *AnnotateFlightStripArgs, _ *stru
 
 type SetTrackFloatArgs struct {
 	ControllerToken string
-	ACID            sim.ACID
+	Callsign        av.ADSBCallsign
 	Value           float32
 }
 
 type SetTrackBoolArgs struct {
 	ControllerToken string
-	ACID            sim.ACID
+	Callsign        av.ADSBCallsign
 	Value           bool
 }
 
 type SetTrackOptBoolArgs struct {
 	ControllerToken string
-	ACID            sim.ACID
+	Callsign        av.ADSBCallsign
 	Value           *bool
 }
 
 type SetTrackLeaderLineArgs struct {
 	ControllerToken string
-	ACID            sim.ACID
+	Callsign        av.ADSBCallsign
 	Direction       *math.CardinalOrdinalDirection
 }
 
@@ -1139,7 +1139,7 @@ func (sd *dispatcher) SetTrackJRingRadius(args *SetTrackFloatArgs, update *SimSt
 	if c == nil {
 		return ErrNoSimForControllerToken
 	}
-	c.sim.SetTrackJRingRadius(c.tcw, args.ACID, args.Value)
+	c.sim.SetTrackJRingRadius(c.tcw, args.Callsign, args.Value)
 	*update = c.GetStateUpdate()
 	return nil
 }
@@ -1152,7 +1152,7 @@ func (sd *dispatcher) SetTrackConeLength(args *SetTrackFloatArgs, update *SimSta
 	if c == nil {
 		return ErrNoSimForControllerToken
 	}
-	c.sim.SetTrackConeLength(c.tcw, args.ACID, args.Value)
+	c.sim.SetTrackConeLength(c.tcw, args.Callsign, args.Value)
 	*update = c.GetStateUpdate()
 	return nil
 }
@@ -1165,7 +1165,7 @@ func (sd *dispatcher) SetTrackLeaderLineDirection(args *SetTrackLeaderLineArgs, 
 	if c == nil {
 		return ErrNoSimForControllerToken
 	}
-	c.sim.SetTrackLeaderLineDirection(c.tcw, args.ACID, args.Direction)
+	c.sim.SetTrackLeaderLineDirection(c.tcw, args.Callsign, args.Direction)
 	*update = c.GetStateUpdate()
 	return nil
 }
@@ -1178,7 +1178,7 @@ func (sd *dispatcher) SetTrackFDAMLeaderLineDirection(args *SetTrackLeaderLineAr
 	if c == nil {
 		return ErrNoSimForControllerToken
 	}
-	c.sim.SetTrackFDAMLeaderLineDirection(c.tcw, args.ACID, args.Direction)
+	c.sim.SetTrackFDAMLeaderLineDirection(c.tcw, args.Callsign, args.Direction)
 	*update = c.GetStateUpdate()
 	return nil
 }
@@ -1191,7 +1191,7 @@ func (sd *dispatcher) SetTrackUseGlobalLeaderLine(args *SetTrackBoolArgs, update
 	if c == nil {
 		return ErrNoSimForControllerToken
 	}
-	c.sim.SetTrackUseGlobalLeaderLine(c.tcw, args.ACID, args.Value)
+	c.sim.SetTrackUseGlobalLeaderLine(c.tcw, args.Callsign, args.Value)
 	*update = c.GetStateUpdate()
 	return nil
 }
@@ -1204,7 +1204,7 @@ func (sd *dispatcher) SetTrackDisplayFDB(args *SetTrackBoolArgs, update *SimStat
 	if c == nil {
 		return ErrNoSimForControllerToken
 	}
-	c.sim.SetTrackDisplayFDB(c.tcw, args.ACID, args.Value)
+	c.sim.SetTrackDisplayFDB(c.tcw, args.Callsign, args.Value)
 	*update = c.GetStateUpdate()
 	return nil
 }
@@ -1217,7 +1217,7 @@ func (sd *dispatcher) SetTrackDisplayPTL(args *SetTrackBoolArgs, update *SimStat
 	if c == nil {
 		return ErrNoSimForControllerToken
 	}
-	c.sim.SetTrackDisplayPTL(c.tcw, args.ACID, args.Value)
+	c.sim.SetTrackDisplayPTL(c.tcw, args.Callsign, args.Value)
 	*update = c.GetStateUpdate()
 	return nil
 }
@@ -1230,7 +1230,7 @@ func (sd *dispatcher) SetTrackDisplayTPASize(args *SetTrackOptBoolArgs, update *
 	if c == nil {
 		return ErrNoSimForControllerToken
 	}
-	c.sim.SetTrackDisplayTPASize(c.tcw, args.ACID, args.Value)
+	c.sim.SetTrackDisplayTPASize(c.tcw, args.Callsign, args.Value)
 	*update = c.GetStateUpdate()
 	return nil
 }
@@ -1243,7 +1243,7 @@ func (sd *dispatcher) SetTrackDisplayATPAMonitor(args *SetTrackOptBoolArgs, upda
 	if c == nil {
 		return ErrNoSimForControllerToken
 	}
-	c.sim.SetTrackDisplayATPAMonitor(c.tcw, args.ACID, args.Value)
+	c.sim.SetTrackDisplayATPAMonitor(c.tcw, args.Callsign, args.Value)
 	*update = c.GetStateUpdate()
 	return nil
 }
@@ -1256,7 +1256,7 @@ func (sd *dispatcher) SetTrackDisplayATPAWarnAlert(args *SetTrackOptBoolArgs, up
 	if c == nil {
 		return ErrNoSimForControllerToken
 	}
-	c.sim.SetTrackDisplayATPAWarnAlert(c.tcw, args.ACID, args.Value)
+	c.sim.SetTrackDisplayATPAWarnAlert(c.tcw, args.Callsign, args.Value)
 	*update = c.GetStateUpdate()
 	return nil
 }
@@ -1269,7 +1269,7 @@ func (sd *dispatcher) SetTrackDisplayRequestedAltitude(args *SetTrackOptBoolArgs
 	if c == nil {
 		return ErrNoSimForControllerToken
 	}
-	c.sim.SetTrackDisplayRequestedAltitude(c.tcw, args.ACID, args.Value)
+	c.sim.SetTrackDisplayRequestedAltitude(c.tcw, args.Callsign, args.Value)
 	*update = c.GetStateUpdate()
 	return nil
 }
@@ -1282,14 +1282,14 @@ func (sd *dispatcher) SetTrackDisplayLDBBeaconCode(args *SetTrackBoolArgs, updat
 	if c == nil {
 		return ErrNoSimForControllerToken
 	}
-	c.sim.SetTrackDisplayLDBBeaconCode(c.tcw, args.ACID, args.Value)
+	c.sim.SetTrackDisplayLDBBeaconCode(c.tcw, args.Callsign, args.Value)
 	*update = c.GetStateUpdate()
 	return nil
 }
 
 type SetTrackAnnotationsArgs struct {
 	ControllerToken string
-	ACID            sim.ACID
+	Callsign        av.ADSBCallsign
 	Annotations     sim.TrackAnnotations
 }
 
@@ -1301,7 +1301,7 @@ func (sd *dispatcher) SetTrackAnnotations(args *SetTrackAnnotationsArgs, update 
 	if c == nil {
 		return ErrNoSimForControllerToken
 	}
-	c.sim.SetTrackAnnotations(c.tcw, args.ACID, args.Annotations)
+	c.sim.SetTrackAnnotations(c.tcw, args.Callsign, args.Annotations)
 	*update = c.GetStateUpdate()
 	return nil
 }
