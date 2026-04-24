@@ -1105,11 +1105,6 @@ func formatFlightPlan(sp *STARSPane, ctx *panes.Context, fp *sim.NASFlightPlan, 
 	}
 
 	// Common stuff
-	var state *TrackState
-	if trk != nil {
-		state = sp.TrackState[trk.ADSBCallsign]
-	}
-
 	var aircraftType string
 	if fp.AircraftCount > 1 {
 		aircraftType = strconv.Itoa(fp.AircraftCount) + "/"
@@ -1155,8 +1150,8 @@ func formatFlightPlan(sp *STARSPane, ctx *panes.Context, fp *sim.NASFlightPlan, 
 		result += "\n"
 
 		result += fmtfix(fp.EntryFix)
-		if state != nil {
-			result += "E" + fmtTime(state.FirstRadarTrackTime) + " "
+		if trk != nil {
+			result += "E" + fmtTime(trk.FirstRadarTrackTime) + " "
 		} else {
 			result += "E" + fmtTime(fp.CoordinationTime) + " "
 		}
@@ -1168,7 +1163,7 @@ func formatFlightPlan(sp *STARSPane, ctx *panes.Context, fp *sim.NASFlightPlan, 
 		// TODO: [mode S equipage] [target identification] [target address]
 
 	case av.FlightTypeDeparture:
-		if state == nil || state.FirstRadarTrackTime.IsZero() {
+		if trk == nil || trk.FirstRadarTrackTime.IsZero() {
 			// Proposed departure
 			result += aircraftType + " "
 			result += fp.AssignedSquawk.String() + " " + string(fp.TrackingController) + "\n"
@@ -1183,7 +1178,7 @@ func formatFlightPlan(sp *STARSPane, ctx *panes.Context, fp *sim.NASFlightPlan, 
 			// Active departure
 			result += fp.AssignedSquawk.String() + " "
 			result += fmtfix(fp.EntryFix)
-			result += "D" + fmtTime(state.FirstRadarTrackTime) + " "
+			result += "D" + fmtTime(trk.FirstRadarTrackTime) + " "
 			result += trkalt() + "\n"
 
 			result += fmtfix(fp.ExitFix)
@@ -1199,8 +1194,8 @@ func formatFlightPlan(sp *STARSPane, ctx *panes.Context, fp *sim.NASFlightPlan, 
 		result += trkalt() + "\n"
 
 		result += fmtfix(fp.EntryFix)
-		if state != nil {
-			result += "A" + fmtTime(state.FirstRadarTrackTime) + " "
+		if trk != nil {
+			result += "A" + fmtTime(trk.FirstRadarTrackTime) + " "
 		} else {
 			result += "A" + fmtTime(fp.CoordinationTime) + " "
 		}

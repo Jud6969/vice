@@ -1856,7 +1856,6 @@ func (sp *STARSPane) updateVisibleTracks(ctx *panes.Context) {
 
 	for _, trk := range ctx.Client.State.Tracks {
 		visible := false
-		state := sp.TrackState[trk.ADSBCallsign]
 
 		if trk.IsUnsupportedDB() {
 			visible = true
@@ -1879,11 +1878,6 @@ func (sp *STARSPane) updateVisibleTracks(ctx *panes.Context) {
 
 		if visible {
 			sp.visibleTracks = append(sp.visibleTracks, *trk)
-
-			// Is this the first we've seen it?
-			if state.FirstRadarTrackTime.IsZero() {
-				state.FirstRadarTrackTime = ctx.SimTime
-			}
 		}
 	}
 

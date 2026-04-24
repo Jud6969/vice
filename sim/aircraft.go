@@ -148,6 +148,19 @@ type Aircraft struct {
 	previousTransponderAlt  float32
 	previousTransponderTime Time
 	UnreasonableModeC       bool
+
+	// FirstRadarTrackTime is stamped on the first sim tick the aircraft
+	// is radar-visible (previously stamped client-side per TrackState).
+	// Exposed via sim.Track so clients read it instead of computing it.
+	FirstRadarTrackTime Time
+
+	// EnteredOurAirspace flips true once the aircraft's position is
+	// inside any airspace volume owned by the TCW that owns this
+	// aircraft's ControllerFrequency (previously stamped client-side per
+	// TrackState, keyed on the viewer's UserTCW). Server-owned so all
+	// clients see the same value; once true it stays true for the rest
+	// of the aircraft's life.
+	EnteredOurAirspace bool
 }
 
 func (ac *Aircraft) GetRadarTrack(now Time) av.RadarTrack {

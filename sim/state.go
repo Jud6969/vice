@@ -233,6 +233,8 @@ func makeDerivedState(s *Sim) DerivedState {
 			ATPALeadAircraftCallsign:  ac.ATPADerived.ATPALeadAircraftCallsign,
 			DrawATPAGraphics:          ac.ATPADerived.DrawATPAGraphics,
 			UnreasonableModeC:         ac.UnreasonableModeC,
+			FirstRadarTrackTime:       ac.FirstRadarTrackTime,
+			EnteredOurAirspace:        ac.EnteredOurAirspace,
 		}
 
 		if perf, ok := av.DB.AircraftPerformance[ac.FlightPlan.AircraftType]; ok {
@@ -596,4 +598,13 @@ type Track struct {
 	// (*Sim).updateModeC when the implied altitude rate exceeds
 	// FPMThreshold. Clients render it; they do not compute it.
 	UnreasonableModeC bool
+
+	// FirstRadarTrackTime is stamped by (*Sim).updateVisibility on the
+	// first sim tick the aircraft is radar-visible. Zero until then.
+	FirstRadarTrackTime Time
+
+	// EnteredOurAirspace flips true once the aircraft has entered any
+	// airspace volume owned by the TCW that owns its ControllerFrequency
+	// position. Set by (*Sim).updateVisibility; once true it stays true.
+	EnteredOurAirspace bool
 }

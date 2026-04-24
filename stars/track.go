@@ -1071,14 +1071,11 @@ func (sp *STARSPane) WarnOutsideAirspace(ctx *panes.Context, trk sim.Track) ([][
 		return nil, false
 	}
 
-	state := sp.TrackState[trk.ADSBCallsign]
 	vols := ctx.Client.AirspaceForTCW(ctx.UserTCW)
 
-	inside, alts := av.InAirspace(state.track.Location, state.track.TrueAltitude, vols)
-	if state.EnteredOurAirspace && !inside {
+	inside, alts := av.InAirspace(trk.Location, trk.TrueAltitude, vols)
+	if trk.EnteredOurAirspace && !inside {
 		return alts, true
-	} else if inside {
-		state.EnteredOurAirspace = true
 	}
 	return nil, false
 }
