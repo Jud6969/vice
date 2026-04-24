@@ -1025,7 +1025,6 @@ func (sp *STARSPane) fillFDBField6(ctx *panes.Context, trk sim.Track, sfp *sim.N
 	if trk.IsUnsupportedDB() {
 		return
 	}
-	state := sp.TrackState[trk.ADSBCallsign]
 	anno := sp.annotationsForTrack(ctx, trk)
 
 	// Helper: try to write ATPA content (*TPA, NOWGT, or intrail distance).
@@ -1035,17 +1034,17 @@ func (sp *STARSPane) fillFDBField6(ctx *panes.Context, trk sim.Track, sfp *sim.N
 			formatDBText(field, "*TPA", color, false)
 			return true
 		}
-		if state.IntrailDistance != 0 && sp.currentPrefs().DisplayATPAInTrailDist && !anno.InhibitDisplayInTrailDist {
+		if trk.IntrailDistance != 0 && sp.currentPrefs().DisplayATPAInTrailDist && !anno.InhibitDisplayInTrailDist {
 			distColor := color
-			if state.ATPAStatus == ATPAStatusWarning {
+			if trk.ATPAStatus == ATPAStatusWarning {
 				distColor = sp.Colors.ATPAWarning
-			} else if state.ATPAStatus == ATPAStatusAlert {
+			} else if trk.ATPAStatus == ATPAStatusAlert {
 				distColor = sp.Colors.ATPAAlert
 			}
 			if sfp.CWTCategory == "" {
 				formatDBText(field, "NOWGT", distColor, false)
 			} else {
-				formatDBText(field, fmt.Sprintf("%.2f", state.IntrailDistance), distColor, false)
+				formatDBText(field, fmt.Sprintf("%.2f", trk.IntrailDistance), distColor, false)
 			}
 			return true
 		}

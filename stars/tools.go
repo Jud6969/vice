@@ -786,10 +786,10 @@ func (sp *STARSPane) drawRingsAndCones(ctx *panes.Context, transforms radar.Scop
 			}
 		}
 
-		atpaStatus := state.ATPAStatus // this may change
+		atpaStatus := trk.ATPAStatus // this may change
 
 		// Don't draw any ATPA graphics if ATPA is disabled.
-		if !state.DrawATPAGraphics {
+		if !trk.DrawATPAGraphics {
 			atpaStatus = ATPAStatusUnset
 		}
 
@@ -802,7 +802,7 @@ func (sp *STARSPane) drawRingsAndCones(ctx *panes.Context, transforms radar.Scop
 
 		drawATPAMonitor := atpaStatus == ATPAStatusMonitor && ps.DisplayATPAMonitorCones &&
 			(anno.DisplayATPAMonitor == nil || *anno.DisplayATPAMonitor) &&
-			state.IntrailDistance-state.MinimumMIT <= 2 // monitor only if within 2nm of MIT requirement
+			trk.IntrailDistance-trk.MinimumMIT <= 2 // monitor only if within 2nm of MIT requirement
 		drawATPAWarning := atpaStatus == ATPAStatusWarning && ps.DisplayATPAWarningAlertCones &&
 			(anno.DisplayATPAWarnAlert == nil || *anno.DisplayATPAWarnAlert)
 		drawATPAAlert := atpaStatus == ATPAStatusAlert && ps.DisplayATPAWarningAlertCones &&
@@ -811,7 +811,7 @@ func (sp *STARSPane) drawRingsAndCones(ctx *panes.Context, transforms radar.Scop
 
 		if state.HaveHeading() && (anno.ConeLength > 0 || drawATPACone) {
 			// Find the length of the cone in pixel coordinates)
-			lengthNM := max(anno.ConeLength, state.MinimumMIT)
+			lengthNM := max(anno.ConeLength, trk.MinimumMIT)
 			length := lengthNM / transforms.PixelDistanceNM(ctx.NmPerLongitude)
 
 			// Form a triangle; the end of the cone is 10 pixels wide
@@ -823,7 +823,7 @@ func (sp *STARSPane) drawRingsAndCones(ctx *panes.Context, transforms radar.Scop
 			var coneColor renderer.RGB
 			if drawATPACone {
 				// The cone is oriented to point toward the leading aircraft.
-				if sfront, ok := sp.TrackState[state.ATPALeadAircraftCallsign]; ok {
+				if sfront, ok := sp.TrackState[trk.ATPALeadAircraftCallsign]; ok {
 					coneHeading = float32(math.TrueToMagnetic(math.Heading2LL(state.track.Location, sfront.track.Location,
 						ctx.NmPerLongitude), ctx.MagneticVariation))
 				}

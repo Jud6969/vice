@@ -232,8 +232,9 @@ func registerSupeCommands() {
 				if err != nil {
 					sp.displayError(err, ctx, "")
 				} else {
-					// This is sort of a hack but gives us instant updates on the scope after state changes
-					sp.updateInTrailDistance(ctx)
+					// The server recomputes ATPA state once per tick and
+					// publishes it on sim.Track, so the scope will pick up
+					// the new config on its next update.
 					sp.previewAreaOutput = output
 				}
 			})

@@ -135,6 +135,10 @@ type Aircraft struct {
 	VisualApproachRequestDistance float32
 
 	TouchAndGosRemaining int // >0 means pattern aircraft; decremented each lap
+
+	// ATPADerived is populated once per sim tick by (*Sim).updateATPA and
+	// copied through to sim.Track so clients do not re-walk every frame.
+	ATPADerived ATPADerived
 }
 
 func (ac *Aircraft) GetRadarTrack(now Time) av.RadarTrack {

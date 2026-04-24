@@ -6,7 +6,6 @@ package stars
 
 import (
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -120,13 +119,16 @@ type TrackState struct {
 	DatablockAlert bool
 }
 
-type ATPAStatus int
+// ATPAStatus now lives in sim (see sim/atpa.go) because it is computed
+// server-side and published via sim.Track. The alias + const re-exports
+// keep existing stars.ATPAStatus callers working.
+type ATPAStatus = sim.ATPAStatus
 
 const (
-	ATPAStatusUnset = iota
-	ATPAStatusMonitor
-	ATPAStatusWarning
-	ATPAStatusAlert
+	ATPAStatusUnset   = sim.ATPAStatusUnset
+	ATPAStatusMonitor = sim.ATPAStatusMonitor
+	ATPAStatusWarning = sim.ATPAStatusWarning
+	ATPAStatusAlert   = sim.ATPAStatusAlert
 )
 
 // GhostState now lives in sim (see sim/track_ghost.go) because it is
@@ -589,7 +591,6 @@ func (sp *STARSPane) updateRadarTracks(ctx *panes.Context) {
 	}
 
 	sp.updateCAAircraft(ctx)
-	sp.updateInTrailDistance(ctx)
 }
 
 func (sp *STARSPane) updateQuicklookRegionTracks(ctx *panes.Context) {
@@ -1268,196 +1269,6 @@ func (sp *STARSPane) updateCAAircraft(ctx *panes.Context) {
 					SoundEnd:      ctx.SimTime.Add(AlertAudioDuration),
 					Start:         ctx.SimTime,
 				})
-			}
-		}
-	}
-}
-
-func (sp *STARSPane) updateInTrailDistance(ctx *panes.Context) {
-	nmPerLongitude := ctx.NmPerLongitude
-	magneticVariation := ctx.MagneticVariation
-
-	// Zero out the previous distance
-	for _, trk := range sp.visibleTracks {
-		state := sp.TrackState[trk.ADSBCallsign]
-		state.IntrailDistance = 0
-		state.MinimumMIT = 0
-		state.ATPAStatus = ATPAStatusUnset
-		state.ATPALeadAircraftCallsign = ""
-		state.DrawATPAGraphics = false
-	}
-
-	// Skip ATPA processing if disabled system-wide
-	if !ctx.Client.State.ATPAEnabled {
-		return
-	}
-
-	// For simplicity, we always compute all of the necessary distances
-	// here, regardless of things like both ps.DisplayATPAWarningAlertCones
-	// and ps.DisplayATPAMonitorCones being disabled. Later, when it's time
-	// to display things (or not), we account for both that as well as all
-	// of the potential per-aircraft overrides. This does mean that
-	// sometimes the work here is fully wasted.
-
-	// Loop over each ATPA volume at arrival airports and process all
-	// aircraft inside it.
-	ss := ctx.Client.State
-	for icao, apVolState := range ss.ATPAVolumeState {
-		for id, volState := range apVolState {
-			if volState.Disabled {
-				continue
-			}
-			vol := ss.Airports[icao].ATPAVolumes[id]
-
-			// Get all aircraft on approach to this runway
-			runwayAircraft := util.FilterSlice(sp.visibleTracks, func(trk sim.Track) bool {
-				if !trk.IsAssociated() {
-					return false
-				}
-
-				if trk.ATPAVolume == nil || trk.ATPAVolume.Id != vol.Id || trk.ATPAVolume.Threshold != vol.Threshold {
-					return false
-				}
-
-				// Excluded scratchpad -> aircraft doesn't participate in the party whatsoever.
-				if trk.FlightPlan.Scratchpad != "" && slices.Contains(vol.ExcludedScratchpads, trk.FlightPlan.Scratchpad) {
-					return false
-				}
-
-				state := sp.TrackState[trk.ADSBCallsign]
-				return vol.Inside(state.track.Location, state.track.TransponderAltitude,
-					math.TrueToMagnetic(state.TrackHeading(nmPerLongitude), magneticVariation),
-					nmPerLongitude, magneticVariation)
-			})
-
-			// Sort by distance to threshold (there will be some redundant lookups of TrackState
-			// and distance computations here, but it's straightforward to implement it like this
-			// and we shouldn't have many aircraft in runwayAircraft anyway...
-			sort.Slice(runwayAircraft, func(i, j int) bool {
-				pi := sp.TrackState[runwayAircraft[i].ADSBCallsign].track.Location
-				pj := sp.TrackState[runwayAircraft[j].ADSBCallsign].track.Location
-				return math.NMDistance2LL(pi, vol.Threshold) < math.NMDistance2LL(pj, vol.Threshold)
-			})
-
-			for i := range runwayAircraft {
-				if i == 0 {
-					// The first one doesn't have anyone in front...
-					continue
-				}
-				leading, trailing := runwayAircraft[i-1], runwayAircraft[i]
-				leadingState, trailingState := sp.TrackState[leading.ADSBCallsign], sp.TrackState[trailing.ADSBCallsign]
-				trailingState.IntrailDistance =
-					math.NMDistance2LL(leadingState.track.Location, trailingState.track.Location)
-				trailingState.DrawATPAGraphics = true
-				sp.checkInTrailCwtSeparation(ctx, trailing, leading)
-			}
-		}
-	}
-}
-
-type ModeledAircraft struct {
-	callsign     av.ADSBCallsign
-	p            [2]float32 // nm coords
-	v            [2]float32 // nm, normalized
-	gs           float32
-	alt          float32
-	dalt         float32    // per second
-	threshold    [2]float32 // nm
-	landingSpeed float32
-}
-
-func MakeModeledAircraft(ctx *panes.Context, trk sim.Track, state *TrackState, threshold math.Point2LL) ModeledAircraft {
-	nmPerLongitude := ctx.NmPerLongitude
-	magneticVariation := ctx.MagneticVariation
-
-	ma := ModeledAircraft{
-		callsign:  trk.ADSBCallsign,
-		p:         math.LL2NM(trk.Location, nmPerLongitude),
-		gs:        trk.Groundspeed,
-		alt:       trk.TransponderAltitude,
-		dalt:      float32(state.TrackDeltaAltitude()),
-		threshold: math.LL2NM(threshold, nmPerLongitude),
-	}
-	// Note: assuming it's associated...
-	if perf, ok := av.DB.AircraftPerformance[trk.FlightPlan.AircraftType]; ok {
-		ma.landingSpeed = perf.Speed.Landing
-	} else {
-		ma.landingSpeed = 120 // ....
-	}
-	ma.v = state.HeadingVector(nmPerLongitude, magneticVariation)
-	ma.v = math.LL2NM(ma.v, nmPerLongitude)
-	ma.v = math.Normalize2f(ma.v)
-	return ma
-}
-
-// estimated altitude s seconds in the future
-func (ma *ModeledAircraft) EstimatedAltitude(s float32) float32 {
-	// simple linear model
-	return ma.alt + s*ma.dalt
-}
-
-// Return estimated position 1s in the future
-func (ma *ModeledAircraft) NextPosition(p [2]float32) [2]float32 {
-	gs := ma.gs // current speed
-	td := math.Distance2f(p, ma.threshold)
-	if td < 2 {
-		gs = min(gs, ma.landingSpeed)
-	} else if td < 5 {
-		t := (td - 2) / 3 // [0,1]
-		// lerp from current speed down to landing speed
-		gs = math.Lerp(t, ma.landingSpeed, gs)
-	}
-
-	gs /= 3600 // nm / second
-	return math.Add2f(p, math.Scale2f(ma.v, gs))
-}
-
-func (sp *STARSPane) checkInTrailCwtSeparation(ctx *panes.Context, back, front sim.Track) {
-	if front.IsUnassociated() || back.IsUnassociated() {
-		return
-	}
-
-	state := sp.TrackState[back.ADSBCallsign]
-	vol := back.ATPAVolume
-
-	eligible25nm := vol.Enable25nmApproach &&
-		ctx.Client.State.IsATPAVolume25nmEnabled(vol.Id) &&
-		math.NMDistance2LL(vol.Threshold, back.Location) < vol.Dist25nmApproach &&
-		back.OnExtendedCenterline && front.OnExtendedCenterline
-	cwtSeparation := av.CWTApproachSeparation(
-		front.FlightPlan.CWTCategory, back.FlightPlan.CWTCategory, eligible25nm)
-
-	state.MinimumMIT = cwtSeparation
-	state.ATPALeadAircraftCallsign = front.ADSBCallsign
-	state.ATPAStatus = ATPAStatusMonitor // baseline
-
-	// If the aircraft's scratchpad is filtered, then it doesn't get
-	// warnings or alerts but is still here for the aircraft behind it.
-	if back.IsAssociated() && back.FlightPlan.Scratchpad != "" &&
-		slices.Contains(vol.FilteredScratchpads, back.FlightPlan.Scratchpad) {
-		return
-	}
-
-	// front, back aircraft
-	frontModel := MakeModeledAircraft(ctx, front, sp.TrackState[front.ADSBCallsign], vol.Threshold)
-	backModel := MakeModeledAircraft(ctx, back, state, vol.Threshold)
-
-	// Will there be a MIT violation s seconds in the future?  (Note that
-	// we don't include altitude separation here since what we need is
-	// distance separation by the threshold...)
-	frontPosition, backPosition := frontModel.p, backModel.p
-	for s := range 45 {
-		frontPosition, backPosition = frontModel.NextPosition(frontPosition), backModel.NextPosition(backPosition)
-		distance := math.Distance2f(frontPosition, backPosition)
-		if distance < cwtSeparation { // no bueno
-			if s <= 24 {
-				// Error if conflict expected within 24 seconds (6-159).
-				state.ATPAStatus = ATPAStatusAlert
-				return
-			} else {
-				// Warning if conflict expected within 45 seconds (6-159).
-				state.ATPAStatus = ATPAStatusWarning
-				return
 			}
 		}
 	}

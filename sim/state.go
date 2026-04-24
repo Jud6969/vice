@@ -227,6 +227,11 @@ func makeDerivedState(s *Sim) DerivedState {
 			ATPAVolume:                ac.ATPAVolume(),
 			IsTentative:               s.State.SimTime.Sub(ac.FirstSeen) < 5*time.Second,
 			RequestedFlightFollowing:  ac.RequestedFlightFollowing,
+			IntrailDistance:           ac.ATPADerived.IntrailDistance,
+			MinimumMIT:                ac.ATPADerived.MinimumMIT,
+			ATPAStatus:                ac.ATPADerived.ATPAStatus,
+			ATPALeadAircraftCallsign:  ac.ATPADerived.ATPALeadAircraftCallsign,
+			DrawATPAGraphics:          ac.ATPADerived.DrawATPAGraphics,
 		}
 
 		if perf, ok := av.DB.AircraftPerformance[ac.FlightPlan.AircraftType]; ok {
@@ -577,4 +582,12 @@ type Track struct {
 	IsTentative               bool   // first 5 seconds after first contact
 	CWTCategory               string // True CWT from aircraft performance DB, not from NAS flight plan
 	RequestedFlightFollowing  bool   // VFR aircraft that has requested flight following
+
+	// ATPA state, computed server-side once per tick in (*Sim).updateATPA
+	// and copied through from Aircraft.ATPADerived. Clients just read it.
+	IntrailDistance          float32
+	MinimumMIT               float32
+	ATPAStatus               ATPAStatus
+	ATPALeadAircraftCallsign av.ADSBCallsign
+	DrawATPAGraphics         bool
 }
