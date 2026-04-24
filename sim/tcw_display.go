@@ -45,6 +45,11 @@ type TCWDisplayState struct {
 	// Monotonic revision, bumped on every mutation. Clients can send
 	// last-seen rev to the server for diff detection in future plans.
 	Rev uint64
+
+	// Fused is the per-TCW fused/unfused display mode. Toggled via
+	// the shared DCB from any client at the TCW; all clients at the
+	// TCW observe the same value.
+	Fused bool
 }
 
 // TrackAnnotations is the subset of stars.TrackState that is shared
@@ -177,6 +182,16 @@ func (s *Sim) EnableScopeSync(tcw TCW) {
 
 	d := s.EnsureTCWDisplay(tcw)
 	d.ScopeSyncEnabled = true
+	d.Rev++
+}
+
+// SetFused flips the TCW-wide Fused flag and bumps Rev.
+func (s *Sim) SetFused(tcw TCW, v bool) {
+	s.mu.Lock(s.lg)
+	defer s.mu.Unlock(s.lg)
+
+	d := s.EnsureTCWDisplay(tcw)
+	d.Fused = v
 	d.Rev++
 }
 

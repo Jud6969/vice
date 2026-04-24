@@ -237,6 +237,37 @@ func TestSetScopePrefsBlobStoresAndBumpsRevs(t *testing.T) {
 	}
 }
 
+func TestSetFusedFlipsFlagAndBumpsRev(t *testing.T) {
+	s := NewTestSim(log.New(true, "error", t.TempDir()))
+	tcw := TCW("N90")
+
+	if d := s.GetTCWDisplay(tcw); d != nil {
+		t.Fatalf("TCWDisplay pre-mutation = %+v, want nil", d)
+	}
+
+	s.SetFused(tcw, true)
+
+	d := s.GetTCWDisplay(tcw)
+	if d == nil {
+		t.Fatalf("TCWDisplay nil after SetFused")
+	}
+	if !d.Fused {
+		t.Errorf("Fused = false, want true")
+	}
+	if d.Rev != 1 {
+		t.Errorf("Rev = %d, want 1", d.Rev)
+	}
+
+	s.SetFused(tcw, false)
+	d = s.GetTCWDisplay(tcw)
+	if d.Fused {
+		t.Errorf("Fused = true, want false after second SetFused")
+	}
+	if d.Rev != 2 {
+		t.Errorf("Rev = %d, want 2 after second SetFused", d.Rev)
+	}
+}
+
 func TestSetScopePrefsBlobCoexistsWithAnnotations(t *testing.T) {
 	// Setting the scope-prefs blob must not clobber per-ACID
 	// annotations and vice versa; the shared Rev bumps for either.
