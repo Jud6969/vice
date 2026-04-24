@@ -397,8 +397,7 @@ func (sp *STARSPane) isQuicklooked(ctx *panes.Context, trk sim.Track) bool {
 func (sp *STARSPane) updateMSAWs(ctx *panes.Context) {
 	for _, trk := range sp.visibleTracks {
 		state := sp.TrackState[trk.ADSBCallsign]
-		anno := sp.annotationsForTrack(ctx, trk)
-		origAnno := anno
+		cur := sp.annotationsForTrack(ctx, trk)
 
 		// Compute whether the track is in an MSAW warning state. Any
 		// early-out clears MSAW; the suppression filters / altitude
@@ -418,31 +417,29 @@ func (sp *STARSPane) updateMSAWs(ctx *panes.Context) {
 			}
 		}
 
-		if !warn && anno.InhibitMSAW {
-			// The warning has cleared, so the inhibit is disabled (p.7-25)
-			anno.InhibitMSAW = false
-		}
-		if warn && !anno.MSAW {
-			// It's a new alert
-			anno.MSAWAcknowledged = false
-			anno.MSAWSoundEnd = ctx.SimTime.Add(AlertAudioDuration)
-			anno.MSAWStart = ctx.SimTime
-		}
-		anno.MSAW = warn
-		sp.maybeWriteAnno(ctx, trk.ADSBCallsign, anno, origAnno)
-	}
-}
+		cb := func(err error) { sp.displayError(err, ctx, "") }
 
-// maybeWriteAnno writes `anno` via SetTrackAnnotations only if it differs
-// from `orig`. Used by per-tick updaters (MSAW/InQLRegion) that loop over
-// every visible track and would otherwise burn one RPC per track per
-// frame.
-func (sp *STARSPane) maybeWriteAnno(ctx *panes.Context, callsign av.ADSBCallsign, anno, orig sim.TrackAnnotations) {
-	if anno == orig {
-		return
+		// Compare against the current snapshot and issue per-field
+		// writes only for fields that actually changed this tick.
+		// Routing through per-field setters (rather than a single
+		// SetTrackAnnotations whole-struct push) avoids clobbering
+		// server-driven transitions (handoff accept, pointout ack,
+		// etc.) that may have mutated neighboring annotation fields
+		// between 1 Hz state-update polls.
+		if !warn && cur.InhibitMSAW {
+			// The warning has cleared, so the inhibit is disabled (p.7-25)
+			ctx.Client.SetTrackInhibitMSAW(trk.ADSBCallsign, false, cb)
+		}
+		if warn && !cur.MSAW {
+			// It's a new alert
+			ctx.Client.SetTrackMSAWAcknowledged(trk.ADSBCallsign, false, cb)
+			ctx.Client.SetTrackMSAWSoundEnd(trk.ADSBCallsign, ctx.SimTime.Add(AlertAudioDuration), cb)
+			ctx.Client.SetTrackMSAWStart(trk.ADSBCallsign, ctx.SimTime, cb)
+		}
+		if warn != cur.MSAW {
+			ctx.Client.SetTrackMSAW(trk.ADSBCallsign, warn, cb)
+		}
 	}
-	ctx.Client.SetTrackAnnotations(callsign, anno,
-		func(err error) { sp.displayError(err, ctx, "") })
 }
 
 func (sp *STARSPane) updateRadarTracks(ctx *panes.Context) {
@@ -538,11 +535,13 @@ func (sp *STARSPane) updateQuicklookRegionTracks(ctx *panes.Context) {
 
 		anno := sp.annotationsForTrack(ctx, trk)
 		cb := func(err error) { sp.displayError(err, ctx, "") }
+		// Route the InQLRegion bit through its per-field setter to
+		// avoid clobbering server-driven neighboring annotation
+		// fields between 1 Hz state-update polls.
 		if inRegion && !anno.InQLRegion {
 			// Entry: track just entered a quicklook region.
 			ctx.Client.SetTrackDisplayFDB(trk.ADSBCallsign, true, cb)
-			anno.InQLRegion = true
-			ctx.Client.SetTrackAnnotations(trk.ADSBCallsign, anno, cb)
+			ctx.Client.SetTrackInQLRegion(trk.ADSBCallsign, true, cb)
 		} else if !inRegion && anno.InQLRegion {
 			// Exit: track just left a quicklook region.
 			// Don't clear DisplayFDB if it's being maintained by the
@@ -550,8 +549,7 @@ func (sp *STARSPane) updateQuicklookRegionTracks(ctx *panes.Context) {
 			if !anno.OutboundHandoffAccepted {
 				ctx.Client.SetTrackDisplayFDB(trk.ADSBCallsign, false, cb)
 			}
-			anno.InQLRegion = false
-			ctx.Client.SetTrackAnnotations(trk.ADSBCallsign, anno, cb)
+			ctx.Client.SetTrackInQLRegion(trk.ADSBCallsign, false, cb)
 		}
 	}
 }

@@ -1131,6 +1131,12 @@ type SetTrackLeaderLineArgs struct {
 	Direction       *math.CardinalOrdinalDirection
 }
 
+type SetTrackTimeArgs struct {
+	ControllerToken string
+	Callsign        av.ADSBCallsign
+	Value           sim.Time
+}
+
 const SetTrackJRingRadiusRPC = "Sim.SetTrackJRingRadius"
 
 func (sd *dispatcher) SetTrackJRingRadius(args *SetTrackFloatArgs, update *SimStateUpdate) error {
@@ -1283,6 +1289,89 @@ func (sd *dispatcher) SetTrackDisplayLDBBeaconCode(args *SetTrackBoolArgs, updat
 		return ErrNoSimForControllerToken
 	}
 	c.sim.SetTrackDisplayLDBBeaconCode(c.tcw, args.Callsign, args.Value)
+	*update = c.GetStateUpdate()
+	return nil
+}
+
+// Per-field MSAW / InQLRegion setters. Used by stars per-frame
+// detection paths (updateMSAWs, updateQuicklookRegionTracks) so each
+// write touches exactly one field and cannot clobber a server-driven
+// mutation of a neighboring field between 1 Hz state-update polls.
+
+const SetTrackMSAWRPC = "Sim.SetTrackMSAW"
+
+func (sd *dispatcher) SetTrackMSAW(args *SetTrackBoolArgs, update *SimStateUpdate) error {
+	defer sd.sm.lg.CatchAndReportCrash()
+	c := sd.sm.LookupController(args.ControllerToken)
+	if c == nil {
+		return ErrNoSimForControllerToken
+	}
+	c.sim.SetTrackMSAW(c.tcw, args.Callsign, args.Value)
+	*update = c.GetStateUpdate()
+	return nil
+}
+
+const SetTrackInhibitMSAWRPC = "Sim.SetTrackInhibitMSAW"
+
+func (sd *dispatcher) SetTrackInhibitMSAW(args *SetTrackBoolArgs, update *SimStateUpdate) error {
+	defer sd.sm.lg.CatchAndReportCrash()
+	c := sd.sm.LookupController(args.ControllerToken)
+	if c == nil {
+		return ErrNoSimForControllerToken
+	}
+	c.sim.SetTrackInhibitMSAW(c.tcw, args.Callsign, args.Value)
+	*update = c.GetStateUpdate()
+	return nil
+}
+
+const SetTrackMSAWAcknowledgedRPC = "Sim.SetTrackMSAWAcknowledged"
+
+func (sd *dispatcher) SetTrackMSAWAcknowledged(args *SetTrackBoolArgs, update *SimStateUpdate) error {
+	defer sd.sm.lg.CatchAndReportCrash()
+	c := sd.sm.LookupController(args.ControllerToken)
+	if c == nil {
+		return ErrNoSimForControllerToken
+	}
+	c.sim.SetTrackMSAWAcknowledged(c.tcw, args.Callsign, args.Value)
+	*update = c.GetStateUpdate()
+	return nil
+}
+
+const SetTrackMSAWStartRPC = "Sim.SetTrackMSAWStart"
+
+func (sd *dispatcher) SetTrackMSAWStart(args *SetTrackTimeArgs, update *SimStateUpdate) error {
+	defer sd.sm.lg.CatchAndReportCrash()
+	c := sd.sm.LookupController(args.ControllerToken)
+	if c == nil {
+		return ErrNoSimForControllerToken
+	}
+	c.sim.SetTrackMSAWStart(c.tcw, args.Callsign, args.Value)
+	*update = c.GetStateUpdate()
+	return nil
+}
+
+const SetTrackMSAWSoundEndRPC = "Sim.SetTrackMSAWSoundEnd"
+
+func (sd *dispatcher) SetTrackMSAWSoundEnd(args *SetTrackTimeArgs, update *SimStateUpdate) error {
+	defer sd.sm.lg.CatchAndReportCrash()
+	c := sd.sm.LookupController(args.ControllerToken)
+	if c == nil {
+		return ErrNoSimForControllerToken
+	}
+	c.sim.SetTrackMSAWSoundEnd(c.tcw, args.Callsign, args.Value)
+	*update = c.GetStateUpdate()
+	return nil
+}
+
+const SetTrackInQLRegionRPC = "Sim.SetTrackInQLRegion"
+
+func (sd *dispatcher) SetTrackInQLRegion(args *SetTrackBoolArgs, update *SimStateUpdate) error {
+	defer sd.sm.lg.CatchAndReportCrash()
+	c := sd.sm.LookupController(args.ControllerToken)
+	if c == nil {
+		return ErrNoSimForControllerToken
+	}
+	c.sim.SetTrackInQLRegion(c.tcw, args.Callsign, args.Value)
 	*update = c.GetStateUpdate()
 	return nil
 }

@@ -635,6 +635,15 @@ func (c *ControlClient) setTrackLeaderLine(rpcName string, callsign av.ADSBCalls
 	}, &update, nil), &update, callback))
 }
 
+func (c *ControlClient) setTrackTime(rpcName string, callsign av.ADSBCallsign, v sim.Time, callback func(error)) {
+	var update server.SimStateUpdate
+	c.addCall(makeStateUpdateRPCCall(c.client.Go(rpcName, &server.SetTrackTimeArgs{
+		ControllerToken: c.controllerToken,
+		Callsign:        callsign,
+		Value:           v,
+	}, &update, nil), &update, callback))
+}
+
 func (c *ControlClient) SetTrackJRingRadius(callsign av.ADSBCallsign, v float32, callback func(error)) {
 	c.setTrackFloat(server.SetTrackJRingRadiusRPC, callsign, v, callback)
 }
@@ -681,6 +690,35 @@ func (c *ControlClient) SetTrackDisplayRequestedAltitude(callsign av.ADSBCallsig
 
 func (c *ControlClient) SetTrackDisplayLDBBeaconCode(callsign av.ADSBCallsign, v bool, callback func(error)) {
 	c.setTrackBool(server.SetTrackDisplayLDBBeaconCodeRPC, callsign, v, callback)
+}
+
+// Per-field MSAW / InQLRegion setters. Used by stars per-frame
+// detection paths (updateMSAWs, updateQuicklookRegionTracks) so each
+// write touches exactly one field and cannot clobber a server-driven
+// mutation of a neighboring field between 1 Hz state-update polls.
+
+func (c *ControlClient) SetTrackMSAW(callsign av.ADSBCallsign, v bool, callback func(error)) {
+	c.setTrackBool(server.SetTrackMSAWRPC, callsign, v, callback)
+}
+
+func (c *ControlClient) SetTrackInhibitMSAW(callsign av.ADSBCallsign, v bool, callback func(error)) {
+	c.setTrackBool(server.SetTrackInhibitMSAWRPC, callsign, v, callback)
+}
+
+func (c *ControlClient) SetTrackMSAWAcknowledged(callsign av.ADSBCallsign, v bool, callback func(error)) {
+	c.setTrackBool(server.SetTrackMSAWAcknowledgedRPC, callsign, v, callback)
+}
+
+func (c *ControlClient) SetTrackMSAWStart(callsign av.ADSBCallsign, v sim.Time, callback func(error)) {
+	c.setTrackTime(server.SetTrackMSAWStartRPC, callsign, v, callback)
+}
+
+func (c *ControlClient) SetTrackMSAWSoundEnd(callsign av.ADSBCallsign, v sim.Time, callback func(error)) {
+	c.setTrackTime(server.SetTrackMSAWSoundEndRPC, callsign, v, callback)
+}
+
+func (c *ControlClient) SetTrackInQLRegion(callsign av.ADSBCallsign, v bool, callback func(error)) {
+	c.setTrackBool(server.SetTrackInQLRegionRPC, callsign, v, callback)
 }
 
 // SetTrackAnnotations overwrites the shared per-ACID annotation entry
