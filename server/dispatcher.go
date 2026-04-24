@@ -1287,6 +1287,25 @@ func (sd *dispatcher) SetTrackDisplayLDBBeaconCode(args *SetTrackBoolArgs, updat
 	return nil
 }
 
+type SetTrackAnnotationsArgs struct {
+	ControllerToken string
+	ACID            sim.ACID
+	Annotations     sim.TrackAnnotations
+}
+
+const SetTrackAnnotationsRPC = "Sim.SetTrackAnnotations"
+
+func (sd *dispatcher) SetTrackAnnotations(args *SetTrackAnnotationsArgs, update *SimStateUpdate) error {
+	defer sd.sm.lg.CatchAndReportCrash()
+	c := sd.sm.LookupController(args.ControllerToken)
+	if c == nil {
+		return ErrNoSimForControllerToken
+	}
+	c.sim.SetTrackAnnotations(c.tcw, args.ACID, args.Annotations)
+	*update = c.GetStateUpdate()
+	return nil
+}
+
 // Shared TCW scope-prefs sync. A client whose scopePrefsBaseline
 // diverges from the currently-shared blob pushes its JSON-encoded
 // STARS Preferences here; the server stores it verbatim and everyone

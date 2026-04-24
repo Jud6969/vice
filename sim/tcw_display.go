@@ -157,6 +157,24 @@ func (s *Sim) mutateTrackAnnotation(tcw TCW, acid ACID, f func(*TrackAnnotations
 	d.Rev++
 }
 
+// SetTrackAnnotations overwrites the per-ACID annotation entry
+// wholesale and bumps Rev. Used by the unified client -> server RPC
+// (one round-trip per logical change). Server-driven transitions
+// still use the per-field mutators above; this is the client-initiated
+// write path. Last-write-wins on simultaneous mutations from multiple
+// clients (acceptable at human-click cadence).
+func (s *Sim) SetTrackAnnotations(tcw TCW, acid ACID, annot TrackAnnotations) {
+	s.mu.Lock(s.lg)
+	defer s.mu.Unlock(s.lg)
+
+	d := s.EnsureTCWDisplay(tcw)
+	if d.Annotations == nil {
+		d.Annotations = make(map[ACID]TrackAnnotations)
+	}
+	d.Annotations[acid] = annot
+	d.Rev++
+}
+
 func (s *Sim) SetTrackJRingRadius(tcw TCW, acid ACID, v float32) {
 	s.mutateTrackAnnotation(tcw, acid, func(a *TrackAnnotations) { a.JRingRadius = v })
 }
