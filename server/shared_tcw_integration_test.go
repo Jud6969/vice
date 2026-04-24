@@ -34,11 +34,11 @@ func TestTwoClientsSeeEachOthersAnnotationChange(t *testing.T) {
 
 	// A sets J-ring radius for cs1.
 	var upA SimStateUpdate
-	if err := sd.SetTrackJRingRadius(
-		&SetTrackFloatArgs{ControllerToken: tokenA, Callsign: cs1, Value: 3.5},
+	if err := sd.SetTrackAnnotations(
+		&SetTrackAnnotationsArgs{ControllerToken: tokenA, Callsign: cs1, Annotations: sim.TrackAnnotations{JRingRadius: 3.5}},
 		&upA,
 	); err != nil {
-		t.Fatalf("A SetTrackJRingRadius: %v", err)
+		t.Fatalf("A SetTrackAnnotations: %v", err)
 	}
 	if upA.TCWDisplay == nil {
 		t.Fatal("A's echoed TCWDisplay is nil")
@@ -61,11 +61,11 @@ func TestTwoClientsSeeEachOthersAnnotationChange(t *testing.T) {
 
 	// B toggles FDB for cs2.
 	var upB2 SimStateUpdate
-	if err := sd.SetTrackDisplayFDB(
-		&SetTrackBoolArgs{ControllerToken: tokenB, Callsign: cs2, Value: true},
+	if err := sd.SetTrackAnnotations(
+		&SetTrackAnnotationsArgs{ControllerToken: tokenB, Callsign: cs2, Annotations: sim.TrackAnnotations{DisplayFDB: true}},
 		&upB2,
 	); err != nil {
-		t.Fatalf("B SetTrackDisplayFDB: %v", err)
+		t.Fatalf("B SetTrackAnnotations: %v", err)
 	}
 
 	// A polls and sees both entries.
@@ -116,11 +116,11 @@ func TestAnnotationsSurviveRejoin(t *testing.T) {
 
 	// A sets a unique annotation.
 	var up SimStateUpdate
-	if err := sd.SetTrackJRingRadius(
-		&SetTrackFloatArgs{ControllerToken: tokenA, Callsign: callsign, Value: 4.0},
+	if err := sd.SetTrackAnnotations(
+		&SetTrackAnnotationsArgs{ControllerToken: tokenA, Callsign: callsign, Annotations: sim.TrackAnnotations{JRingRadius: 4.0}},
 		&up,
 	); err != nil {
-		t.Fatalf("A SetTrackJRingRadius: %v", err)
+		t.Fatalf("A SetTrackAnnotations: %v", err)
 	}
 
 	// Everyone leaves.

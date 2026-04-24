@@ -160,7 +160,9 @@ func (sp *STARSPane) processEvents(ctx *panes.Context) {
 			// First we've seen it; create the *AircraftState for it
 			sp.TrackState[trk.ADSBCallsign] = &TrackState{}
 			if trk.IsAssociated() && trk.FlightPlan.GlobalLeaderLineDirection != nil {
-				ctx.Client.SetTrackUseGlobalLeaderLine(trk.ADSBCallsign, true,
+				anno := sp.annotations(ctx, trk.ADSBCallsign)
+				anno.UseGlobalLeaderLine = true
+				ctx.Client.SetTrackAnnotations(trk.ADSBCallsign, anno,
 					func(err error) { sp.displayError(err, ctx, "") })
 			}
 		}
@@ -275,14 +277,13 @@ func (sp *STARSPane) processEvents(ctx *panes.Context) {
 			if fp := ctx.Client.State.GetFlightPlanForACID(event.ACID); fp != nil {
 				if ctx.UserOwnsFlightPlan(fp) {
 					if trk, ok := ctx.Client.State.GetTrackByACID(event.ACID); ok {
-						ctx.Client.SetTrackDisplayFDB(trk.ADSBCallsign, true,
-							func(err error) { sp.displayError(err, ctx, "") })
+						anno := sp.annotationsForTrack(ctx, *trk)
+						anno.DisplayFDB = true
 						if fp.QuickFlightPlan {
-							anno := sp.annotations(ctx, trk.ADSBCallsign)
 							anno.DatablockAlert = true // display in yellow until slewed
-							ctx.Client.SetTrackAnnotations(trk.ADSBCallsign, anno,
-								func(err error) { sp.displayError(err, ctx, "") })
 						}
+						ctx.Client.SetTrackAnnotations(trk.ADSBCallsign, anno,
+							func(err error) { sp.displayError(err, ctx, "") })
 					}
 				}
 			}
@@ -306,12 +307,11 @@ func (sp *STARSPane) processEvents(ctx *panes.Context) {
 					sp.playOnce(ctx.Platform, AudioHandoffAccepted)
 					// Note: OutboundHandoffAccepted + OutboundHandoffFlashEnd are
 					// written server-side in Sim.AcceptHandoff (see commit 75cecb9a).
-					ctx.Client.SetTrackDisplayFDB(cs, true,
-						func(err error) { sp.displayError(err, ctx, "") })
+					anno.DisplayFDB = true
+					dirty = true
 
 					if event.Type == sim.AcceptedRedirectedHandoffEvent {
 						anno.RDIndicatorEnd = ctx.SimTime.Add(30 * time.Second)
-						dirty = true
 					}
 				}
 				if outbound || inbound {
@@ -335,7 +335,9 @@ func (sp *STARSPane) processEvents(ctx *panes.Context) {
 		case sim.SetGlobalLeaderLineEvent:
 			if fp := ctx.Client.State.GetFlightPlanForACID(event.ACID); fp != nil {
 				if trk, ok := ctx.Client.State.GetTrackByACID(event.ACID); ok {
-					ctx.Client.SetTrackUseGlobalLeaderLine(trk.ADSBCallsign, fp.GlobalLeaderLineDirection != nil,
+					anno := sp.annotationsForTrack(ctx, *trk)
+					anno.UseGlobalLeaderLine = fp.GlobalLeaderLineDirection != nil
+					ctx.Client.SetTrackAnnotations(trk.ADSBCallsign, anno,
 						func(err error) { sp.displayError(err, ctx, "") })
 				}
 			}
@@ -343,7 +345,9 @@ func (sp *STARSPane) processEvents(ctx *panes.Context) {
 		case sim.FDAMLeaderLineEvent:
 			if ctx.UserControlsPosition(event.ToController) {
 				if trk, ok := ctx.Client.State.GetTrackByACID(event.ACID); ok {
-					ctx.Client.SetTrackFDAMLeaderLineDirection(trk.ADSBCallsign, event.LeaderLineDirection,
+					anno := sp.annotationsForTrack(ctx, *trk)
+					anno.FDAMLeaderLineDirection = event.LeaderLineDirection
+					ctx.Client.SetTrackAnnotations(trk.ADSBCallsign, anno,
 						func(err error) { sp.displayError(err, ctx, "") })
 				}
 			}
@@ -540,14 +544,16 @@ func (sp *STARSPane) updateQuicklookRegionTracks(ctx *panes.Context) {
 		// fields between 1 Hz state-update polls.
 		if inRegion && !anno.InQLRegion {
 			// Entry: track just entered a quicklook region.
-			ctx.Client.SetTrackDisplayFDB(trk.ADSBCallsign, true, cb)
+			anno.DisplayFDB = true
+			ctx.Client.SetTrackAnnotations(trk.ADSBCallsign, anno, cb)
 			ctx.Client.SetTrackInQLRegion(trk.ADSBCallsign, true, cb)
 		} else if !inRegion && anno.InQLRegion {
 			// Exit: track just left a quicklook region.
 			// Don't clear DisplayFDB if it's being maintained by the
 			// outbound handoff acceptance logic.
 			if !anno.OutboundHandoffAccepted {
-				ctx.Client.SetTrackDisplayFDB(trk.ADSBCallsign, false, cb)
+				anno.DisplayFDB = false
+				ctx.Client.SetTrackAnnotations(trk.ADSBCallsign, anno, cb)
 			}
 			ctx.Client.SetTrackInQLRegion(trk.ADSBCallsign, false, cb)
 		}

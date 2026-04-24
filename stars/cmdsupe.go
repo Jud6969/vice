@@ -269,7 +269,9 @@ func registerSupeCommands() {
 					cb := func(err error) { sp.displayError(err, ctx, "") }
 					for _, trk := range sp.visibleTracks {
 						if trk.IsAssociated() {
-							ctx.Client.SetTrackDisplayATPAWarnAlert(trk.ADSBCallsign, nil, cb)
+							anno := sp.annotationsForTrack(ctx, trk)
+							anno.DisplayATPAWarnAlert = nil
+							ctx.Client.SetTrackAnnotations(trk.ADSBCallsign, anno, cb)
 						}
 					}
 					return configureATPA(sp, ctx, sim.ATPADisableVolume, vol)

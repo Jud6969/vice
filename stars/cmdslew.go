@@ -194,8 +194,8 @@ func registerSlewCommands() {
 					return CommandStatus{}
 				} else {
 					// 6.13.4 Toggle quick look for a single track (implied)
-					cur := anno.DisplayFDB
-					ctx.Client.SetTrackDisplayFDB(trk.ADSBCallsign, !cur, errCB)
+					anno.DisplayFDB = !anno.DisplayFDB
+					writeAnno()
 					return CommandStatus{}
 				}
 			}

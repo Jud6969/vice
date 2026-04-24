@@ -599,39 +599,12 @@ func (c *ControlClient) AnnotateFlightStrip(acid sim.ACID, annotations [9]string
 // machinery applies to the local State so subsequent reads see the
 // new value immediately.
 
-func (c *ControlClient) setTrackFloat(rpcName string, callsign av.ADSBCallsign, v float32, callback func(error)) {
-	var update server.SimStateUpdate
-	c.addCall(makeStateUpdateRPCCall(c.client.Go(rpcName, &server.SetTrackFloatArgs{
-		ControllerToken: c.controllerToken,
-		Callsign:        callsign,
-		Value:           v,
-	}, &update, nil), &update, callback))
-}
-
 func (c *ControlClient) setTrackBool(rpcName string, callsign av.ADSBCallsign, v bool, callback func(error)) {
 	var update server.SimStateUpdate
 	c.addCall(makeStateUpdateRPCCall(c.client.Go(rpcName, &server.SetTrackBoolArgs{
 		ControllerToken: c.controllerToken,
 		Callsign:        callsign,
 		Value:           v,
-	}, &update, nil), &update, callback))
-}
-
-func (c *ControlClient) setTrackOptBool(rpcName string, callsign av.ADSBCallsign, v *bool, callback func(error)) {
-	var update server.SimStateUpdate
-	c.addCall(makeStateUpdateRPCCall(c.client.Go(rpcName, &server.SetTrackOptBoolArgs{
-		ControllerToken: c.controllerToken,
-		Callsign:        callsign,
-		Value:           v,
-	}, &update, nil), &update, callback))
-}
-
-func (c *ControlClient) setTrackLeaderLine(rpcName string, callsign av.ADSBCallsign, d *math.CardinalOrdinalDirection, callback func(error)) {
-	var update server.SimStateUpdate
-	c.addCall(makeStateUpdateRPCCall(c.client.Go(rpcName, &server.SetTrackLeaderLineArgs{
-		ControllerToken: c.controllerToken,
-		Callsign:        callsign,
-		Direction:       d,
 	}, &update, nil), &update, callback))
 }
 
@@ -642,54 +615,6 @@ func (c *ControlClient) setTrackTime(rpcName string, callsign av.ADSBCallsign, v
 		Callsign:        callsign,
 		Value:           v,
 	}, &update, nil), &update, callback))
-}
-
-func (c *ControlClient) SetTrackJRingRadius(callsign av.ADSBCallsign, v float32, callback func(error)) {
-	c.setTrackFloat(server.SetTrackJRingRadiusRPC, callsign, v, callback)
-}
-
-func (c *ControlClient) SetTrackConeLength(callsign av.ADSBCallsign, v float32, callback func(error)) {
-	c.setTrackFloat(server.SetTrackConeLengthRPC, callsign, v, callback)
-}
-
-func (c *ControlClient) SetTrackLeaderLineDirection(callsign av.ADSBCallsign, d *math.CardinalOrdinalDirection, callback func(error)) {
-	c.setTrackLeaderLine(server.SetTrackLeaderLineDirectionRPC, callsign, d, callback)
-}
-
-func (c *ControlClient) SetTrackFDAMLeaderLineDirection(callsign av.ADSBCallsign, d *math.CardinalOrdinalDirection, callback func(error)) {
-	c.setTrackLeaderLine(server.SetTrackFDAMLeaderLineDirectionRPC, callsign, d, callback)
-}
-
-func (c *ControlClient) SetTrackUseGlobalLeaderLine(callsign av.ADSBCallsign, v bool, callback func(error)) {
-	c.setTrackBool(server.SetTrackUseGlobalLeaderLineRPC, callsign, v, callback)
-}
-
-func (c *ControlClient) SetTrackDisplayFDB(callsign av.ADSBCallsign, v bool, callback func(error)) {
-	c.setTrackBool(server.SetTrackDisplayFDBRPC, callsign, v, callback)
-}
-
-func (c *ControlClient) SetTrackDisplayPTL(callsign av.ADSBCallsign, v bool, callback func(error)) {
-	c.setTrackBool(server.SetTrackDisplayPTLRPC, callsign, v, callback)
-}
-
-func (c *ControlClient) SetTrackDisplayTPASize(callsign av.ADSBCallsign, v *bool, callback func(error)) {
-	c.setTrackOptBool(server.SetTrackDisplayTPASizeRPC, callsign, v, callback)
-}
-
-func (c *ControlClient) SetTrackDisplayATPAMonitor(callsign av.ADSBCallsign, v *bool, callback func(error)) {
-	c.setTrackOptBool(server.SetTrackDisplayATPAMonitorRPC, callsign, v, callback)
-}
-
-func (c *ControlClient) SetTrackDisplayATPAWarnAlert(callsign av.ADSBCallsign, v *bool, callback func(error)) {
-	c.setTrackOptBool(server.SetTrackDisplayATPAWarnAlertRPC, callsign, v, callback)
-}
-
-func (c *ControlClient) SetTrackDisplayRequestedAltitude(callsign av.ADSBCallsign, v *bool, callback func(error)) {
-	c.setTrackOptBool(server.SetTrackDisplayRequestedAltitudeRPC, callsign, v, callback)
-}
-
-func (c *ControlClient) SetTrackDisplayLDBBeaconCode(callsign av.ADSBCallsign, v bool, callback func(error)) {
-	c.setTrackBool(server.SetTrackDisplayLDBBeaconCodeRPC, callsign, v, callback)
 }
 
 // Per-field MSAW / InQLRegion setters. Used by stars per-frame
