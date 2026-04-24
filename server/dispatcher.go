@@ -1131,31 +1131,6 @@ type SetTrackLeaderLineArgs struct {
 	Direction       *math.CardinalOrdinalDirection
 }
 
-type SetTrackTimeArgs struct {
-	ControllerToken string
-	ACID            sim.ACID
-	Value           sim.Time
-}
-
-type SetTrackStringArgs struct {
-	ControllerToken string
-	ACID            sim.ACID
-	Value           string
-}
-
-type SetTrackSquawkArgs struct {
-	ControllerToken string
-	ACID            sim.ACID
-	Value           av.Squawk
-}
-
-type SetTrackGhostArgs struct {
-	ControllerToken  string
-	ACID             sim.ACID
-	PartialDatablock bool
-	State            sim.GhostState
-}
-
 const SetTrackJRingRadiusRPC = "Sim.SetTrackJRingRadius"
 
 func (sd *dispatcher) SetTrackJRingRadius(args *SetTrackFloatArgs, update *SimStateUpdate) error {
