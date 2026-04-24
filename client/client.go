@@ -303,7 +303,7 @@ func (c *ControlClient) GetUpdates(eventStream *sim.EventStream, p platform.Plat
 	}
 
 	// Wait in seconds between update fetches; no less than 50ms
-	rate := math.Clamp(0.1/c.State.SimRate, 0.05, 0.1)
+	rate := math.Clamp(1/c.State.SimRate, 0.05, 1)
 	if d := time.Since(c.lastUpdateRequest); d > time.Duration(rate*float32(time.Second)) {
 		if c.updateCall != nil && !util.DebuggerIsRunning() {
 			c.lg.Warnf("GetUpdates still waiting for %s on last update call", d)
