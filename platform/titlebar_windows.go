@@ -18,13 +18,21 @@ const (
 	wmNCHitTest  = 0x0084
 	htClient     = 1
 	htCaption    = 2
+	htLeft       = 10
+	htRight      = 11
+	htTop        = 12
+	htTopLeft    = 13
+	htTopRight   = 14
+	htBottom     = 15
+	htBottomLeft = 16
+	htBottomRight = 17
 	// GWL / GWLP constants expressed via bitwise complement so they fit
 	// into a compile-time uintptr on both 32- and 64-bit builds.
 	gwlpWndProc = ^uintptr(3) // -4
 	gwlStyle    = ^uintptr(15) // -16
 
-	wsThickFrame   = 0x00040000
-	wsMaximizeBox  = 0x00010000
+	wsThickFrame  = 0x00040000
+	wsMaximizeBox = 0x00010000
 
 	swpNoMove        = 0x0002
 	swpNoSize        = 0x0001
@@ -34,18 +42,24 @@ const (
 	swpFrameChanged  = 0x0020
 
 	monitorDefaultToNearest = 0x00000002
+
+	// Pixel margin inside the client area where the mouse hit-tests to a
+	// resize edge/corner instead of client/caption. Matches the "feel" of
+	// native Windows borderless frames.
+	resizeBorderPx = 6
 )
 
 var (
-	tbUser32              = syscall.NewLazyDLL("user32.dll")
-	tbSetWindowLongPtrW   = tbUser32.NewProc("SetWindowLongPtrW")
-	tbGetWindowLongPtrW   = tbUser32.NewProc("GetWindowLongPtrW")
-	tbCallWindowProcW     = tbUser32.NewProc("CallWindowProcW")
-	tbScreenToClient      = tbUser32.NewProc("ScreenToClient")
-	tbSetWindowPos        = tbUser32.NewProc("SetWindowPos")
-	tbIsZoomed            = tbUser32.NewProc("IsZoomed")
-	tbMonitorFromWindow   = tbUser32.NewProc("MonitorFromWindow")
-	tbGetMonitorInfoW     = tbUser32.NewProc("GetMonitorInfoW")
+	tbUser32            = syscall.NewLazyDLL("user32.dll")
+	tbSetWindowLongPtrW = tbUser32.NewProc("SetWindowLongPtrW")
+	tbGetWindowLongPtrW = tbUser32.NewProc("GetWindowLongPtrW")
+	tbCallWindowProcW   = tbUser32.NewProc("CallWindowProcW")
+	tbScreenToClient    = tbUser32.NewProc("ScreenToClient")
+	tbSetWindowPos      = tbUser32.NewProc("SetWindowPos")
+	tbIsZoomed          = tbUser32.NewProc("IsZoomed")
+	tbMonitorFromWindow = tbUser32.NewProc("MonitorFromWindow")
+	tbGetMonitorInfoW   = tbUser32.NewProc("GetMonitorInfoW")
+	tbGetClientRect     = tbUser32.NewProc("GetClientRect")
 
 	tbMu       sync.Mutex
 	tbRegions  []math.Extent2D
@@ -103,6 +117,43 @@ func viceTitleBarWndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 				y: int32(int16(uint16((lparam >> 16) & 0xFFFF))),
 			}
 			tbScreenToClient.Call(hwnd, uintptr(unsafe.Pointer(&pt)))
+
+			// Resize edges/corners: because WM_NCCALCSIZE collapses the
+			// non-client frame, Windows no longer hit-tests the outer few
+			// pixels as resize borders. Emulate that here by returning the
+			// appropriate HT* for points inside a small margin of the
+			// client area. Suppress while maximized so edges don't trigger
+			// resize against the monitor's work area. Takes precedence
+			// over caption regions so the top edge of the menu bar
+			// resizes instead of dragging.
+			zoomed, _, _ := tbIsZoomed.Call(hwnd)
+			if zoomed == 0 {
+				var cr tbRect
+				tbGetClientRect.Call(hwnd, uintptr(unsafe.Pointer(&cr)))
+				w, h := cr.right-cr.left, cr.bottom-cr.top
+				onLeft := pt.x < resizeBorderPx
+				onRight := pt.x >= w-resizeBorderPx
+				onTop := pt.y < resizeBorderPx
+				onBottom := pt.y >= h-resizeBorderPx
+				switch {
+				case onTop && onLeft:
+					return htTopLeft
+				case onTop && onRight:
+					return htTopRight
+				case onBottom && onLeft:
+					return htBottomLeft
+				case onBottom && onRight:
+					return htBottomRight
+				case onTop:
+					return htTop
+				case onBottom:
+					return htBottom
+				case onLeft:
+					return htLeft
+				case onRight:
+					return htRight
+				}
+			}
 
 			tbMu.Lock()
 			regions := tbRegions
