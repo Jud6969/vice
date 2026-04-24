@@ -481,13 +481,29 @@ func (sp *STARSPane) drawDCB(ctx *panes.Context, transforms radar.ScopeTransform
 				}
 			}
 		}
-		multi := sp.radarMode(radarSites) == RadarModeMulti
-		if sp.toggleButton(ctx, "MULTI", &multi, buttonFull, buttonScale) && multi {
-			sp.setRadarModeMulti()
+		// Fused mode is owned by the server (TCWDisplay.Fused) so it
+		// syncs across relief controllers. The FUSED button reflects
+		// the shared flag directly; the MULTI button is the inverse.
+		// Writes go through SetFused; STARSPane.Draw mirrors the value
+		// into ps.FusedRadarMode so radarMode() stays consistent for
+		// every other reader.
+		fused := false
+		if d := ctx.Client.State.TCWDisplay; d != nil {
+			fused = d.Fused
 		}
-		fused := sp.radarMode(radarSites) == RadarModeFused
-		if sp.toggleButton(ctx, "FUSED", &fused, buttonFull, buttonScale) && fused {
-			sp.setRadarModeFused()
+		// If a single site is selected, neither MULTI nor FUSED shows
+		// as lit; matches the old behavior where radarMode returned
+		// RadarModeSingle and both bools were false.
+		siteSelected := ps.RadarSiteSelected != "" && radarSites[ps.RadarSiteSelected] != nil
+		multi := !siteSelected && !fused
+		if sp.toggleButton(ctx, "MULTI", &multi, buttonFull, buttonScale) && multi {
+			ps.RadarSiteSelected = ""
+			ctx.Client.SetFused(false, func(err error) { sp.displayError(err, ctx, "") })
+		}
+		fusedBtn := !siteSelected && fused
+		if sp.toggleButton(ctx, "FUSED", &fusedBtn, buttonFull, buttonScale) && fusedBtn {
+			ps.RadarSiteSelected = ""
+			ctx.Client.SetFused(true, func(err error) { sp.displayError(err, ctx, "") })
 		}
 		if sp.selectButton(ctx, "DONE", buttonFull, buttonScale) {
 			sp.setCommandMode(ctx, CommandModeNone)

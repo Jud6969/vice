@@ -164,6 +164,12 @@ type STARSPane struct {
 	lastHistoryTrackUpdate sim.Time
 	discardTracks          bool
 
+	// lastAppliedFused tracks the TCW Fused flag value we last reconciled
+	// locally. When the shared flag flips (whether from our own click or
+	// from a peer controller), Draw resets the per-ACID history ring and
+	// mirrors the new value into ps.FusedRadarMode so radarMode() agrees.
+	lastAppliedFused bool
+
 	LastATIS   [10]string
 	LastGIText [10]string
 	FlashATIS  [10]bool
@@ -1208,6 +1214,25 @@ func (sp *STARSPane) Upgrade(from, to int) {
 
 func (sp *STARSPane) Draw(ctx *panes.Context, cb *renderer.CommandBuffer) {
 	sp.processEvents(ctx)
+
+	// Reconcile the TCW-wide Fused flag before anything reads the radar
+	// mode or writes into the history ring. When the shared flag flips,
+	// clear the per-ACID history ring and mirror the value into the
+	// local preference so radarMode() returns the right mode for all
+	// other readers.
+	fused := false
+	if d := ctx.Client.State.TCWDisplay; d != nil {
+		fused = d.Fused
+	}
+	if fused != sp.lastAppliedFused {
+		for cs := range sp.TrackState {
+			sp.TrackState[cs].historyTracksIndex = 0
+			sp.TrackState[cs].historyTracks = [10]av.RadarTrack{}
+		}
+		sp.currentPrefs().FusedRadarMode = fused
+		sp.lastAppliedFused = fused
+	}
+
 	sp.updateVisibleTracks(ctx)
 
 	sp.updateRadarTracks(ctx)
