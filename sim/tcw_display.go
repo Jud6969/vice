@@ -5,6 +5,7 @@
 package sim
 
 import (
+	av "github.com/mmp/vice/aviation"
 	"github.com/mmp/vice/math"
 )
 
@@ -72,6 +73,57 @@ type TrackAnnotations struct {
 
 	DisplayRequestedAltitude *bool
 	DisplayLDBBeaconCode     bool
+
+	// Display-type overrides
+	DatablockAlert            bool
+	InhibitACTypeDisplay      *bool
+	ForceACTypeDisplayEndTime Time
+
+	// Handoff display state
+	AcceptedHandoffSector     string
+	AcceptedHandoffDisplayEnd Time
+	OutboundHandoffAccepted   bool
+	OutboundHandoffFlashEnd   Time
+	RDIndicatorEnd            Time
+
+	// Flash timers
+	POFlashingEndTime            Time
+	UNFlashingEndTime            Time
+	IFFlashing                   bool
+	SuspendedShowAltitudeEndTime Time
+	FullLDBEndTime               Time
+
+	// Alerts + acks
+	MSAW                          bool
+	MSAWStart                     Time
+	InhibitMSAW                   bool
+	MSAWAcknowledged              bool
+	MSAWSoundEnd                  Time
+	SPCAlert                      bool
+	SPCAcknowledged               bool
+	SPCSoundEnd                   Time
+	MissingFlightPlanAcknowledged bool
+	DBAcknowledged                av.Squawk
+
+	// Pointouts
+	PointOutAcknowledged bool
+	ForceQL              bool
+	InQLRegion           bool
+
+	// ATPA user toggle
+	InhibitDisplayInTrailDist bool
+
+	// Misc per-ACID UX
+	IsSelected                 bool
+	ReleaseDeleted             bool
+	Ghost                      TrackGhost
+	ClearedScratchpadAlternate bool
+}
+
+// TrackGhost mirrors stars.TrackState.Ghost (PartialDatablock + GhostState).
+type TrackGhost struct {
+	PartialDatablock bool
+	State            GhostState
 }
 
 // GetTCWDisplay returns the shared state for the given TCW or nil if
