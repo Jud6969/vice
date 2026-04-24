@@ -2038,9 +2038,9 @@ func (sp *STARSPane) updateAudio(ctx *panes.Context) {
 			if trk.IsUnassociated() || trk.FlightPlan.DisableMSAW {
 				return false
 			}
-			state := sp.TrackState[trk.ADSBCallsign]
-			if state.MSAW && !state.MSAWAcknowledged && !state.InhibitMSAW &&
-				ctx.SimTime.Before(state.MSAWSoundEnd) {
+			anno := sp.annotationsForTrack(ctx, trk)
+			if anno.MSAW && !anno.MSAWAcknowledged && !anno.InhibitMSAW &&
+				ctx.SimTime.Before(anno.MSAWSoundEnd) {
 				return true
 			}
 		}
@@ -2054,9 +2054,9 @@ func (sp *STARSPane) updateAudio(ctx *panes.Context) {
 	// - [todo]: if unassociated, is on-screen or within an adapted distance
 	playSPCSound := func() bool {
 		for _, trk := range sp.visibleTracks {
-			state := sp.TrackState[trk.ADSBCallsign]
+			anno := sp.annotationsForTrack(ctx, trk)
 			ok, _ := trk.Squawk.IsSPC()
-			if ok && !state.SPCAcknowledged && ctx.SimTime.Before(state.SPCSoundEnd) {
+			if ok && !anno.SPCAcknowledged && ctx.SimTime.Before(anno.SPCSoundEnd) {
 				return true
 			}
 		}

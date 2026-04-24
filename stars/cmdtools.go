@@ -135,20 +135,24 @@ func registerToolsCommands() {
 
 	// 6.5.4 Toggle display of a single ghost data block at this TCW/TDW
 	registerCommand(CommandModeMultiFunc, "N[SLEW]", func(sp *STARSPane, ctx *panes.Context, trk *sim.Track) CommandStatus {
-		state := sp.TrackState[trk.ADSBCallsign]
-		if trk.IsUnassociated() || !trackInCRDARegion(sp, ctx, trk) || state.Ghost.State != GhostStateSuppressed {
+		anno := sp.annotations(ctx, trk.ADSBCallsign)
+		if trk.IsUnassociated() || !trackInCRDARegion(sp, ctx, trk) || anno.Ghost.State != GhostStateSuppressed {
 			return CommandStatus{Output: "ILL TRK"} // informational
 		}
-		state.Ghost.State = GhostStateRegular
+		anno.Ghost.State = GhostStateRegular
+		ctx.Client.SetTrackAnnotations(trk.ADSBCallsign, anno,
+			func(err error) { sp.displayError(err, ctx, "") })
 		return CommandStatus{}
 	})
 	registerCommand(CommandModeMultiFunc, "N[GHOST_SLEW]", func(sp *STARSPane, ctx *panes.Context, ghost *av.GhostTrack) error {
-		if state, ok := sp.TrackState[ghost.ADSBCallsign]; !ok {
+		if _, ok := sp.TrackState[ghost.ADSBCallsign]; !ok {
 			return ErrSTARSIllegalTrack
-		} else {
-			state.Ghost.State = GhostStateSuppressed
-			return nil
 		}
+		anno := sp.annotations(ctx, ghost.ADSBCallsign)
+		anno.Ghost.State = GhostStateSuppressed
+		ctx.Client.SetTrackAnnotations(ghost.ADSBCallsign, anno,
+			func(err error) { sp.displayError(err, ctx, "") })
+		return nil
 	})
 
 	// 6.5.5 Change leader line direction for ghost data blocks on specified runway
@@ -170,9 +174,11 @@ func registerToolsCommands() {
 	})
 
 	// 6.5.7 Toggle ghost data block between full and partial data block formats (implied)
-	registerCommand(CommandModeNone, "[GHOST_SLEW]", func(sp *STARSPane, ghost *av.GhostTrack) {
-		state := sp.TrackState[ghost.ADSBCallsign]
-		state.Ghost.PartialDatablock = !state.Ghost.PartialDatablock
+	registerCommand(CommandModeNone, "[GHOST_SLEW]", func(sp *STARSPane, ctx *panes.Context, ghost *av.GhostTrack) {
+		anno := sp.annotations(ctx, ghost.ADSBCallsign)
+		anno.Ghost.PartialDatablock = !anno.Ghost.PartialDatablock
+		ctx.Client.SetTrackAnnotations(ghost.ADSBCallsign, anno,
+			func(err error) { sp.displayError(err, ctx, "") })
 	})
 
 	// 6.5.8 Force / unforce ghost qualification for all tracks
@@ -657,8 +663,10 @@ func registerToolsCommands() {
 		if !ctx.FacilityAdaptation.Datablocks.ForceQLToSelf || !ctx.UserOwnsFlightPlan(trk.FlightPlan) {
 			return ErrSTARSIllegalPosition
 		}
-		state := sp.TrackState[trk.ADSBCallsign]
-		state.ForceQL = true
+		anno := sp.annotations(ctx, trk.ADSBCallsign)
+		anno.ForceQL = true
+		ctx.Client.SetTrackAnnotations(trk.ADSBCallsign, anno,
+			func(err error) { sp.displayError(err, ctx, "") })
 		return nil
 	}
 	registerCommand(CommandModeNone, "**[TRK_ACID]|**[TRK_BCN]|**[TRK_INDEX]", forceQLToSelf)
@@ -914,18 +922,20 @@ func registerToolsCommands() {
 				}
 				modifyFlightPlan(sp, ctx, fp.ACID, spec, false)
 			} else {
-				// Non-owned track - local state only
-				state := sp.TrackState[trk.ADSBCallsign]
-				inhibit := state.InhibitACTypeDisplay != nil && *state.InhibitACTypeDisplay
-				if !inhibit && ctx.SimTime.Before(state.ForceACTypeDisplayEndTime) {
-					state.ForceACTypeDisplayEndTime = extendTime
+				// Non-owned track - shared annotation
+				anno := sp.annotations(ctx, trk.ADSBCallsign)
+				inhibit := anno.InhibitACTypeDisplay != nil && *anno.InhibitACTypeDisplay
+				if !inhibit && ctx.SimTime.Before(anno.ForceACTypeDisplayEndTime) {
+					anno.ForceACTypeDisplayEndTime = extendTime
 				} else {
 					newInhibit := !inhibit
-					state.InhibitACTypeDisplay = &newInhibit
+					anno.InhibitACTypeDisplay = &newInhibit
 					if !newInhibit {
-						state.ForceACTypeDisplayEndTime = extendTime
+						anno.ForceACTypeDisplayEndTime = extendTime
 					}
 				}
+				ctx.Client.SetTrackAnnotations(trk.ADSBCallsign, anno,
+					func(err error) { sp.displayError(err, ctx, "") })
 			}
 			return nil
 		})
@@ -1255,19 +1265,21 @@ func registerToolsCommands() {
 	})
 
 	// 6.21.16 Enable / inhibit in-trail distance for single track (implied)
-	setTrackDisplayInTrail := func(sp *STARSPane, ps *Preferences, trk *sim.Track, value bool) error {
+	setTrackDisplayInTrail := func(sp *STARSPane, ctx *panes.Context, ps *Preferences, trk *sim.Track, value bool) error {
 		if !trk.IsAssociated() || trk.ATPAVolume == nil {
 			return ErrSTARSIllegalTrack
 		}
-		state := sp.TrackState[trk.ADSBCallsign]
-		state.InhibitDisplayInTrailDist = value
+		anno := sp.annotations(ctx, trk.ADSBCallsign)
+		anno.InhibitDisplayInTrailDist = value
+		ctx.Client.SetTrackAnnotations(trk.ADSBCallsign, anno,
+			func(err error) { sp.displayError(err, ctx, "") })
 		return nil
 	}
-	registerCommand(CommandModeNone, "*DE[SLEW]", func(sp *STARSPane, ps *Preferences, trk *sim.Track) error {
-		return setTrackDisplayInTrail(sp, ps, trk, true)
+	registerCommand(CommandModeNone, "*DE[SLEW]", func(sp *STARSPane, ctx *panes.Context, ps *Preferences, trk *sim.Track) error {
+		return setTrackDisplayInTrail(sp, ctx, ps, trk, true)
 	})
-	registerCommand(CommandModeNone, "*DI[SLEW]", func(sp *STARSPane, ps *Preferences, trk *sim.Track) error {
-		return setTrackDisplayInTrail(sp, ps, trk, false)
+	registerCommand(CommandModeNone, "*DI[SLEW]", func(sp *STARSPane, ctx *panes.Context, ps *Preferences, trk *sim.Track) error {
+		return setTrackDisplayInTrail(sp, ctx, ps, trk, false)
 	})
 
 	// 6.21.17 Enable / inhibit in-trail distances for this TCW/TDW (implied)

@@ -305,7 +305,7 @@ func (sp *STARSPane) datablockType(ctx *panes.Context, trk sim.Track) DatablockT
 		return LimitedDatablock
 	} else {
 		// The track owner is known, so it will be a P/FDB (or suspended)
-		state := sp.TrackState[trk.ADSBCallsign]
+		anno := sp.annotationsForTrack(ctx, trk)
 
 		if trk.FlightPlan.Suspended {
 			return SuspendedDatablock
@@ -347,10 +347,10 @@ func (sp *STARSPane) datablockType(ctx *panes.Context, trk sim.Track) DatablockT
 		if tcps, ok := sp.PointOuts[trk.FlightPlan.ACID]; ok && ctx.UserControlsPosition(tcps.To) {
 			return FullDatablock
 		}
-		if state.PointOutAcknowledged {
+		if anno.PointOutAcknowledged {
 			return FullDatablock
 		}
-		if state.ForceQL {
+		if anno.ForceQL {
 			return FullDatablock
 		}
 
@@ -411,7 +411,7 @@ func (sp *STARSPane) getDatablock(ctx *panes.Context, trk sim.Track, sfp *sim.NA
 		return nil
 	}
 
-	handoffId, handoffTCP := sp.resolveHandoff(ctx, sfp, state)
+	handoffId, handoffTCP := sp.resolveHandoff(ctx, sfp, sp.annotationsForTrack(ctx, trk))
 
 	// Various other values that will be repeatedly useful below...
 	beaconator := ctx.Keyboard != nil && ctx.Keyboard.IsFKeyHeld(imgui.KeyF1) && ctx.Keyboard.KeyControl() && trk.ADSBCallsign != ""
@@ -458,8 +458,9 @@ func (sp *STARSPane) getDatablock(ctx *panes.Context, trk sim.Track, sfp *sim.NA
 		db := sp.sdbArena.AllocClear()
 
 		s := strconv.Itoa(sfp.CoastSuspendIndex)
+		anno := sp.annotationsForTrack(ctx, trk)
 		if sp.currentPrefs().DisplaySuspendedTrackAltitude ||
-			state.SuspendedShowAltitudeEndTime.After(ctx.SimTime) && trk.Mode == av.TransponderModeAltitude {
+			anno.SuspendedShowAltitudeEndTime.After(ctx.SimTime) && trk.Mode == av.TransponderModeAltitude {
 			s += " " + altitude
 		}
 		formatDBText(db.field0[:], s, color, false)
@@ -470,7 +471,7 @@ func (sp *STARSPane) getDatablock(ctx *panes.Context, trk sim.Track, sfp *sim.NA
 }
 
 func (sp *STARSPane) resolveHandoff(ctx *panes.Context, sfp *sim.NASFlightPlan,
-	state *TrackState) (handoffId, handoffTCP string) {
+	anno sim.TrackAnnotations) (handoffId, handoffTCP string) {
 	handoffId = " "
 	if sfp != nil {
 		toTCP := util.Select(sfp.RedirectedHandoff.RedirectedTo != "",
@@ -519,8 +520,8 @@ func (sp *STARSPane) resolveHandoff(ctx *panes.Context, sfp *sim.NASFlightPlan,
 			}
 		}
 	}
-	if state != nil && handoffTCP == "" && ctx.SimTime.Before(state.AcceptedHandoffDisplayEnd) {
-		handoffTCP = state.AcceptedHandoffSector
+	if handoffTCP == "" && ctx.SimTime.Before(anno.AcceptedHandoffDisplayEnd) {
+		handoffTCP = anno.AcceptedHandoffSector
 	}
 	return
 }
@@ -563,7 +564,7 @@ func (sp *STARSPane) resolveScratchpad1(ctx *panes.Context, trk sim.Track,
 	if sfp.Scratchpad != "" {
 		return sfp.Scratchpad
 	}
-	if state != nil && state.ClearedScratchpadAlternate {
+	if state != nil && sp.annotationsForTrack(ctx, trk).ClearedScratchpadAlternate {
 		return ""
 	}
 
@@ -644,18 +645,18 @@ func flightRulesIndicator(sfp *sim.NASFlightPlan) string {
 func (sp *STARSPane) buildLimitedDatablock(ctx *panes.Context, trk sim.Track,
 	color renderer.RGB, brightness radar.Brightness,
 	beaconator, displayBeaconCode bool, groundspeed string) *limitedDatablock {
-	state := sp.TrackState[trk.ADSBCallsign]
+	anno := sp.annotationsForTrack(ctx, trk)
 	db := sp.ldbArena.AllocClear()
 
 	// Field 0: CA, MCI, and squawking special codes
 	alerts := sp.getDatablockAlerts(ctx, trk, LimitedDatablock)
 	copy(db.field0[:], alerts[:])
 
-	extended := state.FullLDBEndTime.After(ctx.SimTime)
+	extended := anno.FullLDBEndTime.After(ctx.SimTime)
 	sqspc, _ := trk.Squawk.IsSPC()
 	extended = extended || (trk.Mode != av.TransponderModeStandby && sqspc)
 
-	who := trk.MissingFlightPlan && !state.MissingFlightPlanAcknowledged
+	who := trk.MissingFlightPlan && !anno.MissingFlightPlanAcknowledged
 
 	if len(alerts) == 0 && trk.Mode == av.TransponderModeOn && !extended {
 		return nil
@@ -796,6 +797,7 @@ func (sp *STARSPane) buildFullDatablock(ctx *panes.Context, trk sim.Track, sfp *
 	pilotReportedAltitude, beaconator, beaconMismatch, displayBeaconCode bool) *fullDatablock {
 	fa := ctx.FacilityAdaptation
 	state := sp.TrackState[trk.ADSBCallsign]
+	anno := sp.annotationsForTrack(ctx, trk)
 	db := sp.fdbArena.AllocClear()
 
 	// Line 0
@@ -813,7 +815,7 @@ func (sp *STARSPane) buildFullDatablock(ctx *panes.Context, trk sim.Track, sfp *
 
 	// Field 2: various symbols for inhibited stuff
 	if state != nil { // FIXME: these should live in NASFlightPlan
-		if state.InhibitMSAW || sfp.DisableMSAW {
+		if anno.InhibitMSAW || sfp.DisableMSAW {
 			if sfp.DisableCA {
 				formatDBText(db.field2[:], "+", color, false)
 			} else {
@@ -835,11 +837,11 @@ func (sp *STARSPane) buildFullDatablock(ctx *panes.Context, trk sim.Track, sfp *
 				id = id[1:]
 			}
 			formatDBText(db.field8[:], "PO"+string(id), color, false)
-		} else if ctx.SimTime.Before(state.UNFlashingEndTime) {
+		} else if ctx.SimTime.Before(anno.UNFlashingEndTime) {
 			formatDBText(db.field8[:], "UN", color, true)
-		} else if state.POFlashingEndTime.After(ctx.SimTime) {
+		} else if anno.POFlashingEndTime.After(ctx.SimTime) {
 			formatDBText(db.field8[:], "PO", color, true)
-		} else if sfp.RedirectedHandoff.ShowRDIndicator(ctx.UserPrimaryPosition(), state.RDIndicatorEnd, ctx.SimTime) {
+		} else if sfp.RedirectedHandoff.ShowRDIndicator(ctx.UserPrimaryPosition(), anno.RDIndicatorEnd, ctx.SimTime) {
 			formatDBText(db.field8[:], "RD", color, false)
 		}
 	}
@@ -920,14 +922,15 @@ func (sp *STARSPane) buildFullDatablock(ctx *panes.Context, trk sim.Track, sfp *
 func (sp *STARSPane) fillFDBField5(ctx *panes.Context, trk sim.Track, sfp *sim.NASFlightPlan, db *fullDatablock,
 	color renderer.RGB, groundspeed, actype string) {
 	state := sp.TrackState[trk.ADSBCallsign]
+	anno := sp.annotationsForTrack(ctx, trk)
 	rulesCategory := flightRulesIndicator(sfp)
 	rulesCategory += util.Select(sfp.CWTCategory != "", sfp.CWTCategory, " ")
 	rulesCategory += " "
 
 	inhibitACType := sfp.InhibitACTypeDisplay ||
-		(state != nil && state.InhibitACTypeDisplay != nil && *state.InhibitACTypeDisplay)
+		(state != nil && anno.InhibitACTypeDisplay != nil && *anno.InhibitACTypeDisplay)
 	forceACType := ctx.SimTime.Before(sfp.ForceACTypeDisplayEndTime) ||
-		(state != nil && ctx.SimTime.Before(state.ForceACTypeDisplayEndTime))
+		(state != nil && ctx.SimTime.Before(anno.ForceACTypeDisplayEndTime))
 	hasForceACType := forceACType && !inhibitACType && actype != "" && !trk.Ident
 	showACType := !trk.Ident && actype != "" && !inhibitACType
 
@@ -942,7 +945,7 @@ func (sp *STARSPane) fillFDBField5(ctx *panes.Context, trk sim.Track, sfp *sim.N
 			formatDBText(field[idx:], rulesCategory, color, false)
 			return
 		}
-		if state.IFFlashing {
+		if anno.IFFlashing {
 			if trk.Ident {
 				formatDBText(field, "IF"+"ID", color, true)
 			} else {
@@ -1023,15 +1026,16 @@ func (sp *STARSPane) fillFDBField6(ctx *panes.Context, trk sim.Track, sfp *sim.N
 		return
 	}
 	state := sp.TrackState[trk.ADSBCallsign]
+	anno := sp.annotationsForTrack(ctx, trk)
 
 	// Helper: try to write ATPA content (*TPA, NOWGT, or intrail distance).
-	warnAlertOverride := sp.annotationsForTrack(ctx, trk).DisplayATPAWarnAlert
+	warnAlertOverride := anno.DisplayATPAWarnAlert
 	writeATPA := func(field []dbChar) bool {
 		if warnAlertOverride != nil && !*warnAlertOverride {
 			formatDBText(field, "*TPA", color, false)
 			return true
 		}
-		if state.IntrailDistance != 0 && sp.currentPrefs().DisplayATPAInTrailDist && !state.InhibitDisplayInTrailDist {
+		if state.IntrailDistance != 0 && sp.currentPrefs().DisplayATPAInTrailDist && !anno.InhibitDisplayInTrailDist {
 			distColor := color
 			if state.ATPAStatus == ATPAStatusWarning {
 				distColor = sp.Colors.ATPAWarning
@@ -1058,7 +1062,7 @@ func (sp *STARSPane) fillFDBField6(ctx *panes.Context, trk sim.Track, sfp *sim.N
 			formatDBText(field, trk.Squawk.String(), color, false)
 			return true
 		}
-		if _, ok := sp.DuplicateBeacons[trk.Squawk]; ok && state.DBAcknowledged != trk.Squawk {
+		if _, ok := sp.DuplicateBeacons[trk.Squawk]; ok && anno.DBAcknowledged != trk.Squawk {
 			formatDBText(field, "DB", color, false)
 			return true
 		}
@@ -1186,14 +1190,14 @@ func (sp *STARSPane) fillFDBField7(ctx *panes.Context, trk sim.Track, sfp *sim.N
 func (sp *STARSPane) getGhostDatablock(ctx *panes.Context, ghost *av.GhostTrack, color renderer.RGB) ghostDatablock {
 	var db ghostDatablock
 
-	state := sp.TrackState[ghost.ADSBCallsign]
+	anno := sp.annotations(ctx, ghost.ADSBCallsign)
 	trk, ok := ctx.GetTrackByCallsign(ghost.ADSBCallsign)
 	cwt := ""
 	if ok && trk.IsAssociated() {
 		cwt = trk.FlightPlan.CWTCategory
 	}
 	groundspeed := fmt.Sprintf("%02d", (ghost.Groundspeed+5)/10)
-	if state.Ghost.PartialDatablock {
+	if anno.Ghost.PartialDatablock {
 		// Partial datablock is just airspeed and then aircraft CWT type
 		formatDBText(db.field0[:], groundspeed+cwt, color, false)
 	} else {
@@ -1208,7 +1212,7 @@ func (sp *STARSPane) getGhostDatablock(ctx *panes.Context, ghost *av.GhostTrack,
 func (sp *STARSPane) trackDatablockColorBrightness(ctx *panes.Context, trk sim.Track) (color renderer.RGB, dbBrightness, posBrightness radar.Brightness) {
 	ps := sp.currentPrefs()
 	dt := sp.datablockType(ctx, trk)
-	state := sp.TrackState[trk.ADSBCallsign]
+	anno := sp.annotationsForTrack(ctx, trk)
 
 	// Cases where it's always a full datablock
 	inboundPointOut := false
@@ -1218,7 +1222,7 @@ func (sp *STARSPane) trackDatablockColorBrightness(ctx *panes.Context, trk sim.T
 			forceFDB = true
 			inboundPointOut = true
 		} else {
-			forceFDB = forceFDB || (state.OutboundHandoffAccepted && ctx.SimTime.Before(state.OutboundHandoffFlashEnd))
+			forceFDB = forceFDB || (anno.OutboundHandoffAccepted && ctx.SimTime.Before(anno.OutboundHandoffFlashEnd))
 			forceFDB = forceFDB || ctx.IsHandoffToUser(&trk)
 		}
 	}
@@ -1227,7 +1231,7 @@ func (sp *STARSPane) trackDatablockColorBrightness(ctx *panes.Context, trk sim.T
 	if trk.ADSBCallsign == sp.dwellAircraft { // dwell overrides everything as far as brightness
 		dbBrightness = radar.Brightness(100)
 		posBrightness = radar.Brightness(100)
-	} else if forceFDB || state.OutboundHandoffAccepted {
+	} else if forceFDB || anno.OutboundHandoffAccepted {
 		dbBrightness = ps.Brightness.FullDatablocks
 		posBrightness = ps.Brightness.Positions
 	} else if dt == PartialDatablock || dt == LimitedDatablock {
@@ -1251,7 +1255,7 @@ func (sp *STARSPane) trackDatablockColorBrightness(ctx *panes.Context, trk sim.T
 		posBrightness /= 2
 	}
 
-	if state.IsSelected {
+	if anno.IsSelected {
 		// middle button selected
 		color = sp.Colors.SelectedDatablock
 	} else if trk.IsUnassociated() {
@@ -1261,13 +1265,13 @@ func (sp *STARSPane) trackDatablockColorBrightness(ctx *panes.Context, trk sim.T
 		if _, ok := sp.ForceQLACIDs[sfp.ACID]; ok {
 			// Check if we're the controller being ForceQL
 			color = sp.Colors.CautionDatablock
-		} else if state.PointOutAcknowledged || state.ForceQL {
+		} else if anno.PointOutAcknowledged || anno.ForceQL {
 			// Ack'ed point out to us (but not cleared) or force quick look.
 			color = sp.Colors.CautionDatablock
 		} else if inboundPointOut {
 			// Pointed out to us.
 			color = sp.Colors.CautionDatablock
-		} else if state.DatablockAlert {
+		} else if anno.DatablockAlert {
 			// This is indeed supposed to be CautionDatablock, not AlertDatablock(!).
 			color = sp.Colors.CautionDatablock
 		} else if ctx.UserOwnsFlightPlan(sfp) {
@@ -1280,7 +1284,7 @@ func (sp *STARSPane) trackDatablockColorBrightness(ctx *panes.Context, trk sim.T
 			!ctx.UserControlsPosition(sfp.RedirectedHandoff.GetLastRedirector()) {
 			// flashing white if it's being handed off to us.
 			color = sp.Colors.OwnedDatablock
-		} else if state.OutboundHandoffAccepted {
+		} else if anno.OutboundHandoffAccepted {
 			// we handed it off, it was accepted, but we haven't yet acknowledged
 			color = sp.Colors.OwnedDatablock
 		} else if ps.QuickLookAll && ps.QuickLookAllIsPlus {
@@ -1299,7 +1303,7 @@ func (sp *STARSPane) trackDatablockColorBrightness(ctx *panes.Context, trk sim.T
 }
 
 func (sp *STARSPane) datablockVisible(ctx *panes.Context, trk sim.Track) bool {
-	state := sp.TrackState[trk.ADSBCallsign]
+	anno := sp.annotationsForTrack(ctx, trk)
 
 	af := sp.currentPrefs().AltitudeFilters
 
@@ -1309,7 +1313,7 @@ func (sp *STARSPane) datablockVisible(ctx *panes.Context, trk sim.Track) bool {
 	}
 
 	if trk.IsUnassociated() {
-		if ctx.SimTime.Before(state.FullLDBEndTime) {
+		if ctx.SimTime.Before(anno.FullLDBEndTime) {
 			return true
 		}
 		if trk.IsTentative {
@@ -1327,7 +1331,6 @@ func (sp *STARSPane) datablockVisible(ctx *panes.Context, trk sim.Track) bool {
 		}
 		return true
 	} else { // associated
-		state := sp.TrackState[trk.ADSBCallsign]
 		sfp := trk.FlightPlan
 
 		if ctx.UserOwnsFlightPlan(sfp) {
@@ -1336,7 +1339,7 @@ func (sp *STARSPane) datablockVisible(ctx *panes.Context, trk sim.Track) bool {
 		} else if ctx.UserControlsPosition(sfp.HandoffController) {
 			// For receiving handoffs
 			return true
-		} else if state.PointOutAcknowledged {
+		} else if anno.PointOutAcknowledged {
 			// Pointouts: This is if its been accepted,
 			// for an incoming pointout, it falls to the FDB check
 			return true
@@ -1471,7 +1474,7 @@ func (sp *STARSPane) drawDatablocks(dbs map[av.ADSBCallsign]datablock, ctx *pane
 
 func (sp *STARSPane) haveActiveWarnings(ctx *panes.Context, trk sim.Track) bool {
 	ps := sp.currentPrefs()
-	state := sp.TrackState[trk.ADSBCallsign]
+	anno := sp.annotationsForTrack(ctx, trk)
 
 	// Only this applies to unassociated tracks(?)
 	if ok, _ := trk.Squawk.IsSPC(); ok {
@@ -1482,7 +1485,7 @@ func (sp *STARSPane) haveActiveWarnings(ctx *panes.Context, trk sim.Track) bool 
 	}
 	sfp := trk.FlightPlan
 
-	if state.MSAW && !state.InhibitMSAW && !sfp.DisableMSAW && !ps.DisableMSAW {
+	if anno.MSAW && !anno.InhibitMSAW && !sfp.DisableMSAW && !ps.DisableMSAW {
 		return true
 	}
 	if trk.IsAssociated() {
@@ -1516,7 +1519,7 @@ func (sp *STARSPane) getDatablockAlerts(ctx *panes.Context, trk sim.Track, dbtyp
 	}
 
 	ps := sp.currentPrefs()
-	state := sp.TrackState[trk.ADSBCallsign]
+	anno := sp.annotationsForTrack(ctx, trk)
 
 	var alerts []dbChar
 	added := make(map[string]any)
@@ -1553,7 +1556,7 @@ func (sp *STARSPane) getDatablockAlerts(ctx *panes.Context, trk sim.Track, dbtyp
 			}
 		}
 		if ok, code := trk.Squawk.IsSPC(); ok && trk.Mode != av.TransponderModeStandby {
-			addAlert(code, !state.SPCAcknowledged, true)
+			addAlert(code, !anno.SPCAcknowledged, true)
 		}
 	}
 	if dbtype == LimitedDatablock {
@@ -1563,8 +1566,8 @@ func (sp *STARSPane) getDatablockAlerts(ctx *panes.Context, trk sim.Track, dbtyp
 
 	sfp := trk.FlightPlan
 	if dbtype == FullDatablock {
-		if state.MSAW && !state.InhibitMSAW && !sfp.DisableMSAW && !ps.DisableMSAW {
-			addAlert("LA", !state.MSAWAcknowledged, true)
+		if anno.MSAW && !anno.InhibitMSAW && !sfp.DisableMSAW && !ps.DisableMSAW {
+			addAlert("LA", !anno.MSAWAcknowledged, true)
 		}
 		if spc := sfp.SPCOverride; spc != "" {
 			// squawked SPC takes priority
@@ -1594,7 +1597,7 @@ func (sp *STARSPane) getDatablockAlerts(ctx *panes.Context, trk sim.Track, dbtyp
 		if sfp.SPCOverride != "" && fa.Datablocks.PDB.DisplayCustomSPCs {
 			// We only care about adapted alerts
 			if slices.Contains(fa.Datablocks.CustomSPCs, sfp.SPCOverride) {
-				addAlert(sfp.SPCOverride, !state.SPCAcknowledged, false)
+				addAlert(sfp.SPCOverride, !anno.SPCAcknowledged, false)
 			}
 		}
 	}

@@ -683,6 +683,19 @@ func (c *ControlClient) SetTrackDisplayLDBBeaconCode(callsign av.ADSBCallsign, v
 	c.setTrackBool(server.SetTrackDisplayLDBBeaconCodeRPC, callsign, v, callback)
 }
 
+// SetTrackAnnotations overwrites the shared per-ACID annotation entry
+// wholesale with `annot`. Used by stars read-modify-write paths where
+// a single logical change touches multiple fields (so a single
+// round-trip replaces the entry).
+func (c *ControlClient) SetTrackAnnotations(callsign av.ADSBCallsign, annot sim.TrackAnnotations, callback func(error)) {
+	var update server.SimStateUpdate
+	c.addCall(makeStateUpdateRPCCall(c.client.Go(server.SetTrackAnnotationsRPC, &server.SetTrackAnnotationsArgs{
+		ControllerToken: c.controllerToken,
+		Callsign:        callsign,
+		Annotations:     annot,
+	}, &update, nil), &update, callback))
+}
+
 // SetScopePrefs pushes a caller-encoded STARS preferences blob to the
 // TCW's shared state. STARS callers encode their current prefs via
 // the stars-local snapshot helper; the server stores the bytes

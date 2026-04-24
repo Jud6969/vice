@@ -658,8 +658,11 @@ func (sp *STARSPane) consumeMouseEvents(ctx *panes.Context, ghosts []*av.GhostTr
 
 		if ctx.Keyboard != nil && ctx.Keyboard.KeyControl() {
 			if trk, _ := sp.tryGetClosestTrack(ctx, ctx.Mouse.Pos, transforms); trk != nil {
-				if state := sp.TrackState[trk.ADSBCallsign]; state != nil {
-					state.IsSelected = !state.IsSelected
+				if _, ok := sp.TrackState[trk.ADSBCallsign]; ok {
+					anno := sp.annotations(ctx, trk.ADSBCallsign)
+					anno.IsSelected = !anno.IsSelected
+					ctx.Client.SetTrackAnnotations(trk.ADSBCallsign, anno,
+						func(err error) { sp.displayError(err, ctx, "") })
 					return
 				}
 			}
@@ -709,8 +712,11 @@ func (sp *STARSPane) consumeMouseEvents(ctx *panes.Context, ghosts []*av.GhostTr
 		// 6.20 Toggle track highlight (implied)
 		// TODO? ILL FNCT if in p/o or h/o to us, ILL TRK if it's suspended
 		if trk, _ := sp.tryGetClosestTrack(ctx, ctx.Mouse.Pos, transforms); trk != nil {
-			if state := sp.TrackState[trk.ADSBCallsign]; state != nil {
-				state.IsSelected = !state.IsSelected
+			if _, ok := sp.TrackState[trk.ADSBCallsign]; ok {
+				anno := sp.annotations(ctx, trk.ADSBCallsign)
+				anno.IsSelected = !anno.IsSelected
+				ctx.Client.SetTrackAnnotations(trk.ADSBCallsign, anno,
+					func(err error) { sp.displayError(err, ctx, "") })
 			}
 		}
 	}

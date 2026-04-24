@@ -131,8 +131,7 @@ func registerOpsCommands() {
 			// from the coordination list by the controller.
 			rel = slices.DeleteFunc(rel,
 				func(dep sim.ReleaseDeparture) bool {
-					state, ok := sp.TrackState[dep.ADSBCallsign]
-					return ok && state.ReleaseDeleted
+					return sp.annotations(ctx, dep.ADSBCallsign).ReleaseDeleted
 				})
 
 			// If there is only one unacknowledged, then ack/release it.
@@ -156,8 +155,7 @@ func registerOpsCommands() {
 		// from the coordination list by the controller.
 		rel = slices.DeleteFunc(rel,
 			func(dep sim.ReleaseDeparture) bool {
-				state, ok := sp.TrackState[dep.ADSBCallsign]
-				return ok && state.ReleaseDeleted
+				return sp.annotations(ctx, dep.ADSBCallsign).ReleaseDeleted
 			})
 
 		for i, dep := range rel {
@@ -172,8 +170,11 @@ func registerOpsCommands() {
 			dep.Released = true // hack for instant update pending the next server update
 			ctx.Client.ReleaseDeparture(dep.ADSBCallsign,
 				func(err error) { sp.displayError(err, ctx, "") })
-		} else if ts := sp.TrackState[dep.ADSBCallsign]; ts != nil {
-			ts.ReleaseDeleted = true
+		} else {
+			anno := sp.annotations(ctx, dep.ADSBCallsign)
+			anno.ReleaseDeleted = true
+			ctx.Client.SetTrackAnnotations(dep.ADSBCallsign, anno,
+				func(err error) { sp.displayError(err, ctx, "") })
 		}
 		return nil
 	}
@@ -407,7 +408,7 @@ func registerOpsCommands() {
 		func(sp *STARSPane, ctx *panes.Context, trk *sim.Track) error {
 			if trk.IsUnassociated() {
 				return ErrSTARSIllegalTrack
-			} else if state := sp.TrackState[trk.ADSBCallsign]; state.MSAW || state.SPCAlert {
+			} else if anno := sp.annotationsForTrack(ctx, *trk); anno.MSAW || anno.SPCAlert {
 				return ErrSTARSIllegalTrack
 			} else if slices.ContainsFunc(sp.CAAircraft,
 				func(ca CAAircraft) bool {
@@ -759,8 +760,10 @@ func registerOpsCommands() {
 
 		associateFlightPlan(sp, ctx, trk.ADSBCallsign, spec)
 
-		state := sp.TrackState[trk.ADSBCallsign]
-		state.DatablockAlert = true // yellow until slewed
+		anno := sp.annotations(ctx, trk.ADSBCallsign)
+		anno.DatablockAlert = true // yellow until slewed
+		ctx.Client.SetTrackAnnotations(trk.ADSBCallsign, anno,
+			func(err error) { sp.displayError(err, ctx, "") })
 		return nil
 	})
 
@@ -1073,8 +1076,11 @@ func modifyFlightPlan(sp *STARSPane, ctx *panes.Context, acid sim.ACID, spec sim
 					}
 				}
 				if spec.Scratchpad.IsSet && spec.Scratchpad.Get() == "" {
-					if state, ok := sp.trackStateForACID(ctx, acid); ok {
-						state.ClearedScratchpadAlternate = true
+					if cs, ok := sp.callsignForACID(ctx, acid); ok {
+						anno := sp.annotations(ctx, cs)
+						anno.ClearedScratchpadAlternate = true
+						ctx.Client.SetTrackAnnotations(cs, anno,
+							func(err error) { sp.displayError(err, ctx, "") })
 					}
 				}
 				if display {

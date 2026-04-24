@@ -204,6 +204,15 @@ func (sp *STARSPane) annotations(ctx *panes.Context, callsign av.ADSBCallsign) s
 	return d.Annotations[callsign]
 }
 
+// callsignForACID resolves an ACID to its ADSBCallsign via State.GetTrackByACID.
+// Returns ("", false) if no associated track is found.
+func (sp *STARSPane) callsignForACID(ctx *panes.Context, acid sim.ACID) (av.ADSBCallsign, bool) {
+	if trk, ok := ctx.Client.State.GetTrackByACID(acid); ok {
+		return trk.ADSBCallsign, true
+	}
+	return "", false
+}
+
 // annotationsForTrack returns the shared TCW annotations for a track.
 // ADSBCallsign is always present on a track (associated or not) so no
 // IsAssociated guard is needed.
@@ -240,13 +249,15 @@ func (sp *STARSPane) processEvents(ctx *panes.Context) {
 			}
 		}
 
-		if ok, _ := trk.Squawk.IsSPC(); ok && !sp.TrackState[trk.ADSBCallsign].SPCAlert {
+		if ok, _ := trk.Squawk.IsSPC(); ok && !sp.annotations(ctx, trk.ADSBCallsign).SPCAlert {
 			// First we've seen it squawking the SPC
 			// TODO(shared-tcw-display): move SPC detection server-side so the annotation can be shared.
-			state := sp.TrackState[trk.ADSBCallsign]
-			state.SPCAlert = true
-			state.SPCAcknowledged = false
-			state.SPCSoundEnd = ctx.SimTime.Add(AlertAudioDuration)
+			anno := sp.annotations(ctx, trk.ADSBCallsign)
+			anno.SPCAlert = true
+			anno.SPCAcknowledged = false
+			anno.SPCSoundEnd = ctx.SimTime.Add(AlertAudioDuration)
+			ctx.Client.SetTrackAnnotations(trk.ADSBCallsign, anno,
+				func(err error) { sp.displayError(err, ctx, "") })
 		}
 	}
 
@@ -315,11 +326,15 @@ func (sp *STARSPane) processEvents(ctx *panes.Context) {
 
 		case sim.AcknowledgedPointOutEvent:
 			if tcps, ok := sp.PointOuts[event.ACID]; ok {
-				if state, ok := sp.trackStateForACID(ctx, event.ACID); ok {
-					if ctx.UserControlsPosition(tcps.From) {
-						state.POFlashingEndTime = ctx.SimTime.Add(5 * time.Second)
-					} else if ctx.UserControlsPosition(tcps.To) {
-						state.PointOutAcknowledged = true
+				// Note: PointOutAcknowledged is written server-side in
+				// Sim.AcknowledgePointOut (see commit 75cecb9a); the client
+				// only handles the flash timer on the sender.
+				if ctx.UserControlsPosition(tcps.From) {
+					if cs, ok := sp.callsignForACID(ctx, event.ACID); ok {
+						anno := sp.annotations(ctx, cs)
+						anno.POFlashingEndTime = ctx.SimTime.Add(5 * time.Second)
+						ctx.Client.SetTrackAnnotations(cs, anno,
+							func(err error) { sp.displayError(err, ctx, "") })
 					}
 				}
 				delete(sp.PointOuts, event.ACID)
@@ -331,8 +346,11 @@ func (sp *STARSPane) processEvents(ctx *panes.Context) {
 		case sim.RejectedPointOutEvent:
 			if tcps, ok := sp.PointOuts[event.ACID]; ok && ctx.UserControlsPosition(tcps.From) {
 				sp.RejectedPointOuts[event.ACID] = nil
-				if state, ok := sp.trackStateForACID(ctx, event.ACID); ok {
-					state.UNFlashingEndTime = ctx.SimTime.Add(5 * time.Second)
+				if cs, ok := sp.callsignForACID(ctx, event.ACID); ok {
+					anno := sp.annotations(ctx, cs)
+					anno.UNFlashingEndTime = ctx.SimTime.Add(5 * time.Second)
+					ctx.Client.SetTrackAnnotations(cs, anno,
+						func(err error) { sp.displayError(err, ctx, "") })
 				}
 			}
 			delete(sp.PointOuts, event.ACID)
@@ -343,10 +361,11 @@ func (sp *STARSPane) processEvents(ctx *panes.Context) {
 					if trk, ok := ctx.Client.State.GetTrackByACID(event.ACID); ok {
 						ctx.Client.SetTrackDisplayFDB(trk.ADSBCallsign, true,
 							func(err error) { sp.displayError(err, ctx, "") })
-					}
-					if fp.QuickFlightPlan {
-						if state, ok := sp.trackStateForACID(ctx, event.ACID); ok {
-							state.DatablockAlert = true // display in yellow until slewed
+						if fp.QuickFlightPlan {
+							anno := sp.annotations(ctx, trk.ADSBCallsign)
+							anno.DatablockAlert = true // display in yellow until slewed
+							ctx.Client.SetTrackAnnotations(trk.ADSBCallsign, anno,
+								func(err error) { sp.displayError(err, ctx, "") })
 						}
 					}
 				}
@@ -358,30 +377,40 @@ func (sp *STARSPane) processEvents(ctx *panes.Context) {
 			}
 
 		case sim.AcceptedHandoffEvent, sim.AcceptedRedirectedHandoffEvent:
-			if state, ok := sp.trackStateForACID(ctx, event.ACID); ok {
+			if cs, ok := sp.callsignForACID(ctx, event.ACID); ok {
 				outbound := ctx.UserControlsPosition(event.FromController) && !ctx.UserControlsPosition(event.ToController)
 				inbound := !ctx.UserControlsPosition(event.FromController) && ctx.UserControlsPosition(event.ToController)
+
+				// Collect annotation changes so we issue a single
+				// read-modify-write per logical event.
+				anno := sp.annotations(ctx, cs)
+				dirty := false
+
 				if outbound {
 					sp.playOnce(ctx.Platform, AudioHandoffAccepted)
-					state.OutboundHandoffAccepted = true
-					dur := time.Duration(ctx.FacilityAdaptation.Datablocks.FDB.AcceptFlashDuration) * time.Second
-					state.OutboundHandoffFlashEnd = ctx.SimTime.Add(dur)
-					if trk, ok := ctx.Client.State.GetTrackByACID(event.ACID); ok {
-						ctx.Client.SetTrackDisplayFDB(trk.ADSBCallsign, true,
-							func(err error) { sp.displayError(err, ctx, "") })
-					}
+					// Note: OutboundHandoffAccepted + OutboundHandoffFlashEnd are
+					// written server-side in Sim.AcceptHandoff (see commit 75cecb9a).
+					ctx.Client.SetTrackDisplayFDB(cs, true,
+						func(err error) { sp.displayError(err, ctx, "") })
 
 					if event.Type == sim.AcceptedRedirectedHandoffEvent {
-						state.RDIndicatorEnd = ctx.SimTime.Add(30 * time.Second)
+						anno.RDIndicatorEnd = ctx.SimTime.Add(30 * time.Second)
+						dirty = true
 					}
 				}
 				if outbound || inbound {
 					otherPos := util.Select(outbound, event.ToController, event.FromController)
 					if otherCtrl := ctx.GetResolvedController(otherPos); otherCtrl != nil && otherCtrl.IsExternal() {
-						state.AcceptedHandoffSector = string(otherPos)
+						anno.AcceptedHandoffSector = string(otherPos)
 						dur := time.Duration(ctx.FacilityAdaptation.Datablocks.FDB.SectorDisplayDuration) * time.Second
-						state.AcceptedHandoffDisplayEnd = ctx.SimTime.Add(dur)
+						anno.AcceptedHandoffDisplayEnd = ctx.SimTime.Add(dur)
+						dirty = true
 					}
+				}
+
+				if dirty {
+					ctx.Client.SetTrackAnnotations(cs, anno,
+						func(err error) { sp.displayError(err, ctx, "") })
 				}
 			}
 			// Clean up if a point out was instead taken as a handoff.
@@ -412,14 +441,20 @@ func (sp *STARSPane) processEvents(ctx *panes.Context) {
 			}
 
 		case sim.TransferRejectedEvent:
-			if state, ok := sp.trackStateForACID(ctx, event.ACID); ok {
-				state.IFFlashing = true
+			if cs, ok := sp.callsignForACID(ctx, event.ACID); ok {
+				anno := sp.annotations(ctx, cs)
+				anno.IFFlashing = true
+				ctx.Client.SetTrackAnnotations(cs, anno,
+					func(err error) { sp.displayError(err, ctx, "") })
 				ctx.Client.CancelHandoff(event.ACID, func(err error) { sp.displayError(err, ctx, "") })
 			}
 
 		case sim.TransferAcceptedEvent:
-			if state, ok := sp.trackStateForACID(ctx, event.ACID); ok {
-				state.IFFlashing = false
+			if cs, ok := sp.callsignForACID(ctx, event.ACID); ok {
+				anno := sp.annotations(ctx, cs)
+				anno.IFFlashing = false
+				ctx.Client.SetTrackAnnotations(cs, anno,
+					func(err error) { sp.displayError(err, ctx, "") })
 			}
 		}
 	}
@@ -446,48 +481,52 @@ func (sp *STARSPane) isQuicklooked(ctx *panes.Context, trk sim.Track) bool {
 func (sp *STARSPane) updateMSAWs(ctx *panes.Context) {
 	for _, trk := range sp.visibleTracks {
 		state := sp.TrackState[trk.ADSBCallsign]
-		if !trk.MVAsApply {
-			state.MSAW = false
-			continue
+		anno := sp.annotationsForTrack(ctx, trk)
+		origAnno := anno
+
+		// Compute whether the track is in an MSAW warning state. Any
+		// early-out clears MSAW; the suppression filters / altitude
+		// checks use the same shared anno snapshot.
+		warn := false
+		if trk.MVAsApply && trk.IsAssociated() {
+			pilotAlt := trk.FlightPlan.PilotReportedAltitude
+			modeCUsable := !(trk.FlightPlan.InhibitModeCAltitudeDisplay || trk.Mode != av.TransponderModeAltitude)
+			if modeCUsable || pilotAlt != 0 {
+				alt := util.Select(pilotAlt != 0, pilotAlt, int(trk.TransponderAltitude))
+
+				msawFilter := ctx.Client.State.FacilityAdaptation.Filters.InhibitMSAW
+				if !msawFilter.Inside(state.track.Location, alt) {
+					mva := sp.mvaGrid.GetMVA(state.track.Location)
+					warn = mva > 0 && alt < mva
+				}
+			}
 		}
 
-		if trk.IsUnassociated() {
-			// No MSAW for unassociated tracks.
-			state.MSAW = false
-			continue
-		}
-
-		pilotAlt := trk.FlightPlan.PilotReportedAltitude
-		if (trk.FlightPlan.InhibitModeCAltitudeDisplay || trk.Mode != av.TransponderModeAltitude) && pilotAlt == 0 {
-			// We can use pilot reported for low altitude alerts: 5-167.
-			state.MSAW = false
-			continue
-		}
-
-		alt := util.Select(pilotAlt != 0, pilotAlt, int(trk.TransponderAltitude))
-
-		// Check MSAW suppression filters
-		msawFilter := ctx.Client.State.FacilityAdaptation.Filters.InhibitMSAW
-		if msawFilter.Inside(state.track.Location, alt) {
-			state.MSAW = false
-			continue
-		}
-
-		mva := sp.mvaGrid.GetMVA(state.track.Location)
-		warn := mva > 0 && alt < mva
-
-		if !warn && state.InhibitMSAW {
+		if !warn && anno.InhibitMSAW {
 			// The warning has cleared, so the inhibit is disabled (p.7-25)
-			state.InhibitMSAW = false
+			anno.InhibitMSAW = false
 		}
-		if warn && !state.MSAW {
+		if warn && !anno.MSAW {
 			// It's a new alert
-			state.MSAWAcknowledged = false
-			state.MSAWSoundEnd = ctx.SimTime.Add(AlertAudioDuration)
-			state.MSAWStart = ctx.SimTime
+			anno.MSAWAcknowledged = false
+			anno.MSAWSoundEnd = ctx.SimTime.Add(AlertAudioDuration)
+			anno.MSAWStart = ctx.SimTime
 		}
-		state.MSAW = warn
+		anno.MSAW = warn
+		sp.maybeWriteAnno(ctx, trk.ADSBCallsign, anno, origAnno)
 	}
+}
+
+// maybeWriteAnno writes `anno` via SetTrackAnnotations only if it differs
+// from `orig`. Used by per-tick updaters (MSAW/InQLRegion) that loop over
+// every visible track and would otherwise burn one RPC per track per
+// frame.
+func (sp *STARSPane) maybeWriteAnno(ctx *panes.Context, callsign av.ADSBCallsign, anno, orig sim.TrackAnnotations) {
+	if anno == orig {
+		return
+	}
+	ctx.Client.SetTrackAnnotations(callsign, anno,
+		func(err error) { sp.displayError(err, ctx, "") })
 }
 
 func (sp *STARSPane) updateRadarTracks(ctx *panes.Context) {
@@ -581,19 +620,22 @@ func (sp *STARSPane) updateQuicklookRegionTracks(ctx *panes.Context) {
 					fp, userPositions, acType, fa.SignificantPoints)
 			})
 
+		anno := sp.annotationsForTrack(ctx, trk)
 		cb := func(err error) { sp.displayError(err, ctx, "") }
-		if inRegion && !state.InQLRegion {
+		if inRegion && !anno.InQLRegion {
 			// Entry: track just entered a quicklook region.
 			ctx.Client.SetTrackDisplayFDB(trk.ADSBCallsign, true, cb)
-			state.InQLRegion = true
-		} else if !inRegion && state.InQLRegion {
+			anno.InQLRegion = true
+			ctx.Client.SetTrackAnnotations(trk.ADSBCallsign, anno, cb)
+		} else if !inRegion && anno.InQLRegion {
 			// Exit: track just left a quicklook region.
 			// Don't clear DisplayFDB if it's being maintained by the
 			// outbound handoff acceptance logic.
-			if !state.OutboundHandoffAccepted {
+			if !anno.OutboundHandoffAccepted {
 				ctx.Client.SetTrackDisplayFDB(trk.ADSBCallsign, false, cb)
 			}
-			state.InQLRegion = false
+			anno.InQLRegion = false
+			ctx.Client.SetTrackAnnotations(trk.ADSBCallsign, anno, cb)
 		}
 	}
 }
@@ -783,10 +825,11 @@ func (sp *STARSPane) getGhostTracks(ctx *panes.Context) []*av.GhostTrack {
 					continue
 				}
 				state := sp.TrackState[trk.ADSBCallsign]
+				anno := sp.annotationsForTrack(ctx, trk)
 
 				// Create a ghost track if appropriate, add it to the
 				// ghosts slice, and draw its radar track.
-				force := state.Ghost.State == GhostStateForced || ps.CRDA.ForceAllGhosts
+				force := anno.Ghost.State == GhostStateForced || ps.CRDA.ForceAllGhosts
 				heading := util.Select(state.HaveHeading(),
 					float32(math.TrueToMagnetic(state.TrackHeading(nmPerLongitude), ctx.MagneticVariation)),
 					float32(trk.Heading))
@@ -820,9 +863,9 @@ func (sp *STARSPane) drawGhosts(ctx *panes.Context, ghosts []*av.GhostTrack, tra
 
 	var strBuilder strings.Builder
 	for _, ghost := range ghosts {
-		state := sp.TrackState[ghost.ADSBCallsign]
+		anno := sp.annotations(ctx, ghost.ADSBCallsign)
 
-		if state.Ghost.State == GhostStateSuppressed {
+		if anno.Ghost.State == GhostStateSuppressed {
 			continue
 		}
 
