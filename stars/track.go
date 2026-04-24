@@ -242,6 +242,7 @@ func (sp *STARSPane) processEvents(ctx *panes.Context) {
 
 		if ok, _ := trk.Squawk.IsSPC(); ok && !sp.TrackState[trk.ADSBCallsign].SPCAlert {
 			// First we've seen it squawking the SPC
+			// TODO(shared-tcw-display): move SPC detection server-side so the annotation can be shared.
 			state := sp.TrackState[trk.ADSBCallsign]
 			state.SPCAlert = true
 			state.SPCAcknowledged = false
@@ -441,6 +442,7 @@ func (sp *STARSPane) isQuicklooked(ctx *panes.Context, trk sim.Track) bool {
 	return ok
 }
 
+// TODO(shared-tcw-display): move MSAW detection server-side so the annotation can be shared.
 func (sp *STARSPane) updateMSAWs(ctx *panes.Context) {
 	for _, trk := range sp.visibleTracks {
 		state := sp.TrackState[trk.ADSBCallsign]

@@ -153,6 +153,13 @@ func (s *Sim) mutateTrackAnnotation(tcw TCW, callsign av.ADSBCallsign, f func(*T
 	s.mu.Lock(s.lg)
 	defer s.mu.Unlock(s.lg)
 
+	s.mutateTrackAnnotationLocked(tcw, callsign, f)
+}
+
+// mutateTrackAnnotationLocked is the lock-free variant used by
+// server-side detection paths (handoff accept, pointout ack, etc.)
+// that already hold s.mu. Caller must hold s.mu.
+func (s *Sim) mutateTrackAnnotationLocked(tcw TCW, callsign av.ADSBCallsign, f func(*TrackAnnotations)) {
 	d := s.EnsureTCWDisplay(tcw)
 	entry := d.Annotations[callsign]
 	f(&entry)

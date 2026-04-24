@@ -921,6 +921,9 @@ func (s *Sim) updateState() {
 				fp.OwningTCW = s.tcwForPosition(fp.TrackingController)
 				fp.HandoffController = ""
 
+				// Record handoff-accepted flash on the outbound TCW.
+				s.noteHandoffAccepted(previousTrackingController, ac)
+
 				if ac != nil {
 					haveTransferComms := slices.ContainsFunc(ac.Nav.Waypoints,
 						func(wp av.Waypoint) bool { return wp.HasTransferCommsAction() })
