@@ -153,22 +153,30 @@ func (vs *VoiceSwitchPane) CanGuardTransmit() bool
 2. Return `row.TX`.
 3. If no guard row yet (pre-seed) → return `true`.
 
-**Wiring — call sites:**
+**Wiring — single chokepoint:**
 
-Two client-side paths originate user commands:
+Every command-issuing path (STARS typed, ERAM typed, STT-driven) flows through `client.RunAircraftCommands` in `client/control.go`. The TX gate lives there as a single check:
 
-1. **STARS typed-command processor** — `stars/cmdtools.go` and adjacent dispatch sites.
-2. **STT pipeline** — `stt/...` end-of-pipeline handoff to the client RPC layer (regular commands) plus `stt/provider.go:tryDecodeGuard` (guard pipeline).
+- Add `CanTransmit func(cmd string) bool` field on `ControlClient`.
+- At the top of `RunAircraftCommands`, if `c.CanTransmit != nil && !c.CanTransmit(req.Commands)` → return immediately without enqueuing the RPC (silent drop; no error returned to the caller).
+- `cmd/vice` wires the field at client setup:
+  ```go
+  cc.CanTransmit = func(cmd string) bool {
+      return config.VoiceSwitchPane.AllowsCommand(cmd, &cc.State)
+  }
+  ```
 
-Gate selection at each site:
-- Inspect the command tokens about to be sent. If they contain a `GUARD` token (post-callsign) → use `CanGuardTransmit()`.
-- Otherwise → use `CanTransmitOnPrimary(&c.State)`.
+Helper on the pane:
 
-In the STT path, `tryDecodeGuard` is the natural and exclusive home of the `CanGuardTransmit()` check; the regular STT dispatch always uses `CanTransmitOnPrimary`.
+```go
+// AllowsCommand inspects cmd. If the post-callsign portion contains a GUARD
+// token, returns CanGuardTransmit(). Otherwise returns CanTransmitOnPrimary(ss).
+func (vs *VoiceSwitchPane) AllowsCommand(cmd string, ss *sim.CommonState) bool
+```
 
-If the gate returns `false` → silently drop (no error message, no state change, no RPC).
+This avoids the package cycle (`client/` and `stt/` cannot import `panes/`, but they can call `c.CanTransmit` through the function field) and gives every dispatch path a single uniform gate.
 
-`*VoiceSwitchPane` is plumbed into all of these call sites from `cmd/vice/ui.go` the same way `FlightStripPane` already is.
+`stt/provider.go:tryDecodeGuard` is **not** gated separately — it only produces a command string and logs; the actual RPC happens later in `client/stt.go:1121`, which goes through `RunAircraftCommands` and hits the gate naturally.
 
 ## UI layout
 
@@ -209,14 +217,12 @@ Settings UI gets a "Voice Switch" entry alongside "Flight Strips" (collapsing he
 
 | File | Change |
 |---|---|
-| `panes/voiceswitch.go` (new) | `VoiceSwitchPane` type, `Activate`, `ResetSim`, `DrawUI`, `DrawWindow`, `reconcile`, `IsRX`, `CanTransmitOnPrimary`, manual add/remove handlers, hover tooltip rendering. |
-| `panes/messages.go` (~line 166) | Replace `UserControlsPosition` call with `voiceSwitch.IsRX(...)`. Add `*VoiceSwitchPane` parameter to `MessagesPane.DrawWindow` (or wherever `processEvents` is reachable). |
-| `stars/cmdtools.go` (and adjacent dispatch sites) | Inspect each command's tokens. If the post-callsign portion contains `GUARD` → gate on `voiceSwitch.CanGuardTransmit()`. Otherwise → gate on `voiceSwitch.CanTransmitOnPrimary(&c.State)`. Either failed gate → silent return before RPC. |
-| `stt/` pipeline tail (provider/handlers, wherever the client-side dispatch hands off to the RPC) | Same dual gate inserted at the final dispatch point — regular dispatch uses `CanTransmitOnPrimary`. |
-| `stt/provider.go:tryDecodeGuard` (~line 1150) | Insert `if !voiceSwitch.CanGuardTransmit() { return ... }` at the top of the function (before any state mutation or command emission). |
+| `panes/voiceswitch.go` (new) | `VoiceSwitchPane` type, `Activate`, `ResetSim`, `Reconcile`, `DrawUI`, `DrawWindow`, `IsRX`, `CanTransmitOnPrimary`, `CanGuardTransmit`, `AllowsCommand`, manual add/remove handlers, hover tooltip rendering. |
+| `panes/messages.go` (~line 166) | Replace `UserControlsPosition` call with `voiceSwitch.IsRX(...)`. Add `*VoiceSwitchPane` parameter to `MessagesPane.DrawWindow` and thread it down to `processEvents`. |
+| `client/control.go` (~line 435 in `RunAircraftCommands`) | Add `CanTransmit func(cmd string) bool` field on `ControlClient`. Top of `RunAircraftCommands`: `if c.CanTransmit != nil && !c.CanTransmit(req.Commands) { return }`. |
 | `cmd/vice/config.go` | `ShowVoiceSwitch bool` (default `true`); `VoiceSwitchPane *panes.VoiceSwitchPane` field; `NewVoiceSwitchPane()` in default config; `Activate()` call mirroring `FlightStripPane`. |
-| `cmd/vice/ui.go` | Show/hide handling parallel to `showFlightStrips`; `DrawWindow` invocation; collapsing header for settings. Plumb `*VoiceSwitchPane` into messages/STARS/STT call sites. |
-| `cmd/vice/main.go` | `config.VoiceSwitchPane.ResetSim(...)` call alongside the existing `FlightStripPane.ResetSim(...)`. `config.VoiceSwitchPane.Reconcile(controlClient)` call once per frame in the main loop, before any pane draws or message processing. Save/restore the `ShowVoiceSwitch` flag. |
+| `cmd/vice/ui.go` | Show/hide handling parallel to `showFlightStrips`; `DrawWindow` invocation for the voice switch window; collapsing header for settings. Plumb `*VoiceSwitchPane` into `MessagesPane.DrawWindow`. |
+| `cmd/vice/main.go` | Wire `cc.CanTransmit = func(cmd string) bool { return config.VoiceSwitchPane.AllowsCommand(cmd, &cc.State) }` once when the `ControlClient` is set up. `config.VoiceSwitchPane.ResetSim(...)` call alongside the existing `FlightStripPane.ResetSim(...)`. `config.VoiceSwitchPane.Reconcile(controlClient)` call once per frame in the main loop, before any pane draws or message processing. Save/restore the `ShowVoiceSwitch` flag. |
 
 No changes in `sim/`, `server/`, `client/`, or `aviation/`.
 
