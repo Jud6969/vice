@@ -956,7 +956,8 @@ func (s *Sim) resolveControllerByFrequency(ac *Aircraft, freq av.Frequency, posi
 	// seven" = 128370) which could also mean 128.375. If nothing matched the
 	// explicit value, try the +5 kHz variant — this covers both the 5-digit
 	// STT form and typed commands where the user dropped the trailing digit.
-	if len(candidates) == 0 && freq%10 == 0 {
+	// Suppressed in Realistic mode so a misspoken frequency stays misspoken.
+	if !s.State.RealisticFrequencyManagement && len(candidates) == 0 && freq%10 == 0 {
 		for _, c := range s.State.Controllers {
 			if c != nil && c.Frequency == freq+5 {
 				candidates = append(candidates, c)
@@ -2311,7 +2312,9 @@ func (s *Sim) ContactTower(tcw TCW, callsign av.ADSBCallsign, freq av.Frequency,
 
 	s.cancelPendingUnknownFrequencyCallback(callsign)
 	readbackFreq := freq
-	if target != nil {
+	// In Realistic mode the readback echoes exactly what the controller said.
+	// In Conventional mode prefer the resolved controller's canonical freq.
+	if target != nil && !s.State.RealisticFrequencyManagement {
 		readbackFreq = target.Frequency
 	}
 	return s.dispatchControlledAircraftCommand(tcw, callsign,
@@ -2369,12 +2372,18 @@ func (s *Sim) FrequencyChange(tcw TCW, callsign av.ADSBCallsign, freq av.Frequen
 		!fromTypedCommand && fromCtrl != nil && fromCtrl.Facility == target.Facility
 
 	s.cancelPendingUnknownFrequencyCallback(callsign)
+	// In Realistic mode the readback echoes exactly what the controller said,
+	// not the resolved controller's canonical frequency.
+	readbackFreq := target.Frequency
+	if s.State.RealisticFrequencyManagement {
+		readbackFreq = freq
+	}
 	return s.dispatchControlledAircraftCommand(tcw, callsign,
 		func(tcw TCW, ac *Aircraft) av.CommandIntent {
 			intent := av.ContactIntent{
 				Type:         av.ContactController,
 				ToController: target,
-				Frequency:    target.Frequency,
+				Frequency:    readbackFreq,
 				SameFacility: sameFacility,
 			}
 			ac.ControllerFrequency = ControlPosition(target.Callsign)
