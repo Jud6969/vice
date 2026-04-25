@@ -15,17 +15,20 @@ This design adds a **Voice Switch** pane: a toggleable window that lists the use
 - New pane `panes.VoiceSwitchPane`, mirroring `FlightStripPane` lifecycle.
 - Auto-seed at first connect from positions the user's TCW currently controls.
 - Reconcile each frame against current consolidation: gained positions append a row (RX+TX on); lost positions flip RX+TX off (row preserved).
+- Built-in **guard row** for 121.500, always present, RX+TX defaults on, never removable.
 - Manual frequency entry via a type-in box; validates against scenario controllers.
-- Per-row RX/TX checkboxes; remove (`x`) button on non-owned rows only.
+- Per-row RX/TX checkboxes; remove (`x`) button on non-owned, non-guard rows only.
 - Hover tooltip listing the controller(s) on each frequency.
 - RX off → suppress message in messages pane and audio alert; nothing else changes.
 - TX off (owned positions) → silently no-op the user's outgoing command before RPC.
+- TX off on guard row → silently no-op `GUARD ...` commands (typed and spoken) before RPC.
 
 **Out (deferred):**
 - **Cross-coupling.** TX-on for non-owned frequencies stores state but does not grant transmit authority. The TX checkbox is intentionally clickable and persists state as a placeholder; the gating logic for non-owned TX lands in a follow-up that needs server-side authority coordination.
 - **Cross-session persistence of tuned frequencies.** Manual tunings reset every connect; only the window-shown flag and font size persist.
 - **Per-TCW shared state for relief mode.** Each client runs its own voice switch.
 - **Network/RPC propagation.** All voice-switch state is client-local; sim and server are untouched.
+- **Guard RX semantics.** No sim entity currently transmits *on* the guard frequency (NORDO calls, mayday-on-guard, etc.), so the guard row's RX checkbox stores state but doesn't gate any incoming traffic. Lands when guard-side pilot transmissions are modeled.
 
 ## Data model
 
@@ -45,8 +48,11 @@ type voiceSwitchRow struct {
     RX    bool
     TX    bool
     Owned bool // true if any currently-controlled position uses this freq
+    Guard bool // true for the built-in 121.500 row; mutually exclusive with Owned
 }
 ```
+
+**Guard frequency constant:** `var GuardFrequency = av.NewFrequency(121.500)` declared in `panes/voiceswitch.go` (kept package-local; not added to `aviation/` since it has no other consumer in this cut).
 
 **Config (`cmd/vice/config.go`):** `Config.ShowVoiceSwitch bool`, default `true`. Parallel to `ShowFlightStrips`.
 
@@ -58,20 +64,25 @@ type voiceSwitchRow struct {
 
 ### First call (when `!seeded && c.State.UserTCW != ""`)
 
-1. For each `pos` in `c.State.GetPositionsForTCW(c.State.UserTCW)`:
+1. Append the guard row if not already present: `{Freq: GuardFrequency, RX: true, TX: true, Guard: true}`.
+2. For each `pos` in `c.State.GetPositionsForTCW(c.State.UserTCW)`:
    - `freq := c.State.Controllers[pos].Frequency` (skip if zero or controller missing).
    - If `rows` does not yet contain `freq`, append `{Freq: freq, RX: true, TX: true, Owned: true}`.
-2. Set `seeded = true`.
+3. Set `seeded = true`.
 
 If the user joins with no controlled positions yet, `seeded` stays `false` and the seed runs on a later frame once a TCW is assigned. This avoids re-seeding on every empty-state frame.
 
+The guard row is also added defensively in step 1 of every subsequent reconcile (see below) — `ResetSim` clears it, so it must be re-added when seeding the new sim. Two reconciles running with `Guard:true` already present is a no-op (the freq match in step 3 below skips the duplicate).
+
 ### Subsequent calls
 
-1. Compute `currentlyOwned := { c.State.Controllers[pos].Frequency for pos in GetPositionsForTCW(UserTCW) }`.
-2. For each existing row:
+1. Ensure the guard row exists (append `{Freq: GuardFrequency, RX:true, TX:true, Guard:true}` if missing).
+2. Compute `currentlyOwned := { c.State.Controllers[pos].Frequency for pos in GetPositionsForTCW(UserTCW) }`.
+3. For each existing row:
+   - Skip if `row.Guard` (guard row state is user-managed only; reconcile never touches it).
    - `row.Owned && !currentlyOwned[row.Freq]` → set `Owned=false, RX=false, TX=false`. Row stays.
    - `!row.Owned && currentlyOwned[row.Freq]` → set `Owned=true, RX=true, TX=true`.
-3. For each freq in `currentlyOwned` not present in `rows` → append `{Freq, RX:true, TX:true, Owned:true}`.
+4. For each freq in `currentlyOwned` not present in `rows` → append `{Freq, RX:true, TX:true, Owned:true}`.
 
 ### Manual add (user types into the input box)
 
@@ -82,7 +93,7 @@ If the user joins with no controlled positions yet, `seeded` stays `false` and t
 
 ### Manual remove (`x` button)
 
-- Only rendered on non-owned rows (`!row.Owned`).
+- Only rendered on rows where `!row.Owned && !row.Guard`.
 - Click → drop the row.
 
 ### `ResetSim`
@@ -123,28 +134,41 @@ The existing `priv := c.State.TCWIsPrivileged(c.State.UserTCW)` and `if !toUs &&
 
 ## TX gating
 
-Helper on the pane:
+Two helpers on the pane:
 
 ```go
 func (vs *VoiceSwitchPane) CanTransmitOnPrimary(ss *sim.CommonState) bool
+func (vs *VoiceSwitchPane) CanGuardTransmit() bool
 ```
 
-Resolution rules (in order):
+**`CanTransmitOnPrimary` resolution rules** (used for all non-GUARD commands), in order:
 
 1. `primary := ss.PrimaryPositionForTCW(ss.UserTCW)`. `freq := ss.Controllers[primary].Frequency`. If zero → return `true` (don't silently break commands when the model can't tell).
 2. If a row exists with `row.Freq == freq` → return `row.TX`.
 3. No row for that freq (pre-seed) → return `true`.
+
+**`CanGuardTransmit` resolution rules** (used for GUARD commands only):
+
+1. Find the row with `row.Guard == true` (guaranteed to exist post-seed).
+2. Return `row.TX`.
+3. If no guard row yet (pre-seed) → return `true`.
 
 **Wiring — call sites:**
 
 Two client-side paths originate user commands:
 
 1. **STARS typed-command processor** — `stars/cmdtools.go` and adjacent dispatch sites.
-2. **STT pipeline** — `stt/...` end-of-pipeline handoff to the client RPC layer.
+2. **STT pipeline** — `stt/...` end-of-pipeline handoff to the client RPC layer (regular commands) plus `stt/provider.go:tryDecodeGuard` (guard pipeline).
 
-Both invoke `voiceSwitch.CanTransmitOnPrimary(&c.State)` immediately before sending the command RPC. If `false` → silently drop (no error message, no state change, no RPC).
+Gate selection at each site:
+- Inspect the command tokens about to be sent. If they contain a `GUARD` token (post-callsign) → use `CanGuardTransmit()`.
+- Otherwise → use `CanTransmitOnPrimary(&c.State)`.
 
-`*VoiceSwitchPane` is plumbed into both call sites from `cmd/vice/ui.go` the same way `FlightStripPane` already is.
+In the STT path, `tryDecodeGuard` is the natural and exclusive home of the `CanGuardTransmit()` check; the regular STT dispatch always uses `CanTransmitOnPrimary`.
+
+If the gate returns `false` → silently drop (no error message, no state change, no RPC).
+
+`*VoiceSwitchPane` is plumbed into all of these call sites from `cmd/vice/ui.go` the same way `FlightStripPane` already is.
 
 ## UI layout
 
@@ -159,15 +183,16 @@ Settings UI gets a "Voice Switch" entry alongside "Flight Strips" (collapsing he
 **Per-row layout** (one row per frequency, frequency-only display):
 
 ```
-[RX]  [TX]  124.350   [x]
-[RX]  [TX]  121.900
-[RX]  [TX]  127.750   [x]
-─────────────────────────
+[RX]  [TX]  121.500  GUARD
+[RX]  [TX]  124.350
+[RX]  [TX]  127.750         [x]
+─────────────────────────────
 [ tune freq → 12_____ ]
 ```
 
-- `[x]` only rendered when `!row.Owned`.
-- Hover any row → tooltip lists `{Callsign} — {RadioName}` for every controller whose `Frequency == row.Freq` (handles the satellite-freq case).
+- Guard row is rendered first (always at the top), with a `GUARD` text marker after the frequency.
+- `[x]` only rendered when `!row.Owned && !row.Guard`.
+- Hover any row → tooltip lists `{Callsign} — {RadioName}` for every controller whose `Frequency == row.Freq` (handles the satellite-freq case). Guard row tooltip shows `Emergency / guard frequency (121.500 MHz)`.
 - Type-in box at the bottom, fixed width; Enter submits via the manual-add flow above. Invalid freq → input clears with no row added (silent rejection consistent with the rest of the pane).
 
 ## Multi-controller behavior
@@ -186,8 +211,9 @@ Settings UI gets a "Voice Switch" entry alongside "Flight Strips" (collapsing he
 |---|---|
 | `panes/voiceswitch.go` (new) | `VoiceSwitchPane` type, `Activate`, `ResetSim`, `DrawUI`, `DrawWindow`, `reconcile`, `IsRX`, `CanTransmitOnPrimary`, manual add/remove handlers, hover tooltip rendering. |
 | `panes/messages.go` (~line 166) | Replace `UserControlsPosition` call with `voiceSwitch.IsRX(...)`. Add `*VoiceSwitchPane` parameter to `MessagesPane.DrawWindow` (or wherever `processEvents` is reachable). |
-| `stars/cmdtools.go` (and adjacent dispatch sites) | Insert `if !voiceSwitch.CanTransmitOnPrimary(&c.State) { return }` immediately before each command-issuing RPC. |
-| `stt/` pipeline tail (provider/handlers, wherever the client-side dispatch hands off to the RPC) | Same TX gate inserted at the final dispatch point. |
+| `stars/cmdtools.go` (and adjacent dispatch sites) | Inspect each command's tokens. If the post-callsign portion contains `GUARD` → gate on `voiceSwitch.CanGuardTransmit()`. Otherwise → gate on `voiceSwitch.CanTransmitOnPrimary(&c.State)`. Either failed gate → silent return before RPC. |
+| `stt/` pipeline tail (provider/handlers, wherever the client-side dispatch hands off to the RPC) | Same dual gate inserted at the final dispatch point — regular dispatch uses `CanTransmitOnPrimary`. |
+| `stt/provider.go:tryDecodeGuard` (~line 1150) | Insert `if !voiceSwitch.CanGuardTransmit() { return ... }` at the top of the function (before any state mutation or command emission). |
 | `cmd/vice/config.go` | `ShowVoiceSwitch bool` (default `true`); `VoiceSwitchPane *panes.VoiceSwitchPane` field; `NewVoiceSwitchPane()` in default config; `Activate()` call mirroring `FlightStripPane`. |
 | `cmd/vice/ui.go` | Show/hide handling parallel to `showFlightStrips`; `DrawWindow` invocation; collapsing header for settings. Plumb `*VoiceSwitchPane` into messages/STARS/STT call sites. |
 | `cmd/vice/main.go` | `config.VoiceSwitchPane.ResetSim(...)` call alongside the existing `FlightStripPane.ResetSim(...)`. `config.VoiceSwitchPane.Reconcile(controlClient)` call once per frame in the main loop, before any pane draws or message processing. Save/restore the `ShowVoiceSwitch` flag. |
@@ -200,7 +226,10 @@ No changes in `sim/`, `server/`, `client/`, or `aviation/`.
 
 | Area | Test |
 |---|---|
-| Auto-seed | Empty pane + one TCW with two positions on distinct freqs → two rows, both RX+TX on, both Owned. `seeded == true`. |
+| Auto-seed | Empty pane + one TCW with two positions on distinct freqs → three rows: guard (Guard=true, RX+TX on) + two owned (Owned=true, RX+TX on). `seeded == true`. |
+| Guard row always present | Auto-seed with no controlled positions → only guard row exists, RX+TX on. |
+| Guard row survives reconcile | Toggle guard RX off, run reconcile (e.g. consolidation change) → guard row's RX stays off (reconcile skips Guard rows). |
+| Guard row not removable | Manual remove on guard row is a no-op (button isn't rendered; defensive: helper rejects if called directly). |
 | Auto-seed dedup | TCW with two positions sharing one freq → single row. |
 | Auto-seed deferred | `seeded == false` while `UserTCW == ""`; flips to `true` after a TCW is assigned and reconcile runs. |
 | Reconcile gain | Existing row with RX off, controller's freq becomes owned by user → row flips to Owned, RX+TX on. |
@@ -221,6 +250,10 @@ No changes in `sim/`, `server/`, `client/`, or `aviation/`.
 | Privileged override | Privileged TCW + RX off → message still shown. |
 | TX off no-ops | With user's primary-position freq RX+TX off, invoke a STARS command → no RPC issued. |
 | TX on issues RPC | Same primary, TX on → RPC issued normally. |
+| GUARD gated by guard TX off | Guard row TX off, invoke `<callsign> GUARD` (typed) → `Sim.Guard` not called. |
+| GUARD gated for STT | Guard row TX off, run a guard-pattern transcription through `tryDecodeGuard` → no command emitted. |
+| GUARD passes when guard TX on | Guard row TX on (default) → `Sim.Guard` called normally. |
+| GUARD vs primary TX | Primary TX off but guard TX on → `<callsign> GUARD` still works (uses CanGuardTransmit, not CanTransmitOnPrimary). |
 
 ### Manual verification
 
