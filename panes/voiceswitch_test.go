@@ -212,3 +212,62 @@ func TestReconcile_DedupesSharedFrequency(t *testing.T) {
 		t.Errorf("shared-freq rows = %d, want 1 (deduped)", count)
 	}
 }
+
+func TestIsRX_OwnedDefaultsTrue(t *testing.T) {
+	tcw := sim.TCW("TEST")
+	state := makeStateWithControllers(tcw,
+		map[sim.ControlPosition]av.Frequency{"JFK_TWR": av.NewFrequency(124.350)}, nil)
+
+	vs := NewVoiceSwitchPane()
+	vs.reconcile(state, tcw)
+	if !vs.IsRX("JFK_TWR", state, tcw) {
+		t.Errorf("IsRX(JFK_TWR) = false on freshly-seeded pane, want true")
+	}
+}
+
+func TestIsRX_RXOffSuppresses(t *testing.T) {
+	tcw := sim.TCW("TEST")
+	state := makeStateWithControllers(tcw,
+		map[sim.ControlPosition]av.Frequency{"JFK_TWR": av.NewFrequency(124.350)}, nil)
+
+	vs := NewVoiceSwitchPane()
+	vs.reconcile(state, tcw)
+	for i := range vs.rows {
+		if vs.rows[i].Freq == av.NewFrequency(124.350) {
+			vs.rows[i].RX = false
+		}
+	}
+	if vs.IsRX("JFK_TWR", state, tcw) {
+		t.Errorf("IsRX = true after RX toggled off, want false")
+	}
+}
+
+func TestIsRX_UnresolvableFallsBackToTCWControlsPosition(t *testing.T) {
+	tcw := sim.TCW("TEST")
+	state := makeStateWithControllers(tcw,
+		map[sim.ControlPosition]av.Frequency{"JFK_TWR": av.NewFrequency(124.350)}, nil)
+
+	vs := NewVoiceSwitchPane()
+	vs.reconcile(state, tcw)
+	// "_TOWER" sentinel is not in Controllers map.
+	got := vs.IsRX("_TOWER", state, tcw)
+	want := state.TCWControlsPosition(tcw, "_TOWER")
+	if got != want {
+		t.Errorf("IsRX(_TOWER) = %v, want fallback %v", got, want)
+	}
+}
+
+func TestIsRX_ResolvableButNoRowFallsBack(t *testing.T) {
+	tcw := sim.TCW("TEST")
+	state := makeStateWithControllers(tcw,
+		map[sim.ControlPosition]av.Frequency{"JFK_TWR": av.NewFrequency(124.350)},
+		map[sim.ControlPosition]av.Frequency{"BOS_TWR": av.NewFrequency(127.750)})
+
+	vs := NewVoiceSwitchPane()
+	vs.reconcile(state, tcw)
+	got := vs.IsRX("BOS_TWR", state, tcw)
+	want := state.TCWControlsPosition(tcw, "BOS_TWR")
+	if got != want {
+		t.Errorf("IsRX(BOS_TWR) = %v, want fallback %v", got, want)
+	}
+}

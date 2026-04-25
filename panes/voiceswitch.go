@@ -121,3 +121,26 @@ func (vs *VoiceSwitchPane) reconcile(ss *sim.CommonState, userTCW sim.TCW) {
 
 	vs.seeded = true
 }
+
+// IsRX reports whether transmissions addressed to pos should be received
+// (shown in messages pane / trigger audio alert) by the user.
+//
+// Resolution order:
+//  1. If pos cannot resolve to a numeric frequency (sentinel like "_TOWER",
+//     virtual/external controllers without a Frequency field) →
+//     fall back to ss.TCWControlsPosition(userTCW, pos).
+//  2. If a row exists for that frequency → return row.RX.
+//  3. No row for that frequency (pre-seed, or freq not tuned) →
+//     fall back to ss.TCWControlsPosition(userTCW, pos).
+func (vs *VoiceSwitchPane) IsRX(pos sim.ControlPosition, ss *sim.CommonState, userTCW sim.TCW) bool {
+	ctrl, ok := ss.Controllers[pos]
+	if !ok || ctrl == nil || ctrl.Frequency == 0 {
+		return ss.TCWControlsPosition(userTCW, pos)
+	}
+	for _, r := range vs.rows {
+		if r.Freq == ctrl.Frequency {
+			return r.RX
+		}
+	}
+	return ss.TCWControlsPosition(userTCW, pos)
+}
