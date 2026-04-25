@@ -62,6 +62,11 @@ type ControlClient struct {
 	// This is all read-only data that we expect other parts of the system
 	// to access directly.
 	State SimState
+
+	// CanTransmit, if non-nil, is consulted at the top of RunAircraftCommands.
+	// If it returns false, the RPC is silently dropped (no state change, no error
+	// to the caller). Wired by cmd/vice to call into the voice switch pane.
+	CanTransmit func(cmd string) bool
 }
 
 // This is the client-side representation of a server (perhaps could be better-named...)
