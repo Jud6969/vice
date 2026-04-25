@@ -587,6 +587,13 @@ func runGUI(config *Config, configErr error, lg *log.Logger) error {
 				controlClient.CanTransmit = func(cmd string) bool {
 					return config.VoiceSwitchPane.AllowsCommand(cmd, &controlClient.State.CommonState, controlClient.State.UserTCW)
 				}
+				controlClient.ShouldHearPilotAudio = func(callsign av.ADSBCallsign) bool {
+					track, ok := controlClient.State.Tracks[callsign]
+					if !ok || track == nil || track.ControllerFrequency == "" {
+						return true
+					}
+					return config.VoiceSwitchPane.IsRX(track.ControllerFrequency, &controlClient.State.CommonState, controlClient.State.UserTCW)
+				}
 			}
 		},
 		func(err error) {
@@ -629,6 +636,13 @@ func runGUI(config *Config, configErr error, lg *log.Logger) error {
 		activeRadarPane = arp
 		controlClient.CanTransmit = func(cmd string) bool {
 			return config.VoiceSwitchPane.AllowsCommand(cmd, &controlClient.State.CommonState, controlClient.State.UserTCW)
+		}
+		controlClient.ShouldHearPilotAudio = func(callsign av.ADSBCallsign) bool {
+			track, ok := controlClient.State.Tracks[callsign]
+			if !ok || track == nil || track.ControllerFrequency == "" {
+				return true
+			}
+			return config.VoiceSwitchPane.IsRX(track.ControllerFrequency, &controlClient.State.CommonState, controlClient.State.UserTCW)
 		}
 	}
 

@@ -1,0 +1,17 @@
+{
+  "transcript": "allegiant nine one five climb and maintain one one thousand passing four thousand proceed direct worms",
+  "callsign": "AAY915",
+  "command": "C110 LV40/DWRMS",
+  "stt_aircraft": {
+    "AAY915": {
+      "Callsign": "AAY915",
+      "AircraftType": "A320",
+      "Fixes": {"worms": "WRMS"},
+      "Altitude": 2000,
+      "State": "departure",
+      "ControllerFrequency": "118.100",
+      "TrackingController": "_TWR",
+      "AddressingForm": 0
+    }
+  }
+}

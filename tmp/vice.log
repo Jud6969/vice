@@ -1,0 +1,8 @@
+ggml_vulkan: Found 2 Vulkan devices:
+ggml_vulkan: 0 = NVIDIA GeForce RTX 5070 (NVIDIA) | uma: 0 | fp16: 1 | bf16: 1 | warp size: 32 | shared memory: 49152 | int dot: 1 | matrix cores: NV_coopmat2
+ggml_vulkan: 1 = Intel(R) UHD Graphics 770 (Intel Corporation) | uma: 1 | fp16: 1 | bf16: 0 | warp size: 32 | shared memory: 32768 | int dot: 1 | matrix cores: none
+[whisper-benchmark] Checking CPU compatibility...
+[whisper-benchmark] Using cached model: ggml-medium.en-jlvatc-q5_0.bin
+Launching HTTP server on port 6502
+[whisper-benchmark] Warming up ggml-medium.en-jlvatc-q5_0.bin...
+[whisper-benchmark] Selected: ggml-medium.en-jlvatc-q5_0.bin

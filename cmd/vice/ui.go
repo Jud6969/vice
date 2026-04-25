@@ -1188,10 +1188,10 @@ func uiHandlePTTKey(p platform.Platform, controlClient *client.ControlClient, co
 		return
 	}
 	// If the voice switch has no TX enabled on any row, the user can't
-	// transmit anywhere — so don't even start recording.
-	if config.VoiceSwitchPane != nil && !config.VoiceSwitchPane.AnyTXEnabled() {
-		return
-	}
+	// transmit anywhere — block the recording start path. We must NOT block
+	// the release/cleanup path below, otherwise unchecking TX mid-press
+	// leaves pttRecording stuck true.
+	canTransmit := config.VoiceSwitchPane == nil || config.VoiceSwitchPane.AnyTXEnabled()
 
 	// Ensure background capture is running for preroll buffer.
 	// This captures audio continuously so we don't lose the start of transmissions.
@@ -1206,7 +1206,7 @@ func uiHandlePTTKey(p platform.Platform, controlClient *client.ControlClient, co
 	}
 
 	// Start on initial press (ignore repeats by checking our own flags)
-	if imgui.IsKeyDown(pttKey) && !ui.pttRecording && !ui.pttGarbling && !ui.pttMicFailed && !ui.testPTTActive {
+	if imgui.IsKeyDown(pttKey) && canTransmit && !ui.pttRecording && !ui.pttGarbling && !ui.pttMicFailed && !ui.testPTTActive {
 		if p.IsPlayingSpeech() {
 			// Audio is playing - garble it instead of recording
 			p.SetSpeechGarbled(true)

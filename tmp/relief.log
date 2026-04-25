@@ -1,0 +1,24 @@
+ggml_vulkan: Found 2 Vulkan devices:
+ggml_vulkan: 0 = NVIDIA GeForce RTX 5070 (NVIDIA) | uma: 0 | fp16: 1 | bf16: 1 | warp size: 32 | shared memory: 49152 | int dot: 1 | matrix cores: NV_coopmat2
+ggml_vulkan: 1 = Intel(R) UHD Graphics 770 (Intel Corporation) | uma: 1 | fp16: 1 | bf16: 0 | warp size: 32 | shared memory: 32768 | int dot: 1 | matrix cores: none
+[whisper-benchmark] Checking CPU compatibility...
+[whisper-benchmark] Using cached model: ggml-medium.en-jlvatc-q5_0.bin
+Launching HTTP server on port 6504
+[whisper-benchmark] Warming up ggml-medium.en-jlvatc-q5_0.bin...
+[whisper-benchmark] Selected: ggml-medium.en-jlvatc-q5_0.bin
+
+[MOUSE] Click, transientCommandHandlers=0
+[MOUSE] status.Clear=0, status.CommandHandlers=0, err=<nil>
+
+[MOUSE] Click, transientCommandHandlers=0
+[MOUSE] status.Clear=0, status.CommandHandlers=0, err=<nil>
+
+[MOUSE] Click, transientCommandHandlers=0
+[MOUSE] status.Clear=0, status.CommandHandlers=0, err=<nil>
+
+[MOUSE] Click, transientCommandHandlers=0
+[MOUSE] status.Clear=0, status.CommandHandlers=0, err=<nil>
+
+[MOUSE] Click, transientCommandHandlers=0
+[MOUSE] status.Clear=0, status.CommandHandlers=0, err=<nil>
+time=2026-04-22T21:44:32.936-04:00 level=ERROR msg="Error saving configuration file: rename C:\\Users\\judlo\\AppData\\Roaming\\Vice\\config-2046000950.json.tmp C:\\Users\\judlo\\AppData\\Roaming\\Vice\\config.json: Access is denied." callstack="[dialogs.go:690:ShowErrorDialog config.go:180:(*Config).SaveIfChanged main.go:740:runGUI main.go:774:main]"

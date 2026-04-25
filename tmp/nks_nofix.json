@@ -1,0 +1,17 @@
+{
+  "transcript": "spirit wings nine one three eight reaching seven thousand proceed direct danny",
+  "callsign": "NKS9138",
+  "command": "A70",
+  "stt_aircraft": {
+    "NKS9138": {
+      "Callsign": "NKS9138",
+      "AircraftType": "A320",
+      "Fixes": {},
+      "Altitude": 5000,
+      "State": "departure",
+      "ControllerFrequency": "118.100",
+      "TrackingController": "_TWR",
+      "AddressingForm": 0
+    }
+  }
+}

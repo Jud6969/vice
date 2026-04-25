@@ -289,7 +289,10 @@ func (vs *VoiceSwitchPane) DrawWindow(show *bool, c *client.ControlClient,
 		row := &vs.rows[i]
 		imgui.PushIDInt(int32(i))
 
-		imgui.Checkbox("RX", &row.RX)
+		if imgui.Checkbox("RX", &row.RX) && !row.RX {
+			// Unchecking RX implies you can't transmit either.
+			row.TX = false
+		}
 		imgui.SameLine()
 		imgui.Checkbox("TX", &row.TX)
 		imgui.SameLine()

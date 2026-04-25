@@ -1,0 +1,97 @@
+ggml_vulkan: Found 2 Vulkan devices:
+ggml_vulkan: 0 = NVIDIA GeForce RTX 5070 (NVIDIA) | uma: 0 | fp16: 1 | bf16: 1 | warp size: 32 | shared memory: 49152 | int dot: 1 | matrix cores: NV_coopmat2
+ggml_vulkan: 1 = Intel(R) UHD Graphics 770 (Intel Corporation) | uma: 1 | fp16: 1 | bf16: 0 | warp size: 32 | shared memory: 32768 | int dot: 1 | matrix cores: none
+Launching HTTP server on port 6502
+time=2026-04-22T21:44:00.602-04:00 level=WARN msg="Writing heap profile: heapAlloc=943 MB" callstack="[prof.go:203:/util.MonitorMemoryUsage.func1 asm_amd64.s:1693:runtime.goexit]"
+time=2026-04-22T21:44:00.614-04:00 level=WARN msg="\"heap\" profile written to heap_1776908640.pprof" callstack="[prof.go:218:/util.writeProfile prof.go:204:/util.MonitorMemoryUsage.func1 asm_amd64.s:1693:runtime.goexit]"
+Prespawn in 98.1863ms, rates: dep 25.000000 arrival 55.000000 overflight 0.000000
+LaunchConfig:
+[90m<#dump // sim\spawn.go:478[0m
+[90m#sim.LaunchConfig[0m {
+  [33m+[0mController           => [33m"[0m[1;38;5;113m[0m[33m"[0m[90m #sim.TCW[0m
+  [33m+[0mDepartureMode        => [38;5;38m0[0m[90m #int32[0m
+  [33m+[0mArrivalMode          => [38;5;38m0[0m[90m #int32[0m
+  [33m+[0mOverflightMode       => [38;5;38m0[0m[90m #int32[0m
+  [33m+[0mGoAroundRate         => [38;5;38m0.010000[0m[90m #float32[0m
+  [33m+[0mEnableTowerGoArounds => [33mtrue[0m[90m #bool[0m
+  [33m+[0mDepartureRates       => [90m#map[string]map[aviation.RunwayID]map[string]float32[0m {
+     [38;5;170mKMYR[0m => [90m#map[aviation.RunwayID]map[string]float32[0m {
+       [38;5;170m18[0m => [90m#map[string]float32[0m {
+         [38;5;170m[0m => [38;5;38m20.000000[0m[90m #float32[0m
+      }
+    }
+     [38;5;170mKCRE[0m => [90m#map[aviation.RunwayID]map[string]float32[0m {
+       [38;5;170m23[0m => [90m#map[string]float32[0m {
+         [38;5;170m[0m => [38;5;38m5.000000[0m[90m #float32[0m
+      }
+    }
+  }
+  [33m+[0mDepartureRateScale    => [38;5;38m1.000000[0m[90m #float32[0m
+  [33m+[0mVFRDepartureRateScale => [38;5;38m1.000000[0m[90m #float32[0m
+  [33m+[0mVFRAirportRates       => [90m#map[string]int[0m {
+     [38;5;170mKGGE[0m => [38;5;38m5[0m[90m #int[0m
+     [38;5;170mKCKI[0m => [38;5;38m5[0m[90m #int[0m
+     [38;5;170mKHYW[0m => [38;5;38m5[0m[90m #int[0m
+     [38;5;170mKSUT[0m => [38;5;38m5[0m[90m #int[0m
+     [38;5;170mKMMT[0m => [38;5;38m5[0m[90m #int[0m
+     [38;5;170mKFLO[0m => [38;5;38m5[0m[90m #int[0m
+     [38;5;170mKCRE[0m => [38;5;38m5[0m[90m #int[0m
+     [38;5;170mKPHH[0m => [38;5;38m5[0m[90m #int[0m
+     [38;5;170mKMAO[0m => [38;5;38m5[0m[90m #int[0m
+     [38;5;170mKMNI[0m => [38;5;38m5[0m[90m #int[0m
+  }
+  [33m+[0mVFFRequestRate          => [38;5;38m10[0m[90m #int32[0m
+  [33m+[0mHaveVFRReportingRegions => [90mfalse[0m[90m #bool[0m
+  [33m+[0mInboundFlowRates        => [90m#map[string]map[string]float32[0m {
+     [38;5;170mCHS.fast[0m => [90m#map[string]float32[0m {
+       [38;5;170mKMYR[0m => [38;5;38m4.000000[0m[90m #float32[0m
+       [38;5;170mKCRE[0m => [38;5;38m1.000000[0m[90m #float32[0m
+    }
+     [38;5;170mFAY[0m => [90m#map[string]float32[0m {
+       [38;5;170mKMYR[0m => [38;5;38m4.000000[0m[90m #float32[0m
+       [38;5;170mKCRE[0m => [38;5;38m1.000000[0m[90m #float32[0m
+    }
+     [38;5;170mUNJAM[0m => [90m#map[string]float32[0m {
+       [38;5;170mKMYR[0m => [38;5;38m4.000000[0m[90m #float32[0m
+    }
+     [38;5;170mILM.slow[0m => [90m#map[string]float32[0m {
+       [38;5;170mKCRE[0m => [38;5;38m1.000000[0m[90m #float32[0m
+       [38;5;170mKMYR[0m => [38;5;38m6.000000[0m[90m #float32[0m
+    }
+     [38;5;170mFLO.slow[0m => [90m#map[string]float32[0m {
+       [38;5;170mKMYR[0m => [38;5;38m4.000000[0m[90m #float32[0m
+       [38;5;170mKCRE[0m => [38;5;38m1.000000[0m[90m #float32[0m
+    }
+     [38;5;170mILM.fast[0m => [90m#map[string]float32[0m {
+       [38;5;170mKCRE[0m => [38;5;38m1.000000[0m[90m #float32[0m
+       [38;5;170mKMYR[0m => [38;5;38m6.000000[0m[90m #float32[0m
+    }
+     [38;5;170mFLO.fast[0m => [90m#map[string]float32[0m {
+       [38;5;170mKMYR[0m => [38;5;38m4.000000[0m[90m #float32[0m
+       [38;5;170mKCRE[0m => [38;5;38m1.000000[0m[90m #float32[0m
+    }
+     [38;5;170mCAE.fast[0m => [90m#map[string]float32[0m {
+       [38;5;170mKCRE[0m => [38;5;38m1.000000[0m[90m #float32[0m
+       [38;5;170mKMYR[0m => [38;5;38m5.000000[0m[90m #float32[0m
+    }
+     [38;5;170mCAE.slow[0m => [90m#map[string]float32[0m {
+       [38;5;170mKMYR[0m => [38;5;38m5.000000[0m[90m #float32[0m
+       [38;5;170mKCRE[0m => [38;5;38m1.000000[0m[90m #float32[0m
+    }
+     [38;5;170mCHS.slow[0m => [90m#map[string]float32[0m {
+       [38;5;170mKCRE[0m => [38;5;38m1.000000[0m[90m #float32[0m
+       [38;5;170mKMYR[0m => [38;5;38m4.000000[0m[90m #float32[0m
+    }
+  }
+  [33m+[0mInboundFlowRateScale        => [38;5;38m1.000000[0m[90m #float32[0m
+  [33m+[0mArrivalPushes               => [90mfalse[0m[90m #bool[0m
+  [33m+[0mArrivalPushFrequencyMinutes => [38;5;38m20[0m[90m #int[0m
+  [33m+[0mArrivalPushLengthMinutes    => [38;5;38m10[0m[90m #int[0m
+  [33m+[0mEmergencyAircraftRate       => [38;5;38m0.000000[0m[90m #float32[0m
+}
+time=2026-04-22T21:44:10.602-04:00 level=WARN msg="Writing heap profile: heapAlloc=616 MB" callstack="[prof.go:203:/util.MonitorMemoryUsage.func1 asm_amd64.s:1693:runtime.goexit]"
+time=2026-04-22T21:44:10.609-04:00 level=WARN msg="\"heap\" profile written to heap_1776908650.pprof" callstack="[prof.go:218:/util.writeProfile prof.go:204:/util.MonitorMemoryUsage.func1 asm_amd64.s:1693:runtime.goexit]"
+time=2026-04-22T21:44:20.602-04:00 level=WARN msg="Writing heap profile: heapAlloc=646 MB" callstack="[prof.go:203:/util.MonitorMemoryUsage.func1 asm_amd64.s:1693:runtime.goexit]"
+time=2026-04-22T21:44:20.608-04:00 level=WARN msg="\"heap\" profile written to heap_1776908660.pprof" callstack="[prof.go:218:/util.writeProfile prof.go:204:/util.MonitorMemoryUsage.func1 asm_amd64.s:1693:runtime.goexit]"
+time=2026-04-22T21:45:20.602-04:00 level=WARN msg="Writing heap profile: heapAlloc=704 MB" callstack="[prof.go:203:/util.MonitorMemoryUsage.func1 asm_amd64.s:1693:runtime.goexit]"
+time=2026-04-22T21:45:20.608-04:00 level=WARN msg="\"heap\" profile written to heap_1776908720.pprof" callstack="[prof.go:218:/util.writeProfile prof.go:204:/util.MonitorMemoryUsage.func1 asm_amd64.s:1693:runtime.goexit]"

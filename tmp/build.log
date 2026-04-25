@@ -1,0 +1,15 @@
+WORK=C:\Users\judlo\AppData\Local\Temp\go-build1209356747
+cd C:\Users\judlo\Documents\vice\vice
+git status --porcelain
+cd C:\Users\judlo\Documents\vice\vice
+git -c log.showsignature=false log -1 --format=%H:%ct
+cd C:\Users\judlo\Documents\vice\vice; git config extensions.objectformat
+0.011s # cd C:\Users\judlo\Documents\vice\vice; git config extensions.objectformat
+cd C:\Users\judlo\Documents\vice\vice; git -c log.showsignature=false log --no-decorate -n1 '--format=format:%H %ct %D' 6d206b47f366f10dcb138c764baf6584849e995c --
+0.016s # cd C:\Users\judlo\Documents\vice\vice; git -c log.showsignature=false log --no-decorate -n1 '--format=format:%H %ct %D' 6d206b47f366f10dcb138c764baf6584849e995c --
+cd C:\Users\judlo\Documents\vice\vice; git for-each-ref --format %(refname) refs/tags --merged 6d206b47f366f10dcb138c764baf6584849e995c
+0.033s # cd C:\Users\judlo\Documents\vice\vice; git for-each-ref --format %(refname) refs/tags --merged 6d206b47f366f10dcb138c764baf6584849e995c
+cd C:\Users\judlo\Documents\vice\vice; git -c log.showsignature=false log --no-decorate -n1 '--format=format:%H %ct %D' 6d206b47f366 --
+0.015s # cd C:\Users\judlo\Documents\vice\vice; git -c log.showsignature=false log --no-decorate -n1 '--format=format:%H %ct %D' 6d206b47f366 --
+cd C:\Users\judlo\Documents\vice\vice; git cat-file blob 6d206b47f366f10dcb138c764baf6584849e995c:go.mod
+0.012s # cd C:\Users\judlo\Documents\vice\vice; git cat-file blob 6d206b47f366f10dcb138c764baf6584849e995c:go.mod

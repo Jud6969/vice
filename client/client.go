@@ -67,6 +67,13 @@ type ControlClient struct {
 	// If it returns false, the RPC is silently dropped (no state change, no error
 	// to the caller). Wired by cmd/vice to call into the voice switch pane.
 	CanTransmit func(cmd string) bool
+
+	// ShouldHearPilotAudio, if non-nil, gates incoming pilot TTS playback.
+	// Returning false drops the audio synthesis silently (state on the server
+	// is unaffected; only the client-side audio playback is suppressed).
+	// Wired by cmd/vice to consult the voice switch RX state for the
+	// aircraft's current frequency.
+	ShouldHearPilotAudio func(callsign av.ADSBCallsign) bool
 }
 
 // This is the client-side representation of a server (perhaps could be better-named...)
@@ -640,6 +647,10 @@ func (c *ControlClient) GetLastWhisperDurationMs() int64 {
 // Called from a goroutine. On failure, Unhold() is called because RunAircraftCommands
 // calls Hold() before issuing the command to prevent contacts while waiting for the readback.
 func (c *ControlClient) synthesizeAndEnqueueReadback(callsign av.ADSBCallsign, text, voice string) {
+	if c.ShouldHearPilotAudio != nil && !c.ShouldHearPilotAudio(callsign) {
+		c.transmissions.Unhold()
+		return
+	}
 	radioSeed := uint32(util.HashString64(string(callsign)))
 	if pcm, err := tts.SynthesizeReadbackTTS(text, voice, radioSeed); err != nil {
 		c.lg.Errorf("TTS synthesis error for %s: %v", callsign, err)
@@ -657,6 +668,10 @@ func (c *ControlClient) synthesizeAndEnqueueReadback(callsign av.ADSBCallsign, t
 // Called from a goroutine. Unlike readbacks, no Hold() is acquired before requesting
 // contacts, so no Unhold() is needed on failure.
 func (c *ControlClient) synthesizeAndEnqueueContact(callsign av.ADSBCallsign, ty av.RadioTransmissionType, text, voice string) {
+	if c.ShouldHearPilotAudio != nil && !c.ShouldHearPilotAudio(callsign) {
+		c.transmissions.SetContactRequested(false)
+		return
+	}
 	radioSeed := uint32(util.HashString64(string(callsign)))
 	if pcm, err := tts.SynthesizeContactTTS(text, voice, radioSeed); err != nil {
 		c.lg.Errorf("TTS synthesis error for %s: %v", callsign, err)
