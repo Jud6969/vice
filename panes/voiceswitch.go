@@ -179,6 +179,18 @@ func (vs *VoiceSwitchPane) CanGuardTransmit() bool {
 	return true
 }
 
+// AnyTXEnabled reports whether any row currently has TX checked. Used by
+// the messages pane to surface a "no TX" indicator and by uiHandlePTTKey
+// to disable recording when there's no frequency to transmit on.
+func (vs *VoiceSwitchPane) AnyTXEnabled() bool {
+	for _, r := range vs.rows {
+		if r.TX {
+			return true
+		}
+	}
+	return false
+}
+
 // AllowsCommand inspects cmd for a GUARD token. If present, returns
 // CanGuardTransmit(). Otherwise returns CanTransmitOnPrimary(ss, userTCW).
 //
@@ -258,9 +270,6 @@ func (vs *VoiceSwitchPane) DrawWindow(show *bool, c *client.ControlClient,
 	imgui.SetNextWindowSizeConstraints(imgui.Vec2{X: 240, Y: 160}, imgui.Vec2{X: 4096, Y: 4096})
 	imgui.BeginV("Voice Switch", show, 0)
 	DrawPinButton("Voice Switch", unpinnedWindows, p)
-	if vs.font != nil {
-		vs.font.ImguiPush()
-	}
 
 	// Sort rows: guard first, then others in original order.
 	displayOrder := make([]int, 0, len(vs.rows))
@@ -315,9 +324,6 @@ func (vs *VoiceSwitchPane) DrawWindow(show *bool, c *client.ControlClient,
 		vs.commitAddInput(c)
 	}
 
-	if vs.font != nil {
-		imgui.PopFont()
-	}
 	imgui.End()
 }
 

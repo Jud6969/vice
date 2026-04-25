@@ -1187,6 +1187,11 @@ func uiHandlePTTKey(p platform.Platform, controlClient *client.ControlClient, co
 	if pttKey == imgui.KeyNone {
 		return
 	}
+	// If the voice switch has no TX enabled on any row, the user can't
+	// transmit anywhere — so don't even start recording.
+	if config.VoiceSwitchPane != nil && !config.VoiceSwitchPane.AnyTXEnabled() {
+		return
+	}
 
 	// Ensure background capture is running for preroll buffer.
 	// This captures audio continuously so we don't lose the start of transmissions.

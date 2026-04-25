@@ -163,17 +163,18 @@ func (mp *MessagesPane) processEvents(playSound bool, c *client.ControlClient, v
 	for _, event := range mp.events.Get() {
 		switch event.Type {
 		case sim.RadioTransmissionEvent:
-			toUs := voiceSwitch.IsRX(event.ToController, &c.State.CommonState, c.State.UserTCW)
-
-			priv := c.State.TCWIsPrivileged(c.State.UserTCW)
-			if !toUs && !priv {
+			if !voiceSwitch.IsRX(event.ToController, &c.State.CommonState, c.State.UserTCW) {
 				break
 			}
 
-			prefix := ""
-			if priv {
-				prefix = "[to " + string(event.ToController) + "] "
+			// Debug prefix: "AIRCRAFT: FREQ" so it's clear which aircraft is on
+			// which frequency. Falls back to the position string if there's no
+			// numeric frequency available (sentinel ToController, etc.).
+			freqLabel := string(event.ToController)
+			if ctrl, ok := c.State.Controllers[event.ToController]; ok && ctrl != nil && ctrl.Frequency != 0 {
+				freqLabel = ctrl.Frequency.String()
 			}
+			prefix := string(event.ADSBCallsign) + ": " + freqLabel + " "
 
 			var msg Message
 			if event.RadioTransmissionType == av.RadioTransmissionContact {
@@ -203,12 +204,9 @@ func (mp *MessagesPane) processEvents(playSound bool, c *client.ControlClient, v
 			mp.shouldAutoScroll = true
 
 		case sim.StatusMessageEvent:
-			// If ToController is set, only show to that controller (or privileged)
-			if event.ToController != "" {
-				toUs := voiceSwitch.IsRX(event.ToController, &c.State.CommonState, c.State.UserTCW)
-				if !toUs && !c.State.TCWIsPrivileged(c.State.UserTCW) {
-					break
-				}
+			// If ToController is set, only show if voice switch RX is enabled.
+			if event.ToController != "" && !voiceSwitch.IsRX(event.ToController, &c.State.CommonState, c.State.UserTCW) {
+				break
 			}
 
 			// Don't spam the same message repeatedly; look in the most recent 5.
