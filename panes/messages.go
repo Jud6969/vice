@@ -119,7 +119,7 @@ func (msg *Message) ImguiColor() imgui.Vec4 {
 	return imgui.Vec4{X: c.R, Y: c.G, Z: c.B, W: 1}
 }
 
-func (mp *MessagesPane) DrawWindow(show *bool, c *client.ControlClient, p platform.Platform,
+func (mp *MessagesPane) DrawWindow(show *bool, c *client.ControlClient, voiceSwitch *VoiceSwitchPane, p platform.Platform,
 	unpinnedWindows map[string]struct{}, lg *log.Logger) {
 	// Only play sounds if the window has been continuously visible. If
 	// more than 250ms have elapsed since the last DrawWindow call, we
@@ -128,7 +128,7 @@ func (mp *MessagesPane) DrawWindow(show *bool, c *client.ControlClient, p platfo
 	now := time.Now()
 	playSound := !mp.lastDrawTime.IsZero() && now.Sub(mp.lastDrawTime) < 250*time.Millisecond
 	mp.lastDrawTime = now
-	mp.processEvents(playSound, c, p, lg)
+	mp.processEvents(playSound, c, voiceSwitch, p, lg)
 
 	imgui.SetNextWindowSizeConstraints(imgui.Vec2{300, 100}, imgui.Vec2{4096, 4096})
 	if mp.font != nil {
@@ -159,11 +159,11 @@ func (mp *MessagesPane) DrawWindow(show *bool, c *client.ControlClient, p platfo
 
 }
 
-func (mp *MessagesPane) processEvents(playSound bool, c *client.ControlClient, p platform.Platform, lg *log.Logger) {
+func (mp *MessagesPane) processEvents(playSound bool, c *client.ControlClient, voiceSwitch *VoiceSwitchPane, p platform.Platform, lg *log.Logger) {
 	for _, event := range mp.events.Get() {
 		switch event.Type {
 		case sim.RadioTransmissionEvent:
-			toUs := c.State.UserControlsPosition(event.ToController)
+			toUs := voiceSwitch.IsRX(event.ToController, &c.State.CommonState, c.State.UserTCW)
 
 			priv := c.State.TCWIsPrivileged(c.State.UserTCW)
 			if !toUs && !priv {
@@ -205,7 +205,7 @@ func (mp *MessagesPane) processEvents(playSound bool, c *client.ControlClient, p
 		case sim.StatusMessageEvent:
 			// If ToController is set, only show to that controller (or privileged)
 			if event.ToController != "" {
-				toUs := c.State.UserControlsPosition(event.ToController)
+				toUs := voiceSwitch.IsRX(event.ToController, &c.State.CommonState, c.State.UserTCW)
 				if !toUs && !c.State.TCWIsPrivileged(c.State.UserTCW) {
 					break
 				}
