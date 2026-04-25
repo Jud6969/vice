@@ -1070,14 +1070,19 @@ func (p *frequencyParser) parse(tokens []Token, pos int, ac Aircraft) (any, int,
 		khz *= 10
 	}
 
-	// Snap to the nearest 25 kHz slot. US NAS VHF frequencies are spaced
-	// every 25 kHz, so values like 128370 (spoken "128 point 37") must
-	// resolve to 128375. Half-up rounding on the kHz remainder.
-	if rem := khz % 25; rem != 0 {
-		if rem <= 12 {
-			khz -= rem
-		} else {
-			khz += 25 - rem
+	// Snap to the nearest 25 kHz slot in Conventional mode only. US NAS VHF
+	// frequencies are spaced every 25 kHz, so values like 128370 (spoken
+	// "128 point 37") canonicalize to 128375. Half-up rounding on the kHz
+	// remainder. In Realistic mode the snap is skipped so the controller's
+	// spoken frequency is taken exactly as said — wrong frequencies stay
+	// wrong, matching real ATC behavior.
+	if !ac.RealisticFrequencyManagement {
+		if rem := khz % 25; rem != 0 {
+			if rem <= 12 {
+				khz -= rem
+			} else {
+				khz += 25 - rem
+			}
 		}
 	}
 
