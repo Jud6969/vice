@@ -54,7 +54,7 @@ type voiceSwitchRow struct {
 
 ## Lifecycle
 
-`reconcile(c *client.ControlClient)` runs at the top of `DrawWindow` each frame.
+`reconcile(c *client.ControlClient)` is called each frame from the main loop (`cmd/vice/main.go`), **regardless of `ShowVoiceSwitch`**. The voice switch's RX state is consulted by `messages.go` on every event, so its row map must stay live even when the window is hidden. `DrawWindow` does not call `reconcile` itself.
 
 ### First call (when `!seeded && c.State.UserTCW != ""`)
 
@@ -97,7 +97,13 @@ Helper on the pane:
 func (vs *VoiceSwitchPane) IsRX(pos sim.ControlPosition, ss *sim.CommonState) bool
 ```
 
-Resolves `pos → freq` via `ss.Controllers[pos].Frequency`, then returns the matching row's `RX`. Returns `ss.UserControlsPosition(pos)` as a fallback when `pos` does not resolve to a frequency (sentinels like `_TOWER`, virtual/external controllers without a numeric freq).
+Resolution rules (in order):
+
+1. `freq := ss.Controllers[pos].Frequency`. If zero / `pos` not in `Controllers` (sentinels like `_TOWER`, virtual/external controllers without a numeric freq) → return `ss.UserControlsPosition(pos)`.
+2. If a row exists with `row.Freq == freq` → return `row.RX`.
+3. No row for that freq (e.g. pre-seed window during initial connect, or a non-owned freq the user never tuned) → return `ss.UserControlsPosition(pos)`.
+
+The fallback in (3) ensures the user doesn't briefly miss messages on owned positions during the frames between connect and first reconcile, and preserves today's "you hear positions you control" default for any freq not represented in the row list.
 
 **Wiring — `panes/messages.go`:**
 
@@ -123,7 +129,11 @@ Helper on the pane:
 func (vs *VoiceSwitchPane) CanTransmitOnPrimary(ss *sim.CommonState) bool
 ```
 
-Looks up `primary := ss.PrimaryPositionForTCW(ss.UserTCW)`, resolves `freq := ss.Controllers[primary].Frequency`, finds the matching row, and returns `row.TX` (or `true` if the freq is unresolvable, to avoid silently breaking commands when the model can't tell).
+Resolution rules (in order):
+
+1. `primary := ss.PrimaryPositionForTCW(ss.UserTCW)`. `freq := ss.Controllers[primary].Frequency`. If zero → return `true` (don't silently break commands when the model can't tell).
+2. If a row exists with `row.Freq == freq` → return `row.TX`.
+3. No row for that freq (pre-seed) → return `true`.
 
 **Wiring — call sites:**
 
@@ -180,7 +190,7 @@ Settings UI gets a "Voice Switch" entry alongside "Flight Strips" (collapsing he
 | `stt/` pipeline tail (provider/handlers, wherever the client-side dispatch hands off to the RPC) | Same TX gate inserted at the final dispatch point. |
 | `cmd/vice/config.go` | `ShowVoiceSwitch bool` (default `true`); `VoiceSwitchPane *panes.VoiceSwitchPane` field; `NewVoiceSwitchPane()` in default config; `Activate()` call mirroring `FlightStripPane`. |
 | `cmd/vice/ui.go` | Show/hide handling parallel to `showFlightStrips`; `DrawWindow` invocation; collapsing header for settings. Plumb `*VoiceSwitchPane` into messages/STARS/STT call sites. |
-| `cmd/vice/main.go` | `config.VoiceSwitchPane.ResetSim(...)` call alongside the existing `FlightStripPane.ResetSim(...)`. Save/restore the `ShowVoiceSwitch` flag. |
+| `cmd/vice/main.go` | `config.VoiceSwitchPane.ResetSim(...)` call alongside the existing `FlightStripPane.ResetSim(...)`. `config.VoiceSwitchPane.Reconcile(controlClient)` call once per frame in the main loop, before any pane draws or message processing. Save/restore the `ShowVoiceSwitch` flag. |
 
 No changes in `sim/`, `server/`, `client/`, or `aviation/`.
 
@@ -230,5 +240,7 @@ No changes in `sim/`, `server/`, `client/`, or `aviation/`.
 | Manual add: freq not in scenario | Same as above. |
 | Manual add: duplicate | Same as above. |
 | RX query for unresolvable position | Falls back to `UserControlsPosition`. |
+| RX query for resolvable freq with no row (pre-seed) | Falls back to `UserControlsPosition`. |
 | TX query for unresolvable primary | Returns `true` (don't silently break command flow). |
+| TX query for primary with no row (pre-seed) | Returns `true`. |
 | RX/TX toggle with no rows yet (pre-seed) | No-op; pane just doesn't render rows. |
