@@ -55,6 +55,7 @@ var (
 		showLaunchControl bool
 		showMessages      bool
 		showFlightStrips  bool
+		showVoiceSwitch   bool
 
 		// STT state
 		pttRecording              bool
@@ -143,6 +144,7 @@ func uiInit(r renderer.Renderer, p platform.Platform, config *Config, es *sim.Ev
 	ui.showScenarioInfo = config.ShowScenarioInfo
 	ui.showMessages = config.ShowMessages
 	ui.showFlightStrips = config.ShowFlightStrips
+	ui.showVoiceSwitch = config.ShowVoiceSwitch
 	keyboardWindowVisible = config.ShowKeyboardRef
 }
 
@@ -333,12 +335,13 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 
 		if ui.showMessages {
 			applyPinWindowClass("Messages", config, p)
-			config.MessagesPane.DrawWindow(&ui.showMessages, controlClient, p, config.UnpinnedWindows, lg)
+			config.MessagesPane.DrawWindow(&ui.showMessages, controlClient, config.VoiceSwitchPane, p, config.UnpinnedWindows, lg)
 		}
 		if ui.showFlightStrips {
 			applyPinWindowClass("Flight Strips", config, p)
 			config.FlightStripPane.DrawWindow(&ui.showFlightStrips, controlClient, p, config.UnpinnedWindows, lg)
 		}
+		config.VoiceSwitchPane.DrawWindow(&ui.showVoiceSwitch, controlClient, p, config.UnpinnedWindows, lg)
 	}
 
 	for _, event := range ui.eventsSubscription.Get() {
@@ -1155,6 +1158,9 @@ func uiDrawSettingsWindow(c *client.ControlClient, config *Config, activeRadarPa
 	}
 	if imgui.CollapsingHeaderBoolPtr(config.FlightStripPane.DisplayName(), nil) {
 		config.FlightStripPane.DrawUI(p, &config.Config)
+	}
+	if imgui.CollapsingHeaderBoolPtr(config.VoiceSwitchPane.DisplayName(), nil) {
+		config.VoiceSwitchPane.DrawUI(p, &config.Config)
 	}
 	if draw, ok := activeRadarPane.(panes.UIDrawer); ok {
 		if imgui.CollapsingHeaderBoolPtr(draw.DisplayName(), nil) {
