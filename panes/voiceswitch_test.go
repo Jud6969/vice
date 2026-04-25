@@ -271,3 +271,107 @@ func TestIsRX_ResolvableButNoRowFallsBack(t *testing.T) {
 		t.Errorf("IsRX(BOS_TWR) = %v, want fallback %v", got, want)
 	}
 }
+
+func TestCanTransmitOnPrimary_DefaultsTrue(t *testing.T) {
+	tcw := sim.TCW("TEST")
+	state := makeStateWithControllers(tcw,
+		map[sim.ControlPosition]av.Frequency{"JFK_TWR": av.NewFrequency(124.350)}, nil)
+	vs := NewVoiceSwitchPane()
+	vs.reconcile(state, tcw)
+	if !vs.CanTransmitOnPrimary(state, tcw) {
+		t.Errorf("CanTransmitOnPrimary = false on freshly-seeded pane, want true")
+	}
+}
+
+func TestCanTransmitOnPrimary_OffBlocks(t *testing.T) {
+	tcw := sim.TCW("TEST")
+	state := makeStateWithControllers(tcw,
+		map[sim.ControlPosition]av.Frequency{"JFK_TWR": av.NewFrequency(124.350)}, nil)
+	vs := NewVoiceSwitchPane()
+	vs.reconcile(state, tcw)
+	for i := range vs.rows {
+		if vs.rows[i].Freq == av.NewFrequency(124.350) {
+			vs.rows[i].TX = false
+		}
+	}
+	if vs.CanTransmitOnPrimary(state, tcw) {
+		t.Errorf("CanTransmitOnPrimary = true after TX off, want false")
+	}
+}
+
+func TestCanTransmitOnPrimary_PreSeedReturnsTrue(t *testing.T) {
+	tcw := sim.TCW("TEST")
+	state := makeStateWithControllers(tcw,
+		map[sim.ControlPosition]av.Frequency{"JFK_TWR": av.NewFrequency(124.350)}, nil)
+	vs := NewVoiceSwitchPane()
+	// no reconcile → no rows
+	if !vs.CanTransmitOnPrimary(state, tcw) {
+		t.Errorf("CanTransmitOnPrimary = false pre-seed, want true (don't break commands)")
+	}
+}
+
+func TestCanGuardTransmit_DefaultsTrue(t *testing.T) {
+	tcw := sim.TCW("TEST")
+	state := makeStateWithControllers(tcw,
+		map[sim.ControlPosition]av.Frequency{"JFK_TWR": av.NewFrequency(124.350)}, nil)
+	vs := NewVoiceSwitchPane()
+	vs.reconcile(state, tcw)
+	if !vs.CanGuardTransmit() {
+		t.Errorf("CanGuardTransmit = false on seeded pane, want true")
+	}
+}
+
+func TestCanGuardTransmit_OffBlocks(t *testing.T) {
+	tcw := sim.TCW("TEST")
+	state := makeStateWithControllers(tcw,
+		map[sim.ControlPosition]av.Frequency{"JFK_TWR": av.NewFrequency(124.350)}, nil)
+	vs := NewVoiceSwitchPane()
+	vs.reconcile(state, tcw)
+	for i := range vs.rows {
+		if vs.rows[i].Guard {
+			vs.rows[i].TX = false
+		}
+	}
+	if vs.CanGuardTransmit() {
+		t.Errorf("CanGuardTransmit = true after guard TX off, want false")
+	}
+}
+
+func TestAllowsCommand_RoutesByGuardToken(t *testing.T) {
+	tcw := sim.TCW("TEST")
+	state := makeStateWithControllers(tcw,
+		map[sim.ControlPosition]av.Frequency{"JFK_TWR": av.NewFrequency(124.350)}, nil)
+	vs := NewVoiceSwitchPane()
+	vs.reconcile(state, tcw)
+
+	// Both gates default true → both commands allowed.
+	if !vs.AllowsCommand("FH 270", state, tcw) {
+		t.Errorf("AllowsCommand(FH 270) = false, want true")
+	}
+	if !vs.AllowsCommand("GUARD FC 134050", state, tcw) {
+		t.Errorf("AllowsCommand(GUARD ...) = false, want true")
+	}
+
+	// Turn off primary TX. GUARD should still pass; non-GUARD should fail.
+	for i := range vs.rows {
+		if vs.rows[i].Owned {
+			vs.rows[i].TX = false
+		}
+	}
+	if vs.AllowsCommand("FH 270", state, tcw) {
+		t.Errorf("AllowsCommand(FH 270) = true after primary TX off, want false")
+	}
+	if !vs.AllowsCommand("GUARD FC 134050", state, tcw) {
+		t.Errorf("AllowsCommand(GUARD ...) = false when only primary TX off, want true")
+	}
+
+	// Turn off guard TX. GUARD should now fail.
+	for i := range vs.rows {
+		if vs.rows[i].Guard {
+			vs.rows[i].TX = false
+		}
+	}
+	if vs.AllowsCommand("GUARD FC 134050", state, tcw) {
+		t.Errorf("AllowsCommand(GUARD ...) = true after guard TX off, want false")
+	}
+}

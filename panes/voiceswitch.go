@@ -5,6 +5,8 @@
 package panes
 
 import (
+	"strings"
+
 	av "github.com/mmp/vice/aviation"
 	"github.com/mmp/vice/client"
 	"github.com/mmp/vice/log"
@@ -143,4 +145,48 @@ func (vs *VoiceSwitchPane) IsRX(pos sim.ControlPosition, ss *sim.CommonState, us
 		}
 	}
 	return ss.TCWControlsPosition(userTCW, pos)
+}
+
+// CanTransmitOnPrimary reports whether a non-GUARD command from this user
+// should be transmitted. Pre-seed and unresolvable cases default to true so
+// commands aren't silently broken when the model can't tell.
+func (vs *VoiceSwitchPane) CanTransmitOnPrimary(ss *sim.CommonState, userTCW sim.TCW) bool {
+	primary := ss.PrimaryPositionForTCW(userTCW)
+	ctrl, ok := ss.Controllers[primary]
+	if !ok || ctrl == nil || ctrl.Frequency == 0 {
+		return true
+	}
+	for _, r := range vs.rows {
+		if r.Freq == ctrl.Frequency {
+			return r.TX
+		}
+	}
+	return true
+}
+
+// CanGuardTransmit reports whether a GUARD command from this user should be
+// transmitted. Pre-seed (no guard row yet) defaults to true.
+func (vs *VoiceSwitchPane) CanGuardTransmit() bool {
+	for _, r := range vs.rows {
+		if r.Guard {
+			return r.TX
+		}
+	}
+	return true
+}
+
+// AllowsCommand inspects cmd for a GUARD token. If present, returns
+// CanGuardTransmit(). Otherwise returns CanTransmitOnPrimary(ss, userTCW).
+//
+// Detection: case-insensitive, whitespace-bounded "GUARD" anywhere in the
+// command body. The command callsign has already been split off by
+// AircraftCommandRequest.Callsign, so cmd contains only the post-callsign
+// instruction tokens.
+func (vs *VoiceSwitchPane) AllowsCommand(cmd string, ss *sim.CommonState, userTCW sim.TCW) bool {
+	for _, tok := range strings.Fields(cmd) {
+		if strings.EqualFold(tok, "GUARD") {
+			return vs.CanGuardTransmit()
+		}
+	}
+	return vs.CanTransmitOnPrimary(ss, userTCW)
 }
