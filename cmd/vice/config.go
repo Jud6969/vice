@@ -53,10 +53,12 @@ type ConfigNoSim struct {
 	ERAMPane        *eram.ERAMPane
 	MessagesPane    *panes.MessagesPane
 	FlightStripPane *panes.FlightStripPane
+	VoiceSwitchPane *panes.VoiceSwitchPane
 
 	// Whether the floating windows are visible
 	ShowMessages     bool
 	ShowFlightStrips bool
+	ShowVoiceSwitch  bool
 
 	AskedDiscordOptIn      bool
 	InhibitDiscordActivity util.AtomicBool
@@ -207,8 +209,10 @@ func getDefaultConfig() *Config {
 			ERAMPane:              eram.NewERAMPane(),
 			MessagesPane:          panes.NewMessagesPane(),
 			FlightStripPane:       panes.NewFlightStripPane(),
+			VoiceSwitchPane:       panes.NewVoiceSwitchPane(),
 			ShowMessages:          true,
 			ShowFlightStrips:      true,
+			ShowVoiceSwitch:       true,
 		},
 	}
 }
@@ -256,6 +260,9 @@ func LoadOrMakeDefaultConfig(lg *log.Logger) (config *Config, configErr error) {
 		if config.FlightStripPane == nil {
 			config.FlightStripPane = panes.NewFlightStripPane()
 		}
+		if config.VoiceSwitchPane == nil {
+			config.VoiceSwitchPane = panes.NewVoiceSwitchPane()
+		}
 
 		if config.Version < server.ViceSerializeVersion {
 			// Upgrade panes
@@ -294,4 +301,5 @@ func (c *Config) Activate(r renderer.Renderer, p platform.Platform, eventStream 
 	c.ERAMPane.Activate(r, p, eventStream, lg)
 	c.MessagesPane.Activate(r, p, eventStream, lg)
 	c.FlightStripPane.Activate(r, p, eventStream, lg)
+	c.VoiceSwitchPane.Activate(r, p, eventStream, lg)
 }
