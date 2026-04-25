@@ -53,3 +53,71 @@ func (vs *VoiceSwitchPane) ResetSim(c *client.ControlClient, p platform.Platform
 }
 
 func (vs *VoiceSwitchPane) DisplayName() string { return "Voice Switch" }
+
+// Reconcile syncs the row list with the current sim state. It MUST be called
+// every frame from the main loop (cmd/vice/main.go), regardless of whether
+// the voice switch window is visible — the RX state is consulted by the
+// messages pane on every event.
+func (vs *VoiceSwitchPane) Reconcile(c *client.ControlClient) {
+	if c == nil {
+		return
+	}
+	vs.reconcile(&c.State.UserState.CommonState, c.State.UserTCW)
+}
+
+func (vs *VoiceSwitchPane) reconcile(ss *sim.CommonState, userTCW sim.TCW) {
+	// Step 1: defer seeding until a TCW is assigned.
+	if !vs.seeded && userTCW == "" {
+		return
+	}
+
+	// Step 2: ensure guard row exists (idempotent).
+	hasGuard := false
+	for _, r := range vs.rows {
+		if r.Guard {
+			hasGuard = true
+			break
+		}
+	}
+	if !hasGuard {
+		vs.rows = append(vs.rows, voiceSwitchRow{
+			Freq: GuardFrequency, RX: true, TX: true, Guard: true,
+		})
+	}
+
+	// Step 3: build set of currently-owned freqs for this TCW.
+	currentlyOwned := map[av.Frequency]bool{}
+	for _, pos := range ss.GetPositionsForTCW(userTCW) {
+		ctrl, ok := ss.Controllers[pos]
+		if !ok || ctrl == nil || ctrl.Frequency == 0 {
+			continue
+		}
+		currentlyOwned[ctrl.Frequency] = true
+	}
+
+	// Step 4: update existing rows.
+	rowFreqs := map[av.Frequency]bool{}
+	for i := range vs.rows {
+		r := &vs.rows[i]
+		rowFreqs[r.Freq] = true
+		if r.Guard {
+			continue // user-managed only; reconcile never touches
+		}
+		if r.Owned && !currentlyOwned[r.Freq] {
+			r.Owned, r.RX, r.TX = false, false, false
+		} else if !r.Owned && currentlyOwned[r.Freq] {
+			r.Owned, r.RX, r.TX = true, true, true
+		}
+	}
+
+	// Step 5: append rows for newly-owned freqs not yet present.
+	for freq := range currentlyOwned {
+		if !rowFreqs[freq] {
+			vs.rows = append(vs.rows, voiceSwitchRow{
+				Freq: freq, RX: true, TX: true, Owned: true,
+			})
+		}
+	}
+
+	vs.seeded = true
+}
