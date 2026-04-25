@@ -259,6 +259,13 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 			if imgui.IsItemHovered() {
 				imgui.SetTooltip("Toggle flight strips window")
 			}
+
+			if imgui.Button(renderer.FontAwesomeIconMicrophone) {
+				ui.showVoiceSwitch = !ui.showVoiceSwitch
+			}
+			if imgui.IsItemHovered() {
+				imgui.SetTooltip("Toggle voice switch window")
+			}
 		}
 
 		if imgui.Button(renderer.FontAwesomeIconBook) {
@@ -341,7 +348,10 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 			applyPinWindowClass("Flight Strips", config, p)
 			config.FlightStripPane.DrawWindow(&ui.showFlightStrips, controlClient, p, config.UnpinnedWindows, lg)
 		}
-		config.VoiceSwitchPane.DrawWindow(&ui.showVoiceSwitch, controlClient, p, config.UnpinnedWindows, lg)
+		if ui.showVoiceSwitch {
+			applyPinWindowClass("Voice Switch", config, p)
+			config.VoiceSwitchPane.DrawWindow(&ui.showVoiceSwitch, controlClient, p, config.UnpinnedWindows, lg)
+		}
 	}
 
 	for _, event := range ui.eventsSubscription.Get() {
