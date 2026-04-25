@@ -375,3 +375,101 @@ func TestAllowsCommand_RoutesByGuardToken(t *testing.T) {
 		t.Errorf("AllowsCommand(GUARD ...) = true after guard TX off, want false")
 	}
 }
+
+func TestManualAdd_ValidFreqAppendsRow(t *testing.T) {
+	tcw := sim.TCW("TEST")
+	state := makeStateWithControllers(tcw,
+		map[sim.ControlPosition]av.Frequency{"JFK_TWR": av.NewFrequency(124.350)},
+		map[sim.ControlPosition]av.Frequency{"BOS_TWR": av.NewFrequency(127.750)})
+	vs := NewVoiceSwitchPane()
+	vs.reconcile(state, tcw)
+
+	if !vs.tryAddFreq(av.NewFrequency(127.750), state) {
+		t.Fatal("tryAddFreq returned false for valid scenario freq")
+	}
+	found := false
+	for _, r := range vs.rows {
+		if r.Freq == av.NewFrequency(127.750) {
+			if r.Owned || r.Guard || !r.RX || r.TX {
+				t.Errorf("manual-added row state = %+v, want RX:true TX:false Owned:false Guard:false", r)
+			}
+			found = true
+		}
+	}
+	if !found {
+		t.Error("manual-added row not present")
+	}
+}
+
+func TestManualAdd_InvalidFreqRejected(t *testing.T) {
+	tcw := sim.TCW("TEST")
+	state := makeStateWithControllers(tcw,
+		map[sim.ControlPosition]av.Frequency{"JFK_TWR": av.NewFrequency(124.350)}, nil)
+	vs := NewVoiceSwitchPane()
+	vs.reconcile(state, tcw)
+
+	before := len(vs.rows)
+	if vs.tryAddFreq(av.NewFrequency(135.000), state) {
+		t.Error("tryAddFreq returned true for unknown freq, want false")
+	}
+	if len(vs.rows) != before {
+		t.Errorf("rows changed (%d → %d) on rejected add", before, len(vs.rows))
+	}
+}
+
+func TestManualAdd_DuplicateRejected(t *testing.T) {
+	tcw := sim.TCW("TEST")
+	state := makeStateWithControllers(tcw,
+		map[sim.ControlPosition]av.Frequency{"JFK_TWR": av.NewFrequency(124.350)}, nil)
+	vs := NewVoiceSwitchPane()
+	vs.reconcile(state, tcw)
+
+	before := len(vs.rows)
+	if vs.tryAddFreq(av.NewFrequency(124.350), state) {
+		t.Error("tryAddFreq returned true for duplicate freq, want false")
+	}
+	if len(vs.rows) != before {
+		t.Errorf("rows changed (%d → %d) on duplicate add", before, len(vs.rows))
+	}
+}
+
+func TestManualRemove_NonOwnedRow(t *testing.T) {
+	tcw := sim.TCW("TEST")
+	state := makeStateWithControllers(tcw,
+		map[sim.ControlPosition]av.Frequency{"JFK_TWR": av.NewFrequency(124.350)},
+		map[sim.ControlPosition]av.Frequency{"BOS_TWR": av.NewFrequency(127.750)})
+	vs := NewVoiceSwitchPane()
+	vs.reconcile(state, tcw)
+	vs.tryAddFreq(av.NewFrequency(127.750), state)
+
+	if !vs.removeFreq(av.NewFrequency(127.750)) {
+		t.Error("removeFreq returned false for non-owned row")
+	}
+	for _, r := range vs.rows {
+		if r.Freq == av.NewFrequency(127.750) {
+			t.Error("non-owned row still present after remove")
+		}
+	}
+}
+
+func TestManualRemove_OwnedRowRejected(t *testing.T) {
+	tcw := sim.TCW("TEST")
+	state := makeStateWithControllers(tcw,
+		map[sim.ControlPosition]av.Frequency{"JFK_TWR": av.NewFrequency(124.350)}, nil)
+	vs := NewVoiceSwitchPane()
+	vs.reconcile(state, tcw)
+	if vs.removeFreq(av.NewFrequency(124.350)) {
+		t.Error("removeFreq returned true for owned row, want false (button shouldn't be exposed)")
+	}
+}
+
+func TestManualRemove_GuardRejected(t *testing.T) {
+	tcw := sim.TCW("TEST")
+	state := makeStateWithControllers(tcw,
+		map[sim.ControlPosition]av.Frequency{"JFK_TWR": av.NewFrequency(124.350)}, nil)
+	vs := NewVoiceSwitchPane()
+	vs.reconcile(state, tcw)
+	if vs.removeFreq(GuardFrequency) {
+		t.Error("removeFreq returned true for guard row, want false")
+	}
+}

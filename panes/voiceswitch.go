@@ -190,3 +190,43 @@ func (vs *VoiceSwitchPane) AllowsCommand(cmd string, ss *sim.CommonState, userTC
 	}
 	return vs.CanTransmitOnPrimary(ss, userTCW)
 }
+
+// tryAddFreq appends a manually-tuned row for freq if (a) freq matches at
+// least one controller in the scenario and (b) freq isn't already a row.
+// Returns true if the row was appended.
+func (vs *VoiceSwitchPane) tryAddFreq(freq av.Frequency, ss *sim.CommonState) bool {
+	for _, r := range vs.rows {
+		if r.Freq == freq {
+			return false
+		}
+	}
+	valid := false
+	for _, ctrl := range ss.Controllers {
+		if ctrl != nil && ctrl.Frequency == freq {
+			valid = true
+			break
+		}
+	}
+	if !valid {
+		return false
+	}
+	vs.rows = append(vs.rows, voiceSwitchRow{
+		Freq: freq, RX: true, TX: false, Owned: false, Guard: false,
+	})
+	return true
+}
+
+// removeFreq drops the row for freq, but only if the row is neither Owned
+// nor Guard. Returns true if a row was removed.
+func (vs *VoiceSwitchPane) removeFreq(freq av.Frequency) bool {
+	for i, r := range vs.rows {
+		if r.Freq == freq {
+			if r.Owned || r.Guard {
+				return false
+			}
+			vs.rows = append(vs.rows[:i], vs.rows[i+1:]...)
+			return true
+		}
+	}
+	return false
+}
