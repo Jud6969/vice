@@ -5,6 +5,8 @@
 package panes
 
 import (
+	"fmt"
+	"strconv"
 	"strings"
 
 	av "github.com/mmp/vice/aviation"
@@ -13,6 +15,8 @@ import (
 	"github.com/mmp/vice/platform"
 	"github.com/mmp/vice/renderer"
 	"github.com/mmp/vice/sim"
+
+	"github.com/AllenDang/cimgui-go/imgui"
 )
 
 // GuardFrequency is the standard 121.500 MHz emergency/guard frequency.
@@ -230,3 +234,123 @@ func (vs *VoiceSwitchPane) removeFreq(freq av.Frequency) bool {
 	}
 	return false
 }
+
+// DrawUI renders the per-pane settings (font size selector). Called from
+// the Settings dialog's collapsing header.
+func (vs *VoiceSwitchPane) DrawUI(p platform.Platform, config *platform.Config) {
+	id := renderer.FontIdentifier{Name: vs.font.Id.Name, Size: vs.FontSize}
+	if newFont, changed := renderer.DrawFontSizeSelector(&id); changed {
+		vs.FontSize = newFont.Size
+		vs.font = newFont
+	}
+}
+
+// DrawWindow renders the voice switch window. The pane's row list must be
+// kept current by Reconcile being called from the main loop each frame
+// (regardless of whether this window is shown).
+func (vs *VoiceSwitchPane) DrawWindow(show *bool, c *client.ControlClient,
+	p platform.Platform, unpinnedWindows map[string]struct{}, lg *log.Logger) {
+
+	if show != nil && !*show {
+		return
+	}
+
+	imgui.SetNextWindowSizeConstraints(imgui.Vec2{X: 240, Y: 160}, imgui.Vec2{X: 4096, Y: 4096})
+	imgui.BeginV("Voice Switch", show, 0)
+	DrawPinButton("Voice Switch", unpinnedWindows, p)
+	if vs.font != nil {
+		vs.font.ImguiPush()
+	}
+
+	// Sort rows: guard first, then others in original order.
+	displayOrder := make([]int, 0, len(vs.rows))
+	for i := range vs.rows {
+		if vs.rows[i].Guard {
+			displayOrder = append(displayOrder, i)
+		}
+	}
+	for i := range vs.rows {
+		if !vs.rows[i].Guard {
+			displayOrder = append(displayOrder, i)
+		}
+	}
+
+	var toRemove av.Frequency
+	for _, i := range displayOrder {
+		row := &vs.rows[i]
+		imgui.PushIDInt(int32(i))
+
+		imgui.Checkbox("RX", &row.RX)
+		imgui.SameLine()
+		imgui.Checkbox("TX", &row.TX)
+		imgui.SameLine()
+		imgui.Text(row.Freq.String())
+		if row.Guard {
+			imgui.SameLine()
+			imgui.Text("GUARD")
+		}
+
+		if imgui.IsItemHovered() {
+			vs.drawRowTooltip(row, c)
+		}
+
+		if !row.Owned && !row.Guard {
+			imgui.SameLine()
+			if imgui.SmallButton("x") {
+				toRemove = row.Freq
+			}
+		}
+
+		imgui.PopID()
+	}
+	if toRemove != 0 {
+		vs.removeFreq(toRemove)
+	}
+
+	imgui.Separator()
+	imgui.Text("Tune freq:")
+	imgui.SameLine()
+	imgui.SetNextItemWidth(80)
+	if imgui.InputTextWithHint("##addfreq", "121.500", &vs.addInput, imgui.InputTextFlagsEnterReturnsTrue, nil) {
+		vs.commitAddInput(c)
+	}
+
+	if vs.font != nil {
+		imgui.PopFont()
+	}
+	imgui.End()
+}
+
+func (vs *VoiceSwitchPane) drawRowTooltip(row *voiceSwitchRow, c *client.ControlClient) {
+	imgui.BeginTooltip()
+	if row.Guard {
+		imgui.Text("Emergency / guard frequency (121.500 MHz)")
+	} else if c != nil {
+		any := false
+		for pos, ctrl := range c.State.Controllers {
+			if ctrl != nil && ctrl.Frequency == row.Freq {
+				imgui.Text(fmt.Sprintf("%s — %s", pos, ctrl.RadioName))
+				any = true
+			}
+		}
+		if !any {
+			imgui.Text(row.Freq.String())
+		}
+	}
+	imgui.EndTooltip()
+}
+
+func (vs *VoiceSwitchPane) commitAddInput(c *client.ControlClient) {
+	defer func() { vs.addInput = "" }()
+	if c == nil {
+		return
+	}
+	parsed, err := strconv.ParseFloat(vs.addInput, 32)
+	if err != nil {
+		return
+	}
+	freq := av.NewFrequency(float32(parsed))
+	vs.tryAddFreq(freq, &c.State.CommonState)
+}
+
+var _ UIDrawer = (*VoiceSwitchPane)(nil)
