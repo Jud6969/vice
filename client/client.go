@@ -63,11 +63,6 @@ type ControlClient struct {
 	// to access directly.
 	State SimState
 
-	// CanTransmit, if non-nil, is consulted at the top of RunAircraftCommands.
-	// If it returns false, the RPC is silently dropped (no state change, no error
-	// to the caller). Wired by cmd/vice to call into the voice switch pane.
-	CanTransmit func(cmd string) bool
-
 	// ShouldHearPilotAudio, if non-nil, gates incoming pilot TTS playback.
 	// Returning false drops the audio synthesis silently (state on the server
 	// is unaffected; only the client-side audio playback is suppressed).

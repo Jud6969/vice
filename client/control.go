@@ -434,10 +434,6 @@ func (c *ControlClient) FlightPlanDirect(aircraft sim.ACID, fix string, callback
 
 func (c *ControlClient) RunAircraftCommands(req AircraftCommandRequest,
 	handleResult func(message string, remainingInput string)) {
-	if c.CanTransmit != nil && !c.CanTransmit(req.Commands) {
-		return
-	}
-
 	// Determine if TTS is enabled for this command
 	enableTTS := !*c.disableTTSPtr && req.Commands != "P" && req.Commands != "X"
 

@@ -447,6 +447,11 @@ func loadSavedSim(mgr *client.ConnectionManager, config *Config,
 		return nil, nil
 	}
 
+	// User's current preference always wins over the saved sim's frozen flag.
+	// Otherwise toggling Realistic in settings has no effect after a save/load
+	// cycle on a sim that was originally created in Conventional mode.
+	config.Sim.State.RealisticFrequencyManagement = config.RealisticFrequencyManagement
+
 	c, err := mgr.LoadLocalSim(config.Sim, config.ControllerInitials, lg)
 	if err != nil {
 		lg.Errorf("Error loading local sim: %v", err)
@@ -584,9 +589,6 @@ func runGUI(config *Config, configErr error, lg *log.Logger) error {
 			uiResetControlClient(c, plat, lg)
 			controlClient = c
 			if c != nil {
-				controlClient.CanTransmit = func(cmd string) bool {
-					return config.VoiceSwitchPane.AllowsCommand(cmd, &controlClient.State.CommonState, controlClient.State.UserTCW)
-				}
 				controlClient.ShouldHearPilotAudio = func(callsign av.ADSBCallsign) bool {
 					track, ok := controlClient.State.Tracks[callsign]
 					if !ok || track == nil || track.ControllerFrequency == "" {
@@ -634,9 +636,6 @@ func runGUI(config *Config, configErr error, lg *log.Logger) error {
 	if c, arp := loadSavedSim(mgr, config, plat, lg); c != nil {
 		controlClient = c
 		activeRadarPane = arp
-		controlClient.CanTransmit = func(cmd string) bool {
-			return config.VoiceSwitchPane.AllowsCommand(cmd, &controlClient.State.CommonState, controlClient.State.UserTCW)
-		}
 		controlClient.ShouldHearPilotAudio = func(callsign av.ADSBCallsign) bool {
 			track, ok := controlClient.State.Tracks[callsign]
 			if !ok || track == nil || track.ControllerFrequency == "" {
