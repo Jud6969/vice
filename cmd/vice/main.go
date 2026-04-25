@@ -566,6 +566,7 @@ func runGUI(config *Config, configErr error, lg *log.Logger) error {
 				activeRadarPane.ResetSim(c, plat, lg)
 				config.MessagesPane.ResetSim(c, plat, lg)
 				config.FlightStripPane.ResetSim(c, plat, lg)
+				config.VoiceSwitchPane.ResetSim(c, plat, lg)
 
 				// Apply waypoint commands if specified via command line (only for new clients)
 				if *waypointCommands != "" {
@@ -582,6 +583,11 @@ func runGUI(config *Config, configErr error, lg *log.Logger) error {
 			}
 			uiResetControlClient(c, plat, lg)
 			controlClient = c
+			if c != nil {
+				controlClient.CanTransmit = func(cmd string) bool {
+					return config.VoiceSwitchPane.AllowsCommand(cmd, &controlClient.State.CommonState, controlClient.State.UserTCW)
+				}
+			}
 		},
 		func(err error) {
 			switch err {
@@ -621,6 +627,9 @@ func runGUI(config *Config, configErr error, lg *log.Logger) error {
 	if c, arp := loadSavedSim(mgr, config, plat, lg); c != nil {
 		controlClient = c
 		activeRadarPane = arp
+		controlClient.CanTransmit = func(cmd string) bool {
+			return config.VoiceSwitchPane.AllowsCommand(cmd, &controlClient.State.CommonState, controlClient.State.UserTCW)
+		}
 	}
 
 	if *starsRandoms {
@@ -661,6 +670,10 @@ func runGUI(config *Config, configErr error, lg *log.Logger) error {
 
 		mgr.Update(eventStream, plat, lg)
 
+		if controlClient != nil {
+			config.VoiceSwitchPane.Reconcile(controlClient)
+		}
+
 		// Report whisper benchmark to server (only sends once, when benchmark done and server available)
 		client.ReportWhisperBenchmark(mgr.RemoteServer, lg)
 
@@ -683,6 +696,7 @@ func runGUI(config *Config, configErr error, lg *log.Logger) error {
 		config.ShowScenarioInfo = ui.showScenarioInfo
 		config.ShowMessages = ui.showMessages
 		config.ShowFlightStrips = ui.showFlightStrips
+		config.ShowVoiceSwitch = ui.showVoiceSwitch
 		config.ShowKeyboardRef = keyboardWindowVisible
 
 		// Inform imgui about input events from the user.
