@@ -31,6 +31,23 @@ const (
 	AddressingFormTypeTrailing3
 )
 
+const (
+	trafficSightingMaxAge         = 60 * time.Second
+	approachTrafficSightingMaxAge = 30 * time.Second
+)
+
+type SeenAircraft struct {
+	Callsign                    av.ADSBCallsign
+	SightedTime                 Time
+	OfferedToMaintainSeparation bool
+	MaintainingVisualSeparation bool
+}
+
+type UnseenTrafficCall struct {
+	Callsign   av.ADSBCallsign
+	CalledTime Time
+}
+
 type Aircraft struct {
 	// This is ADS-B callsign of the aircraft. Just because different the
 	// callsign in the flight plan can be different across multiple STARS
@@ -113,11 +130,11 @@ type Aircraft struct {
 	// Empty if the pilot did not report having ATIS.
 	ReportedATIS string
 
-	// Traffic advisory state
-	TrafficInSight          bool            // True if aircraft has reported traffic in sight
-	TrafficInSightCallsign  av.ADSBCallsign // Traffic the aircraft has reported in sight
-	TrafficInSightTime      Time            // When traffic was reported in sight
-	OfferedVisualSeparation bool            // True if the pilot volunteered to maintain visual separation
+	// SeenTraffic tracks traffic the pilot has reported in sight, ordered
+	// from oldest to newest.
+	SeenTraffic []SeenAircraft
+	// UnseenTrafficCall tracks the latest unresolved TRAFFIC advisory.
+	UnseenTrafficCall *UnseenTrafficCall
 
 	// FieldInSight is set when the pilot has confirmed the airport is in sight
 	// (either via AP command response or spontaneous report).
@@ -182,11 +199,69 @@ func (ac *Aircraft) GetRadarTrack(now Time) av.RadarTrack {
 	}
 }
 
+func (ac *Aircraft) clearUnseenTrafficCall() {
+	ac.UnseenTrafficCall = nil
+}
+
+func (ac *Aircraft) clearOfferedToMaintainSeparation() {
+	for i := range ac.SeenTraffic {
+		ac.SeenTraffic[i].OfferedToMaintainSeparation = false
+	}
+}
+
+// RecordSighting refreshes an existing sighting or appends a new one,
+// keeping the slice ordered from oldest to newest.
+func (ac *Aircraft) RecordSighting(traffic av.ADSBCallsign, now Time) *SeenAircraft {
+	for i := range ac.SeenTraffic {
+		if ac.SeenTraffic[i].Callsign != traffic {
+			continue
+		}
+
+		seen := ac.SeenTraffic[i]
+		seen.SightedTime = now
+		ac.SeenTraffic = slices.Delete(ac.SeenTraffic, i, i+1)
+		ac.SeenTraffic = append(ac.SeenTraffic, seen)
+		return &ac.SeenTraffic[len(ac.SeenTraffic)-1]
+	}
+
+	ac.SeenTraffic = append(ac.SeenTraffic, SeenAircraft{
+		Callsign:    traffic,
+		SightedTime: now,
+	})
+	return &ac.SeenTraffic[len(ac.SeenTraffic)-1]
+}
+
+func (ac *Aircraft) RecentSighting(now Time, maxAge time.Duration) *SeenAircraft {
+	for i := len(ac.SeenTraffic) - 1; i >= 0; i-- {
+		if now.Sub(ac.SeenTraffic[i].SightedTime) <= maxAge {
+			return &ac.SeenTraffic[i]
+		}
+	}
+	return nil
+}
+
+func (ac *Aircraft) RecentSightingOf(traffic av.ADSBCallsign, now Time, maxAge time.Duration) *SeenAircraft {
+	for i := len(ac.SeenTraffic) - 1; i >= 0; i-- {
+		seen := &ac.SeenTraffic[i]
+		if seen.Callsign == traffic && now.Sub(seen.SightedTime) <= maxAge {
+			return seen
+		}
+	}
+	return nil
+}
+
 // GetSTTFixes returns the raw fix names relevant for STT context.
-// This includes assigned waypoints within 75nm and approach waypoints if applicable.
-func (ac *Aircraft) GetSTTFixes() []string {
+// For STARS (terminal) sessions, assigned waypoints within 75nm are included with no count
+// limit. For ERAM (enroute) sessions, up to 5 assigned waypoints within 300nm are included.
+// Approach waypoints are included unconditionally when applicable.
+func (ac *Aircraft) GetSTTFixes(isERAM bool) []string {
 	var fixes []string
 	p := ac.Nav.FlightState.Position
+
+	maxDistNM, maxCount := float32(75), 0
+	if isERAM {
+		maxDistNM, maxCount = 300, 5
+	}
 
 	isValidFix := func(fix string) bool {
 		return len(fix) >= 3 && len(fix) <= 5 && fix[0] != '_'
@@ -201,12 +276,17 @@ func (ac *Aircraft) GetSTTFixes() []string {
 		fixes = append(fixes, ac.FlightPlan.DepartureAirport)
 	}
 
+	routeFixes := 0
 	for _, wp := range ac.Nav.AssignedWaypoints() {
-		if math.NMDistance2LL(p, wp.Location) > 75 && len(fixes) > 0 {
+		if math.NMDistance2LL(p, wp.Location) > maxDistNM && len(fixes) > 0 {
 			break
 		}
 		if isValidFix(wp.Fix) {
 			fixes = append(fixes, wp.Fix)
+			routeFixes++
+			if maxCount > 0 && routeFixes >= maxCount {
+				break
+			}
 		}
 	}
 

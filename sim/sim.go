@@ -974,6 +974,7 @@ func (s *Sim) updateState() {
 
 			updateResult := ac.Update(s.wxModel, s.State.SimTime, s.bravoAirspace, nil /* s.lg*/)
 			passedWaypoint := updateResult.PassedWaypoint
+			s.refreshSeenTraffic(ac)
 
 			if ac.Nav.Approach.RequestApproachClearance && ac.IsAssociated() {
 				ac.Nav.Approach.RequestApproachClearance = false
@@ -988,6 +989,15 @@ func (s *Sim) updateState() {
 			if ac.Nav.Approach.RequestVectors && ac.IsAssociated() {
 				ac.Nav.Approach.RequestVectors = false
 				s.enqueuePilotTransmission(callsign, TCP(ac.ControllerFrequency), PendingTransmissionRequestVectors)
+			}
+
+			if ac.Nav.Approach.RequestAltitude && ac.IsAssociated() {
+				ac.Nav.Approach.RequestAltitude = false
+				if ac.Nav.Altitude.Assigned == nil {
+					// An altitude may have been subsequently assigned (e.g., fly heading 120,
+					// maintain 5000); skip the transmission if so.
+					s.enqueuePilotTransmission(callsign, TCP(ac.ControllerFrequency), PendingTransmissionRequestAltitude)
+				}
 			}
 
 			if ac.FirstSeen.IsZero() && s.isRadarVisible(ac) {
