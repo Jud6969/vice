@@ -5,6 +5,8 @@
 package client
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	whisper "github.com/mmp/vice/autowhisper"
@@ -434,6 +436,24 @@ func (c *ControlClient) FlightPlanDirect(aircraft sim.ACID, fix string, callback
 
 func (c *ControlClient) RunAircraftCommands(req AircraftCommandRequest,
 	handleResult func(message string, remainingInput string)) {
+	// Voice switch TX gate: if the user has TX disabled for the aircraft's
+	// frequency, drop the command before dispatching. Surface a status
+	// message so the user understands why nothing happened. GUARD commands
+	// are exempt — they transmit on 121.500, gated only by the GUARD row.
+	isGuard := strings.HasPrefix(strings.TrimSpace(req.Commands), "GUARD")
+	if !isGuard && c.CanTransmitToAircraft != nil && req.Callsign != "" && !c.CanTransmitToAircraft(req.Callsign) {
+		if c.eventStream != nil {
+			c.eventStream.Post(sim.Event{
+				Type:        sim.StatusMessageEvent,
+				WrittenText: fmt.Sprintf("%s: TX disabled on this frequency", req.Callsign),
+			})
+		}
+		if handleResult != nil {
+			handleResult("TX disabled on this frequency", "")
+		}
+		return
+	}
+
 	// Determine if TTS is enabled for this command
 	enableTTS := !*c.disableTTSPtr && req.Commands != "P" && req.Commands != "X"
 
@@ -490,14 +510,31 @@ func (c *ControlClient) RunAircraftCommands(req AircraftCommandRequest,
 		}))
 }
 
+// PushMonitoredTCPs sends the current voice-switch RX'd TCP set to the
+// server out-of-band so processVirtualControllerContacts can keep callups
+// alive on monitored virtual frequencies even before the next contact poll.
+// Should be called from the main loop whenever the voice switch state changes.
+func (c *ControlClient) PushMonitoredTCPs(tcps []sim.TCP) {
+	c.addCall(makeRPCCall(c.client.Go(server.SetMonitoredTCPsRPC, &server.SetMonitoredTCPsArgs{
+		ControllerToken: c.controllerToken,
+		MonitoredTCPs:  tcps,
+	}, nil, nil), nil))
+}
+
 // RequestContactTransmission requests the next pending contact transmission from the server.
 // The result (if any) will be synthesized locally and enqueued for playback.
 func (c *ControlClient) RequestContactTransmission() {
 	c.transmissions.SetContactRequested(true)
 
+	var monitored []sim.TCP
+	if c.MonitoredTCPs != nil {
+		monitored = c.MonitoredTCPs()
+	}
+
 	var result server.RequestContactResult
 	c.addCall(makeRPCCall(c.client.Go(server.RequestContactTransmissionRPC, &server.RequestContactArgs{
 		ControllerToken: c.controllerToken,
+		MonitoredTCPs:   monitored,
 	}, &result, nil),
 		func(err error) {
 			if err != nil {

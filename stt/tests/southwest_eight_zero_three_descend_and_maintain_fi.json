@@ -15,7 +15,7 @@
   "processor": "GPU: NVIDIA GeForce RTX 4070 SUPER (11999MB)",
   "whisper_model": "ggml-medium.en-jlvatc-q5_0.bin",
   "callsign": "SWA803",
-  "command": "D50",
+  "command": "D50 FC124300:lone_star_approach",
   "stt_aircraft": {
     "B E thirty-three niner pahpah sierra": {
       "Callsign": "N19PS",

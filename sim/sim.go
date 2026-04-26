@@ -131,6 +131,13 @@ type Sim struct {
 	// drop all pilot readbacks. Used by Guard dispatch so aircraft apply the
 	// state change without emitting any verbal response.
 	suppressPilotTx bool
+
+	// IsTCPMonitored, if non-nil, reports whether any controller's voice
+	// switch currently has the given TCP's frequency RX-enabled. Used by
+	// processVirtualControllerContacts to keep callups alive on monitored
+	// virtual frequencies (the user's client will pop them via the normal
+	// contact-request path). Installed by the server when sessions register.
+	IsTCPMonitored func(tcp TCP) bool `json:"-"`
 }
 
 // LastSTTCommand stores the nav snapshot from before the most recent STT command
@@ -1170,6 +1177,29 @@ func (s *Sim) isVirtualController(pos ControlPosition) bool {
 	return !slices.Contains(humanPositions, TCP(pos))
 }
 
+// IsVirtualController reports whether tcp refers to a virtual (non-human)
+// controller. Exported for the server's contact-request path so it can
+// filter monitored TCPs to virtuals only.
+func (s *Sim) IsVirtualController(tcp TCP) bool {
+	return s.isVirtualController(ControlPosition(tcp))
+}
+
+// IsTCPUnoccupied reports whether no TCW currently owns this position.
+// An unoccupied position behaves like a virtual controller for callup
+// purposes: nobody will pop its PendingContacts unless the user is
+// monitoring its frequency.
+func (s *Sim) IsTCPUnoccupied(tcp TCP) bool {
+	for _, cons := range s.State.CurrentConsolidation {
+		if cons == nil {
+			continue
+		}
+		if slices.Contains(cons.OwnedPositions(), ControlPosition(tcp)) {
+			return false
+		}
+	}
+	return true
+}
+
 ///////////////////////////////////////////////////////////////////////////
 // Simulation
 
@@ -2201,9 +2231,15 @@ func (s *Sim) GetAircraftDisplayState(callsign av.ADSBCallsign) (AircraftDisplay
 	if ac, ok := s.Aircraft[callsign]; !ok {
 		return AircraftDisplayState{}, ErrNoMatchingFlight
 	} else {
+		freqLine := fmt.Sprintf("Frequency: %s", ac.ControllerFrequency)
+		if ac.ControllerFrequency == "" {
+			freqLine = "Frequency: (in transit)"
+		} else if ctrl, ok := s.State.Controllers[TCP(ac.ControllerFrequency)]; ok && ctrl != nil {
+			freqLine = fmt.Sprintf("Frequency: %s (%s)", ctrl.Frequency.String(), ac.ControllerFrequency)
+		}
 		return AircraftDisplayState{
 			Spew:        godump.DumpStr(ac),
-			FlightState: ac.NavSummary(s.wxModel, s.State.SimTime, s.lg),
+			FlightState: freqLine + "\n" + ac.NavSummary(s.wxModel, s.State.SimTime, s.lg),
 		}, nil
 	}
 }

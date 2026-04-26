@@ -40,7 +40,18 @@ func (p *Transcriber) DecodeTranscript(
 	transcript string,
 	controllerRadioName string,
 ) (string, error) {
-	return p.decodeInternal(aircraft, transcript, controllerRadioName, "")
+	return p.decodeInternal(aircraft, nil, transcript, controllerRadioName, "")
+}
+
+// DecodeTranscriptWithGuardContext is like DecodeTranscript but takes a
+// separate "guard aircraft" map (every tracked aircraft regardless of
+// frequency) used only by the guard pre-pass for callsign matching.
+func (p *Transcriber) DecodeTranscriptWithGuardContext(
+	aircraft, guardAircraft map[string]Aircraft,
+	transcript string,
+	controllerRadioName string,
+) (string, error) {
+	return p.decodeInternal(aircraft, guardAircraft, transcript, controllerRadioName, "")
 }
 
 // DecodeCommandsForCallsign parses commands from a transcript for a known callsign.
@@ -56,13 +67,15 @@ func (p *Transcriber) DecodeCommandsForCallsign(
 	transcript string,
 	callsign string,
 ) (string, error) {
-	return p.decodeInternal(aircraft, transcript, "", callsign)
+	return p.decodeInternal(aircraft, nil, transcript, "", callsign)
 }
 
 // decodeInternal is the shared implementation for DecodeTranscript and DecodeCommandsForCallsign.
 // If fallbackCallsign is non-empty, callsign matching is skipped and that callsign is used directly.
+// guardAircraft, if non-nil, supplies the callsign-match map for the guard
+// pre-pass; otherwise it falls back to the main aircraft map.
 func (p *Transcriber) decodeInternal(
-	aircraft map[string]Aircraft,
+	aircraft, guardAircraft map[string]Aircraft,
 	transcript string,
 	_ string, // controllerRadioName - currently unused
 	fallbackCallsign string,
@@ -108,7 +121,11 @@ func (p *Transcriber) decodeInternal(
 	// In a guard broadcast the callsign is embedded mid-sentence (after "on guard …"),
 	// so we search for it starting from just after the "guard" token.
 	if !isFallback && tokensContainGuard(tokens) {
-		result, handled := p.tryDecodeGuard(tokens, aircraft, transcript, start)
+		ga := guardAircraft
+		if ga == nil {
+			ga = aircraft
+		}
+		result, handled := p.tryDecodeGuard(tokens, ga, transcript, start)
 		if handled {
 			return result, nil
 		}
@@ -398,18 +415,38 @@ func (p *Transcriber) BuildAircraftContext(
 	state *sim.UserState,
 	userTCW sim.TCW,
 ) map[string]Aircraft {
+	return p.buildAircraftContext(state, userTCW, false)
+}
+
+// BuildGuardAircraftContext creates a context that includes ALL tracked
+// aircraft, regardless of which frequency they're tuned to. Used by the
+// guard pre-pass so the user can call up an aircraft on a different
+// controller's frequency via 121.500.
+func (p *Transcriber) BuildGuardAircraftContext(
+	state *sim.UserState,
+	userTCW sim.TCW,
+) map[string]Aircraft {
+	return p.buildAircraftContext(state, userTCW, true)
+}
+
+func (p *Transcriber) buildAircraftContext(
+	state *sim.UserState,
+	userTCW sim.TCW,
+	includeAll bool,
+) map[string]Aircraft {
 	acCtx := make(map[string]Aircraft)
 
 	for _, trk := range state.Tracks {
-		// Check if the aircraft is on the user's frequency
-		if !state.TCWControlsPosition(userTCW, trk.ControllerFrequency) {
+		// Filter by user's frequency unless includeAll is set (guard pre-pass).
+		if !includeAll && !state.TCWControlsPosition(userTCW, trk.ControllerFrequency) {
 			continue
 		}
 
 		sttAc := Aircraft{
-			Callsign:            string(trk.ADSBCallsign),
-			Altitude:            int(trk.TrueAltitude),
-			ControllerFrequency: string(trk.ControllerFrequency),
+			Callsign:                     string(trk.ADSBCallsign),
+			Altitude:                     int(trk.TrueAltitude),
+			ControllerFrequency:          string(trk.ControllerFrequency),
+			RealisticFrequencyManagement: state.RealisticFrequencyManagement,
 		}
 
 		// Add tracking controller and aircraft type from flight plan

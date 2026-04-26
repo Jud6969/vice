@@ -69,6 +69,18 @@ type ControlClient struct {
 	// Wired by cmd/vice to consult the voice switch RX state for the
 	// aircraft's current frequency.
 	ShouldHearPilotAudio func(callsign av.ADSBCallsign) bool
+
+	// CanTransmitToAircraft, if non-nil, gates outgoing controller commands.
+	// Returning false suppresses the RPC dispatch in RunAircraftCommands.
+	// Wired by cmd/vice to consult the voice switch TX state for the
+	// aircraft's current frequency.
+	CanTransmitToAircraft func(callsign av.ADSBCallsign) bool
+
+	// MonitoredTCPs, if non-nil, returns the TCPs whose frequencies the
+	// user's voice switch has RX-enabled. Sent with each contact-request
+	// poll so the server can also surface callups on virtual-controller
+	// frequencies the user is monitoring.
+	MonitoredTCPs func() []sim.TCP
 }
 
 // This is the client-side representation of a server (perhaps could be better-named...)

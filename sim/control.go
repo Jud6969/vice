@@ -809,7 +809,10 @@ func (s *Sim) ContactTrackingController(tcw TCW, acid ACID) (av.CommandIntent, e
 			return nil
 		},
 		func(tcw TCW, sfp *NASFlightPlan, ac *Aircraft) av.CommandIntent {
-			return s.contactController(s.State.PrimaryPositionForTCW(tcw), sfp, ac, sfp.TrackingController)
+			// fromTCP is the aircraft's current freq, not the user's primary,
+			// so the "already on" check correctly compares the aircraft's
+			// actual position against the destination.
+			return s.contactController(TCP(ac.ControllerFrequency), sfp, ac, sfp.TrackingController)
 		})
 }
 
@@ -2322,7 +2325,7 @@ func (s *Sim) ContactTower(tcw TCW, callsign av.ADSBCallsign, freq av.Frequency,
 			result, ok := ac.ContactTower(target, readbackFreq, positionOnly, s.lg)
 			if ok {
 				if target != nil {
-					ac.ControllerFrequency = ControlPosition(target.Callsign)
+					ac.ControllerFrequency = ControlPosition(target.Position)
 				} else {
 					ac.ControllerFrequency = "_TOWER"
 				}
@@ -2360,7 +2363,7 @@ func (s *Sim) FrequencyChange(tcw TCW, callsign av.ADSBCallsign, freq av.Frequen
 					return nil
 				},
 				func(tcw TCW, sfp *NASFlightPlan, ac *Aircraft) av.CommandIntent {
-					return s.contactController(s.State.PrimaryPositionForTCW(tcw), sfp, ac, sfp.TrackingController)
+					return s.contactController(TCP(ac.ControllerFrequency), sfp, ac, sfp.TrackingController)
 				})
 		}
 		s.enqueueUnknownFrequencyCallback(callsign, TCP(ac.ControllerFrequency), freq)
@@ -2386,7 +2389,19 @@ func (s *Sim) FrequencyChange(tcw TCW, callsign av.ADSBCallsign, freq av.Frequen
 				Frequency:    readbackFreq,
 				SameFacility: sameFacility,
 			}
-			ac.ControllerFrequency = ControlPosition(target.Callsign)
+			fromTCP := TCP(ac.ControllerFrequency)
+			// PendingContacts is keyed by Position (sector ID), not Callsign.
+			// Use target.Position so popReadyContact can match it against the
+			// user's owned positions / monitored TCPs.
+			toTCP := TCP(target.Position)
+			// Clear the current frequency and queue a callup on the
+			// destination so the pilot checks in (mirrors contactController).
+			// suppressPilotTx applies only to readbacks (enqueuePilotTransmission);
+			// the callup uses the contact queue, which Guard intentionally allows.
+			s.cancelPendingFrequencyChange(ac.ADSBCallsign)
+			ac.ControllerFrequency = ""
+			delete(s.DeferredContacts, ac.ADSBCallsign)
+			s.enqueueControllerContact(ac, toTCP, ControlPosition(fromTCP))
 			return intent
 		})
 }
@@ -2449,7 +2464,9 @@ func (s *Sim) Guard(tcw TCW, callsign av.ADSBCallsign, trailing string) (av.Comm
 		s.mu.Unlock(s.lg)
 		return nil, err
 	}
-	targetPos := ControlPosition(target.Callsign)
+	// State.Controllers and consolidations are keyed by Position (sector ID),
+	// not Callsign. Use Position so subsequent ownership lookups succeed.
+	targetPos := ControlPosition(target.Position)
 	if ac.ControllerFrequency == targetPos {
 		s.mu.Unlock(s.lg)
 		return nil, ErrAlreadyOnFrequency
@@ -3262,9 +3279,20 @@ func (s *Sim) popReadyContact(positions []TCP) *PendingContact {
 // controllers. Human controllers' contacts are processed by their clients
 // via PopReadyContact/GenerateContactTransmission, but virtual controllers
 // have no client, so we process their contacts here in the update loop.
+//
+// If IsTCPMonitored reports that a controller has RX'd this virtual TCP's
+// frequency, we leave the contact in place — the client's contact-request
+// poll will pop it via popReadyContact and the side-effect (departure climb)
+// fires inside GenerateContactTransmission.
 func (s *Sim) processVirtualControllerContacts() {
 	for tcp, contacts := range s.PendingContacts {
-		if !s.isVirtualController(tcp) {
+		// Process contacts for any TCP that no human currently owns:
+		// either explicitly virtual (sim controllers) or human-allocatable
+		// but unoccupied in this session.
+		if !s.isVirtualController(tcp) && !s.IsTCPUnoccupied(tcp) {
+			continue
+		}
+		if s.IsTCPMonitored != nil && s.IsTCPMonitored(tcp) {
 			continue
 		}
 
@@ -3899,6 +3927,11 @@ func (s *Sim) rollbackLastCommand() error {
 // regardless of any consolidation changes.
 // Returns the spoken text for TTS synthesis, including the callsign suffix.
 func (s *Sim) renderAndPostReadback(callsign av.ADSBCallsign, tcw TCW, intents []av.CommandIntent) string {
+	// Guard-bundled commands are broadcast on 121.500 to compel the pilot to
+	// act; they don't get a verbal readback.
+	if s.suppressPilotTx {
+		return ""
+	}
 	if rt := av.RenderIntents(intents, s.Rand); rt != nil {
 		s.postReadbackTransmission(callsign, *rt, tcw)
 		// MixUp transmissions already include the callsign in the message
@@ -4162,6 +4195,14 @@ func mergeFrequencyArgs(tokens []string) []string {
 			out = append(out, tokens[i]+tokens[i+1])
 			i++
 			continue
+		}
+		// GUARD must dispatch as one unit so the trailing command runs
+		// inside Guard's suppressPilotTx window. Without this, splitting
+		// "GUARD FC119200:approach" → ["GUARD","FC119200:approach"] runs the
+		// FC as a normal command and produces a readback.
+		if tokens[i] == "GUARD" && i+1 < len(tokens) {
+			out = append(out, strings.Join(tokens[i:], " "))
+			break
 		}
 		out = append(out, tokens[i])
 	}

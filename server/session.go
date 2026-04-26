@@ -36,7 +36,7 @@ func makeSimSession(name, scenarioGroup, scenario, password string, s *sim.Sim, 
 	if name != "" {
 		lg = lg.With(slog.String("sim_name", name))
 	}
-	return &simSession{
+	ss := &simSession{
 		name:               name,
 		scenarioGroup:      scenarioGroup,
 		scenario:           scenario,
@@ -45,6 +45,19 @@ func makeSimSession(name, scenarioGroup, scenario, password string, s *sim.Sim, 
 		lg:                 lg,
 		connectionsByToken: make(map[string]*connectionState),
 	}
+	// Allow processVirtualControllerContacts to keep callups alive on TCPs
+	// any connected controller has RX-enabled.
+	s.IsTCPMonitored = func(tcp sim.TCP) bool {
+		ss.mu.Lock(ss.lg)
+		defer ss.mu.Unlock(ss.lg)
+		for _, conn := range ss.connectionsByToken {
+			if conn.monitoredTCPs[tcp] {
+				return true
+			}
+		}
+		return false
+	}
+	return ss
 }
 
 func makeLocalSimSession(s *sim.Sim, lg *log.Logger) *simSession {
@@ -59,6 +72,10 @@ type connectionState struct {
 	lastUpdateCall      time.Time
 	warnedNoUpdateCalls bool
 	stateUpdateEventSub *sim.EventsSubscription
+
+	// monitoredTCPs is the set of TCPs the controller's voice switch has
+	// RX-enabled but does not own. Refreshed each RequestContact call.
+	monitoredTCPs map[sim.TCP]bool
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -268,13 +285,58 @@ func (ss *simSession) GetActiveTCWs() []sim.TCW {
 // RequestContact pops the next pending contact for the TCW, generates the transmission
 // with current aircraft state, and returns text + voice name for client-side synthesis.
 // Returns empty values if no contact is pending.
-func (ss *simSession) RequestContact(tcw sim.TCW) (text string, voiceName string, callsign av.ADSBCallsign, ty av.RadioTransmissionType) {
+// SetMonitoredTCPs records the latest monitored TCP set for a connection so
+// that processVirtualControllerContacts (running every tick) can keep
+// matching callups alive. Decoupled from RequestContact polling so the set
+// is established before any contact's ReadyTime arrives.
+func (ss *simSession) SetMonitoredTCPs(token string, monitoredTCPs []sim.TCP) {
+	ss.mu.Lock(ss.lg)
+	defer ss.mu.Unlock(ss.lg)
+	conn, ok := ss.connectionsByToken[token]
+	if !ok {
+		return
+	}
+	conn.monitoredTCPs = make(map[sim.TCP]bool, len(monitoredTCPs))
+	for _, tcp := range monitoredTCPs {
+		conn.monitoredTCPs[tcp] = true
+	}
+}
+
+func (ss *simSession) RequestContact(tcw sim.TCW, token string, monitoredTCPs []sim.TCP) (text string, voiceName string, callsign av.ADSBCallsign, ty av.RadioTransmissionType) {
 	// Get all positions controlled by this TCW (primary + consolidated secondaries)
 	cons := ss.sim.State.CurrentConsolidation[tcw]
 	if cons == nil {
 		return "", "", "", 0
 	}
 	positions := cons.OwnedPositions()
+
+	// Refresh this connection's monitored set and append any monitored
+	// virtual TCPs that aren't already owned. Human-owned TCPs are
+	// excluded because their owner pops their own contacts.
+	ss.mu.Lock(ss.lg)
+	if conn, ok := ss.connectionsByToken[token]; ok {
+		conn.monitoredTCPs = make(map[sim.TCP]bool, len(monitoredTCPs))
+		for _, tcp := range monitoredTCPs {
+			conn.monitoredTCPs[tcp] = true
+		}
+	}
+	ss.mu.Unlock(ss.lg)
+
+	owned := make(map[sim.TCP]bool, len(positions))
+	for _, p := range positions {
+		owned[p] = true
+	}
+	for _, tcp := range monitoredTCPs {
+		if owned[tcp] {
+			continue
+		}
+		// Include any unowned TCP — virtual controllers AND human-allocatable
+		// positions that no TCW currently holds. Both have callups that the
+		// monitoring user is the only candidate to pop.
+		if ss.sim.IsVirtualController(tcp) || ss.sim.IsTCPUnoccupied(tcp) {
+			positions = append(positions, tcp)
+		}
+	}
 
 	// Try pending contacts from any of the controlled positions
 	for {

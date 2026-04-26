@@ -15,7 +15,7 @@
   "processor": "GPU: NVIDIA GeForce RTX 5070 (11943MB)",
   "whisper_model": "ggml-medium.en-jlvatc-q5_0.bin",
   "callsign": "THY65G",
-  "command": "S160/U5 TO",
+  "command": "S160/U5 TO119100:kennedy",
   "stt_aircraft": {
     "Air Serbia six zero three heavy": {
       "Callsign": "ASL603",

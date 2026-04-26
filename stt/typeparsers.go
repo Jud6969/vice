@@ -977,6 +977,7 @@ func (p *standaloneAltitudeParser) parse(tokens []Token, pos int, ac Aircraft) (
 
 // frequencyParser matches a spoken frequency and returns it as av.Frequency
 // (kHz ×1000). Accepted shapes:
+//   - "N N N point N"     → e.g. 124 point 3   → Frequency(124300) (pad trailing zeros)
 //   - "N N N point N N"   → e.g. 127 point 75  → Frequency(127750)
 //   - "N N N point N N N" → e.g. 127 point 750 → Frequency(127750)
 //   - "N N N N N"         → 5 digits, trailing zero implicit → Frequency(127750)
@@ -998,17 +999,28 @@ func (p *frequencyParser) parse(tokens []Token, pos int, ac Aircraft) (any, int,
 		return nil, 0, ""
 	}
 	// Collect up to 10 consecutive digit/point tokens starting at pos.
+	// Tolerate up to one short "noise" word inserted by Whisper between digits
+	// and "point" (e.g., "one one nine air point two" → "119.200"). The noise
+	// must come after we've collected at least 3 digits (so we don't swallow
+	// real command keywords ahead of a frequency).
 	maxLookahead := min(10, len(tokens)-pos)
 	var digits []int
 	sawPoint := false
 	pointAt := -1
 	consumed := 0
+	noiseUsed := false
 	for i := 0; i < maxLookahead; i++ {
 		t := tokens[pos+i]
 		if t.Type == TokenWord && strings.ToLower(t.Text) == "point" && !sawPoint {
 			sawPoint = true
 			pointAt = len(digits)
 			consumed = i + 1
+			continue
+		}
+		if t.Type == TokenWord && !noiseUsed && len(digits) >= 3 && len(t.Text) <= 3 {
+			// Likely Whisper garble between freq digits and "point". Skip it
+			// and continue collecting; budget is one such word per parse.
+			noiseUsed = true
 			continue
 		}
 		if t.Type == TokenNumber && t.Value >= 0 {
@@ -1045,28 +1057,26 @@ func (p *frequencyParser) parse(tokens []Token, pos int, ac Aircraft) (any, int,
 		break
 	}
 
-	// Need at least 5 digits total.
-	if len(digits) < 5 || len(digits) > 6 {
-		return nil, 0, ""
-	}
-
-	// If "point" was present, enforce 3 digits before it and 2 or 3 after.
+	// With "point": require 3 digits before and 1-3 after (1 = trailing-zero pad,
+	// matching the "N N N N N" 5-digit shorthand). Without "point": 5 or 6 digits.
 	if sawPoint {
 		if pointAt != 3 {
 			return nil, 0, ""
 		}
 		after := len(digits) - 3
-		if after != 2 && after != 3 {
+		if after < 1 || after > 3 {
 			return nil, 0, ""
 		}
+	} else if len(digits) < 5 || len(digits) > 6 {
+		return nil, 0, ""
 	}
 
-	// Assemble kHz value. 5 digits → append trailing 0; 6 digits → as-is.
+	// Assemble kHz value, padding with trailing zeros to 6 digits.
 	khz := 0
 	for _, d := range digits {
 		khz = khz*10 + d
 	}
-	if len(digits) == 5 {
+	for i := len(digits); i < 6; i++ {
 		khz *= 10
 	}
 

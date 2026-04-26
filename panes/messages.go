@@ -167,11 +167,17 @@ func (mp *MessagesPane) processEvents(playSound bool, c *client.ControlClient, v
 				break
 			}
 
-			// Debug prefix: "AIRCRAFT: FREQ" so it's clear which aircraft is on
-			// which frequency. Falls back to the position string if there's no
-			// numeric frequency available (sentinel ToController, etc.).
+			// Debug prefix: "AIRCRAFT: FREQ" — show the AIRCRAFT'S current
+			// frequency, not the destination of this specific transmission.
+			// Falls back to event.ToController if the aircraft is in transit
+			// (ControllerFrequency == "") or not in the local track table.
 			freqLabel := string(event.ToController)
-			if ctrl, ok := c.State.Controllers[event.ToController]; ok && ctrl != nil && ctrl.Frequency != 0 {
+			pos := event.ToController
+			if track, ok := c.State.Tracks[event.ADSBCallsign]; ok && track != nil && track.ControllerFrequency != "" {
+				pos = track.ControllerFrequency
+				freqLabel = string(pos)
+			}
+			if ctrl, ok := c.State.Controllers[pos]; ok && ctrl != nil && ctrl.Frequency != 0 {
 				freqLabel = ctrl.Frequency.String()
 			}
 			prefix := string(event.ADSBCallsign) + ": " + freqLabel + " "

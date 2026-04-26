@@ -28,6 +28,13 @@ type VoiceSwitchPane struct {
 	rows     []voiceSwitchRow
 	seeded   bool
 	addInput string
+
+	// activeRXFreq is the frequency currently playing pilot audio (0 = none).
+	// activeTXFreqs are frequencies the user is currently transmitting on
+	// (set when PTT is held; cleared on release). Updated each frame from
+	// the main loop via SetActive.
+	activeRXFreq  av.Frequency
+	activeTXFreqs map[av.Frequency]bool
 }
 
 type voiceSwitchRow struct {
@@ -86,7 +93,7 @@ func (vs *VoiceSwitchPane) reconcile(ss *sim.CommonState, userTCW sim.TCW) {
 	}
 	if !hasGuard {
 		vs.rows = append(vs.rows, voiceSwitchRow{
-			Freq: GuardFrequency, RX: true, TX: true, Guard: true,
+			Freq: GuardFrequency, RX: true, TX: false, Guard: true,
 		})
 	}
 
@@ -160,6 +167,74 @@ func (vs *VoiceSwitchPane) AnyTXEnabled() bool {
 		}
 	}
 	return false
+}
+
+// IsTX reports whether the user is permitted to transmit on pos's frequency.
+// Mirrors IsRX: unresolved positions fall back to TCWControlsPosition; rows
+// with TX off block transmission even if the user controls the position.
+func (vs *VoiceSwitchPane) IsTX(pos sim.ControlPosition, ss *sim.CommonState, userTCW sim.TCW) bool {
+	ctrl, ok := ss.Controllers[pos]
+	if !ok || ctrl == nil || ctrl.Frequency == 0 {
+		return ss.TCWControlsPosition(userTCW, pos)
+	}
+	for _, r := range vs.rows {
+		if r.Freq == ctrl.Frequency {
+			return r.TX
+		}
+	}
+	return ss.TCWControlsPosition(userTCW, pos)
+}
+
+// MonitoredTCPs returns the TCPs whose frequencies are RX-enabled. Used by
+// the client to ask the server for callups on monitored virtual-controller
+// frequencies (so e.g. a handoff to a virtual sector still produces audible
+// pilot callups when the user has that sector's freq RX'd).
+func (vs *VoiceSwitchPane) MonitoredTCPs(ss *sim.CommonState) []sim.TCP {
+	if len(vs.rows) == 0 {
+		return nil
+	}
+	rxFreqs := make(map[av.Frequency]bool, len(vs.rows))
+	for _, r := range vs.rows {
+		if r.RX {
+			rxFreqs[r.Freq] = true
+		}
+	}
+	if len(rxFreqs) == 0 {
+		return nil
+	}
+	tcps := []sim.TCP{}
+	for tcp, ctrl := range ss.Controllers {
+		if ctrl != nil && rxFreqs[ctrl.Frequency] {
+			tcps = append(tcps, sim.TCP(tcp))
+		}
+	}
+	return tcps
+}
+
+// SetActive marks the currently-active RX/TX frequencies for orange-highlight
+// rendering. Called from the main loop each frame. rxFreq is the frequency
+// playing pilot audio (0 = none); txTransmitting is true when the user is
+// holding PTT — every TX-enabled row becomes "active" while held.
+func (vs *VoiceSwitchPane) SetActive(rxFreq av.Frequency, txTransmitting bool) {
+	vs.activeRXFreq = rxFreq
+	if txTransmitting {
+		if vs.activeTXFreqs == nil {
+			vs.activeTXFreqs = map[av.Frequency]bool{}
+		} else {
+			for k := range vs.activeTXFreqs {
+				delete(vs.activeTXFreqs, k)
+			}
+		}
+		for _, r := range vs.rows {
+			if r.TX {
+				vs.activeTXFreqs[r.Freq] = true
+			}
+		}
+	} else if len(vs.activeTXFreqs) > 0 {
+		for k := range vs.activeTXFreqs {
+			delete(vs.activeTXFreqs, k)
+		}
+	}
 }
 
 // tryAddFreq appends a manually-tuned row for freq if (a) freq matches at
@@ -240,22 +315,36 @@ func (vs *VoiceSwitchPane) DrawWindow(show *bool, c *client.ControlClient,
 	}
 
 	var toRemove av.Frequency
+	orange := imgui.Vec4{X: 1.0, Y: 0.55, Z: 0.0, W: 1.0}
 	for _, i := range displayOrder {
 		row := &vs.rows[i]
 		imgui.PushIDInt(int32(i))
 
+		rxActive := row.Freq == vs.activeRXFreq
+		txActive := vs.activeTXFreqs[row.Freq]
+
+		if rxActive {
+			imgui.PushStyleColorVec4(imgui.ColText, orange)
+		}
 		if imgui.Checkbox("RX", &row.RX) && !row.RX {
 			// Unchecking RX implies you can't transmit either.
 			row.TX = false
 		}
+		if rxActive {
+			imgui.PopStyleColor()
+		}
+
 		imgui.SameLine()
+		if txActive {
+			imgui.PushStyleColorVec4(imgui.ColText, orange)
+		}
 		imgui.Checkbox("TX", &row.TX)
+		if txActive {
+			imgui.PopStyleColor()
+		}
+
 		imgui.SameLine()
 		imgui.Text(row.Freq.String())
-		if row.Guard {
-			imgui.SameLine()
-			imgui.Text("GUARD")
-		}
 
 		if imgui.IsItemHovered() {
 			vs.drawRowTooltip(row, c)

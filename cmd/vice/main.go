@@ -17,6 +17,7 @@ import (
 	"os/signal"
 	"runtime"
 	"runtime/debug"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -596,6 +597,16 @@ func runGUI(config *Config, configErr error, lg *log.Logger) error {
 					}
 					return config.VoiceSwitchPane.IsRX(track.ControllerFrequency, &controlClient.State.CommonState, controlClient.State.UserTCW)
 				}
+				controlClient.CanTransmitToAircraft = func(callsign av.ADSBCallsign) bool {
+					track, ok := controlClient.State.Tracks[callsign]
+					if !ok || track == nil || track.ControllerFrequency == "" {
+						return true
+					}
+					return config.VoiceSwitchPane.IsTX(track.ControllerFrequency, &controlClient.State.CommonState, controlClient.State.UserTCW)
+				}
+				controlClient.MonitoredTCPs = func() []sim.TCP {
+					return config.VoiceSwitchPane.MonitoredTCPs(&controlClient.State.CommonState)
+				}
 			}
 		},
 		func(err error) {
@@ -643,6 +654,16 @@ func runGUI(config *Config, configErr error, lg *log.Logger) error {
 			}
 			return config.VoiceSwitchPane.IsRX(track.ControllerFrequency, &controlClient.State.CommonState, controlClient.State.UserTCW)
 		}
+		controlClient.CanTransmitToAircraft = func(callsign av.ADSBCallsign) bool {
+			track, ok := controlClient.State.Tracks[callsign]
+			if !ok || track == nil || track.ControllerFrequency == "" {
+				return true
+			}
+			return config.VoiceSwitchPane.IsTX(track.ControllerFrequency, &controlClient.State.CommonState, controlClient.State.UserTCW)
+		}
+		controlClient.MonitoredTCPs = func() []sim.TCP {
+			return config.VoiceSwitchPane.MonitoredTCPs(&controlClient.State.CommonState)
+		}
 	}
 
 	if *starsRandoms {
@@ -663,6 +684,7 @@ func runGUI(config *Config, configErr error, lg *log.Logger) error {
 
 	stats.startTime = time.Now()
 	ttsErrorShown := false
+	var lastMonitoredKey string
 
 	for {
 		plat.SetWindowTitle("vice: " + controlClient.Status())
@@ -685,6 +707,31 @@ func runGUI(config *Config, configErr error, lg *log.Logger) error {
 
 		if controlClient != nil {
 			config.VoiceSwitchPane.Reconcile(controlClient)
+
+			// Push monitored TCPs to the server proactively (decoupled from
+			// contact polling) so processVirtualControllerContacts can keep
+			// callups alive on RX'd virtual freqs.
+			tcps := config.VoiceSwitchPane.MonitoredTCPs(&controlClient.State.CommonState)
+			sort.Slice(tcps, func(i, j int) bool { return tcps[i] < tcps[j] })
+			key := strings.Join(util.MapSlice(tcps, func(t sim.TCP) string { return string(t) }), ",")
+			if key != lastMonitoredKey {
+				controlClient.PushMonitoredTCPs(tcps)
+				lastMonitoredKey = key
+			}
+
+			// Mark the frequency currently playing pilot audio as RX-active,
+			// and mark all TX-enabled rows as TX-active while PTT is held.
+			var rxFreq av.Frequency
+			if controlClient.RadioIsActive() {
+				if cs := controlClient.LastTTSCallsign(); cs != "" {
+					if track, ok := controlClient.State.Tracks[cs]; ok && track != nil && track.ControllerFrequency != "" {
+						if ctrl, ok := controlClient.State.Controllers[track.ControllerFrequency]; ok && ctrl != nil {
+							rxFreq = ctrl.Frequency
+						}
+					}
+				}
+			}
+			config.VoiceSwitchPane.SetActive(rxFreq, ui.pttRecording)
 		}
 
 		// Report whisper benchmark to server (only sends once, when benchmark done and server available)

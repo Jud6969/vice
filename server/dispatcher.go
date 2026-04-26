@@ -1043,6 +1043,28 @@ func (sd *dispatcher) ConfigureFDAM(args *FDAMConfigArgs, result *FDAMConfigResu
 
 type RequestContactArgs struct {
 	ControllerToken string
+	// MonitoredTCPs is the set of TCPs this controller's voice switch has
+	// RX-enabled but does not own (used to also pop callups on virtual
+	// controllers' frequencies). Owned positions are determined server-side.
+	MonitoredTCPs []sim.TCP
+}
+
+type SetMonitoredTCPsArgs struct {
+	ControllerToken string
+	MonitoredTCPs  []sim.TCP
+}
+
+const SetMonitoredTCPsRPC = "Sim.SetMonitoredTCPs"
+
+func (sd *dispatcher) SetMonitoredTCPs(args *SetMonitoredTCPsArgs, _ *struct{}) error {
+	defer sd.sm.lg.CatchAndReportCrash()
+
+	c := sd.sm.LookupController(args.ControllerToken)
+	if c == nil {
+		return ErrNoSimForControllerToken
+	}
+	c.session.SetMonitoredTCPs(args.ControllerToken, args.MonitoredTCPs)
+	return nil
 }
 
 type RequestContactResult struct {
@@ -1063,7 +1085,7 @@ func (sd *dispatcher) RequestContactTransmission(args *RequestContactArgs, resul
 	}
 
 	// Request a contact from the session - returns text and voice name for client-side synthesis
-	result.ContactText, result.ContactVoiceName, result.ContactCallsign, result.ContactType = c.session.RequestContact(c.tcw)
+	result.ContactText, result.ContactVoiceName, result.ContactCallsign, result.ContactType = c.session.RequestContact(c.tcw, args.ControllerToken, args.MonitoredTCPs)
 	return nil
 }
 

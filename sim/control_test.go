@@ -448,8 +448,8 @@ func makeFreqChangeSim(t *testing.T, realistic bool) (*Sim, av.ADSBCallsign) {
 		targetFreq av.Frequency  = 127750
 	)
 
-	fromCtrl := &av.Controller{Callsign: string(fromTCP), Frequency: 121500, Facility: facility}
-	targetCtrl := &av.Controller{Callsign: string(targetTCP), Frequency: targetFreq, Facility: facility}
+	fromCtrl := &av.Controller{Position: string(fromTCP), Callsign: string(fromTCP), Frequency: 121500, Facility: facility}
+	targetCtrl := &av.Controller{Position: string(targetTCP), Callsign: string(targetTCP), Frequency: targetFreq, Facility: facility}
 
 	const tcw TCW = "TCW1"
 	s := &Sim{
@@ -473,6 +473,7 @@ func makeFreqChangeSim(t *testing.T, realistic bool) (*Sim, av.ADSBCallsign) {
 		},
 		PrivilegedTCWs:  map[TCW]bool{tcw: true},
 		PendingContacts: map[TCP][]PendingContact{},
+		Rand:            rand.Make(),
 		lg:              lg,
 	}
 	return s, callsign
@@ -649,9 +650,9 @@ func makeGuardSim(t *testing.T) (*Sim, av.ADSBCallsign) {
 		redirectFreq av.Frequency  = 127750
 	)
 
-	userCtrl := &av.Controller{Callsign: string(userTCP), Frequency: 121500, Facility: facility}
-	redirectCtrl := &av.Controller{Callsign: string(redirectTCP), Frequency: redirectFreq, Facility: facility}
-	otherCtrl := &av.Controller{Callsign: string(otherTCP), Frequency: 135000, Facility: facility}
+	userCtrl := &av.Controller{Position: string(userTCP), Callsign: string(userTCP), Frequency: 121500, Facility: facility}
+	redirectCtrl := &av.Controller{Position: string(redirectTCP), Callsign: string(redirectTCP), Frequency: redirectFreq, Facility: facility}
+	otherCtrl := &av.Controller{Position: string(otherTCP), Callsign: string(otherTCP), Frequency: 135000, Facility: facility}
 
 	const tcw TCW = "TCW1"
 	s := &Sim{
@@ -734,7 +735,9 @@ func TestGuard_UnknownAircraft_Rejects(t *testing.T) {
 }
 
 // TestGuard_Redirect_SwitchesToTargetController verifies that a Guard with a
-// trailing "FC<digits>" redirects the aircraft to the specified controller.
+// trailing "FC<digits>" queues the aircraft to switch and call up on the
+// specified controller. ControllerFrequency is cleared during transit;
+// the destination is recorded in PendingFrequencyChanges.
 func TestGuard_Redirect_SwitchesToTargetController(t *testing.T) {
 	s, callsign := makeGuardSim(t)
 
@@ -747,9 +750,15 @@ func TestGuard_Redirect_SwitchesToTargetController(t *testing.T) {
 		t.Fatalf("Guard redirect: got intent %v, want nil", intent)
 	}
 
-	ac := s.Aircraft[callsign]
-	if ac.ControllerFrequency != ControlPosition("NYC_CTR") {
-		t.Errorf("Guard redirect: ControllerFrequency = %q, want %q", ac.ControllerFrequency, "NYC_CTR")
+	found := false
+	for _, pfc := range s.PendingFrequencyChanges {
+		if pfc.ADSBCallsign == callsign && pfc.TCP == "NYC_CTR" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Guard redirect: no PendingFrequencyChange to NYC_CTR (have %v)", s.PendingFrequencyChanges)
 	}
 }
 
