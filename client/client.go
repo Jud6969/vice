@@ -32,6 +32,7 @@ type ControlClient struct {
 
 	// Speech/TTS management
 	transmissions         *TransmissionManager
+	peerVoice             *PeerVoicePlayback
 	disableTTSPtr         *bool
 	sttActive             bool
 	LastTranscription     string
@@ -278,6 +279,10 @@ func (c *ControlClient) GetUpdates(eventStream *sim.EventStream, p platform.Plat
 	// Store eventStream for STT event posting and TTS latency tracking
 	c.eventStream = eventStream
 	c.transmissions.SetEventStream(eventStream)
+	if c.peerVoice == nil {
+		c.peerVoice = NewPeerVoicePlayback(c.lg)
+	}
+	c.peerVoice.SetEventStream(eventStream)
 
 	if c.updateCall != nil {
 		if c.updateCall.CheckFinished() {
@@ -347,6 +352,9 @@ func (c *ControlClient) GetUpdates(eventStream *sim.EventStream, p platform.Plat
 func (c *ControlClient) updateSpeech(p platform.Platform) {
 	// Delegate to TransmissionManager
 	c.transmissions.Update(p, c.State.Paused, c.sttActive)
+	if c.peerVoice != nil {
+		c.peerVoice.Update(p)
+	}
 }
 
 func (c *ControlClient) checkPendingRPCs(eventStream *sim.EventStream) ([]*pendingCall, error) {

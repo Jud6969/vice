@@ -9,6 +9,7 @@ import (
 
 	"github.com/mmp/vice/log"
 	"github.com/mmp/vice/server"
+	"github.com/mmp/vice/sim"
 )
 
 // PTTRelay coordinates a single controller's PTT-press lifecycle with the
@@ -112,4 +113,56 @@ func (r *PTTRelay) IsDenied() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.denied
+}
+
+// PlaybackSink is the subset of platform.Platform that PeerVoicePlayback
+// uses. Decoupled to keep client → platform light and the consumer
+// trivially mockable.
+type PlaybackSink interface {
+	AppendSpeechPCM(pcm []int16)
+}
+
+// PeerVoicePlayback drains PeerVoiceEvents from the client-local event
+// stream and pipes their PCM samples straight to the platform's speech
+// queue. There is no internal queue — AppendSpeechPCM does the buffering.
+type PeerVoicePlayback struct {
+	mu     sync.Mutex
+	events *sim.EventsSubscription
+	lg     *log.Logger
+}
+
+func NewPeerVoicePlayback(lg *log.Logger) *PeerVoicePlayback {
+	return &PeerVoicePlayback{lg: lg}
+}
+
+// SetEventStream binds the playback to the client-local event stream.
+// Called from ControlClient.GetUpdates when the stream is first known,
+// matching how TransmissionManager.SetEventStream works.
+func (p *PeerVoicePlayback) SetEventStream(es *sim.EventStream) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.events != nil {
+		p.events.Unsubscribe()
+	}
+	p.events = es.Subscribe()
+}
+
+// Update drains pending events and feeds PCM to the audio sink. Call once
+// per frame.
+func (p *PeerVoicePlayback) Update(plat PlaybackSink) {
+	p.mu.Lock()
+	sub := p.events
+	p.mu.Unlock()
+	if sub == nil {
+		return
+	}
+	for _, e := range sub.Get() {
+		if e.Type != sim.PeerVoiceEvent {
+			continue
+		}
+		if e.VoiceEnd || len(e.VoiceChunk) == 0 {
+			continue
+		}
+		plat.AppendSpeechPCM(e.VoiceChunk)
+	}
 }
