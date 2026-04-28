@@ -630,6 +630,28 @@ func (s *Sim) PrepareRadioTransmissionsForTCW(tcw TCW, events []Event) []Event {
 	return s.prepareRadioTransmissions(tcw, events)
 }
 
+// PrepareRadioTransmissionsForTCWAndToken processes events for delivery to
+// a specific connection (token) on a specific TCW. It does everything
+// PrepareRadioTransmissionsForTCW does, then filters out PeerVoiceEvents
+// that should not reach this listener (different TCW, or same talker).
+func (s *Sim) PrepareRadioTransmissionsForTCWAndToken(tcw TCW, token string, events []Event) []Event {
+	s.mu.Lock(s.lg)
+	defer s.mu.Unlock(s.lg)
+
+	events = s.prepareRadioTransmissions(tcw, events)
+
+	out := events[:0]
+	for _, e := range events {
+		if e.Type == PeerVoiceEvent {
+			if e.SourceTCW != tcw || e.SenderToken == token {
+				continue
+			}
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
 func (s *Sim) GetStateUpdate(tcw TCW) StateUpdate {
 	s.mu.Lock(s.lg)
 	defer s.mu.Unlock(s.lg)

@@ -12,6 +12,7 @@ func newSimWithVoice(t *testing.T) *Sim {
 	t.Helper()
 	s := &Sim{
 		eventStream: NewEventStream(nil),
+		State:       &CommonState{},
 	}
 	return s
 }
@@ -124,5 +125,32 @@ func TestStopPTT_PostsEndEvent(t *testing.T) {
 	}
 	if got[0].Type != PeerVoiceEvent || !got[0].VoiceEnd {
 		t.Errorf("event = %+v, want PeerVoiceEvent with VoiceEnd=true", got[0])
+	}
+}
+
+func TestPrepareRadioTransmissionsForTCW_FiltersPeerVoice(t *testing.T) {
+	s := newSimWithVoice(t)
+
+	events := []Event{
+		// Same TCW, different sender → keep
+		{Type: PeerVoiceEvent, SourceTCW: "TCW-1", SenderToken: "tok-A", VoiceChunk: []int16{1, 2, 3}},
+		// Same TCW, same sender → drop (don't echo to self)
+		{Type: PeerVoiceEvent, SourceTCW: "TCW-1", SenderToken: "tok-SELF", VoiceChunk: []int16{4, 5, 6}},
+		// Different TCW → drop
+		{Type: PeerVoiceEvent, SourceTCW: "TCW-2", SenderToken: "tok-B", VoiceChunk: []int16{7, 8, 9}},
+		// A non-voice event → keep, untouched
+		{Type: StatusMessageEvent, WrittenText: "hello"},
+	}
+
+	out := s.PrepareRadioTransmissionsForTCWAndToken("TCW-1", "tok-SELF", events)
+
+	if len(out) != 2 {
+		t.Fatalf("got %d events, want 2 (PeerVoice from tok-A on TCW-1 + StatusMessage)", len(out))
+	}
+	if out[0].Type != PeerVoiceEvent || out[0].SenderToken != "tok-A" {
+		t.Errorf("first kept event = %+v, want PeerVoice from tok-A", out[0])
+	}
+	if out[1].Type != StatusMessageEvent {
+		t.Errorf("second kept event = %+v, want StatusMessage", out[1])
 	}
 }
