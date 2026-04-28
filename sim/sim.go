@@ -78,6 +78,10 @@ type Sim struct {
 	// to a TCW. Not serialized to disk.
 	TCWDisplay map[TCW]*TCWDisplayState
 
+	// activeTalker tracks which controller token holds the PTT slot for
+	// each TCW. Guarded by s.mu. See sim/voice.go.
+	activeTalker map[TCW]string
+
 	ReportingPoints []av.ReportingPoint
 
 	FDAMSystemInhibited         bool
