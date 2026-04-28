@@ -1261,3 +1261,54 @@ func (sd *dispatcher) SetFused(args *SetFusedArgs, update *SimStateUpdate) error
 	*update = c.GetStateUpdate()
 	return nil
 }
+
+//////////////////////////////////////////////////////////////////////
+// PTT voice relay (same-TCW)
+
+const StartPTTRPC = "Sim.StartPTT"
+
+type StartPTTReply struct {
+	Granted bool
+}
+
+func (sd *dispatcher) StartPTT(token string, reply *StartPTTReply) error {
+	defer sd.sm.lg.CatchAndReportCrash()
+
+	c := sd.sm.LookupController(token)
+	if c == nil {
+		return ErrNoSimForControllerToken
+	}
+	reply.Granted = c.sim.StartPTT(c.tcw, token)
+	return nil
+}
+
+type StreamPTTAudioArgs struct {
+	ControllerToken string
+	Samples         []int16
+}
+
+const StreamPTTAudioRPC = "Sim.StreamPTTAudio"
+
+func (sd *dispatcher) StreamPTTAudio(args *StreamPTTAudioArgs, _ *struct{}) error {
+	defer sd.sm.lg.CatchAndReportCrash()
+
+	c := sd.sm.LookupController(args.ControllerToken)
+	if c == nil {
+		return ErrNoSimForControllerToken
+	}
+	c.sim.RecordPTTChunk(c.tcw, args.ControllerToken, args.Samples)
+	return nil
+}
+
+const StopPTTRPC = "Sim.StopPTT"
+
+func (sd *dispatcher) StopPTT(token string, _ *struct{}) error {
+	defer sd.sm.lg.CatchAndReportCrash()
+
+	c := sd.sm.LookupController(token)
+	if c == nil {
+		return ErrNoSimForControllerToken
+	}
+	c.sim.StopPTT(c.tcw, token)
+	return nil
+}
