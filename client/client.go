@@ -33,6 +33,7 @@ type ControlClient struct {
 	// Speech/TTS management
 	transmissions         *TransmissionManager
 	peerVoice             *PeerVoicePlayback
+	pttRelay              *PTTRelay
 	disableTTSPtr         *bool
 	sttActive             bool
 	LastTranscription     string
@@ -117,6 +118,17 @@ func (s *SessionStats) Update(ss *SimState) {
 
 func (c *ControlClient) RPCClient() *RPCClient {
 	return c.client
+}
+
+// PTTRelay returns the talker-side PTT relay, lazily constructing it on
+// first call. Safe to call before GetUpdates.
+func (c *ControlClient) PTTRelay() *PTTRelay {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.pttRelay == nil {
+		c.pttRelay = NewPTTRelay(c.client, c.controllerToken, c.lg)
+	}
+	return c.pttRelay
 }
 
 func (c *ControlClient) SetRemoteServer(remote *RPCClient) {
