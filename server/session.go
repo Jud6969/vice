@@ -197,7 +197,7 @@ func (ss *simSession) GetStateUpdate(token string) *SimStateUpdate {
 	return &SimStateUpdate{
 		StateUpdate: ss.sim.GetStateUpdate(tcw),
 		ActiveTCWs:  ss.GetActiveTCWs(),
-		Events:      ss.sim.PrepareRadioTransmissionsForTCW(tcw, eventSub.Get()),
+		Events:      ss.sim.PrepareRadioTransmissionsForTCWAndToken(tcw, token, eventSub.Get()),
 	}
 }
 
@@ -211,6 +211,7 @@ func (ss *simSession) MakeControllerContext(token string) *controllerContext {
 		return nil
 	}
 	return &controllerContext{
+		token:    token,
 		tcw:      conn.tcw,
 		initials: conn.initials,
 		sim:      ss.sim,

@@ -635,6 +635,7 @@ func (sm *SimManager) GetRunningSims(_ int, result *map[string]*RunningSim) erro
 // controllerContext holds the context for a connected controller, returned by LookupController.
 // A nil value indicates the controller was not found.
 type controllerContext struct {
+	token    string
 	tcw      sim.TCW
 	initials string
 	sim      *sim.Sim
@@ -709,7 +710,7 @@ func (c *controllerContext) GetStateUpdate() SimStateUpdate {
 	return SimStateUpdate{
 		StateUpdate: c.sim.GetStateUpdate(c.tcw),
 		ActiveTCWs:  c.session.GetActiveTCWs(),
-		Events:      c.sim.PrepareRadioTransmissionsForTCW(c.tcw, c.eventSub.Get()),
+		Events:      c.sim.PrepareRadioTransmissionsForTCWAndToken(c.tcw, c.token, c.eventSub.Get()),
 	}
 }
 
