@@ -101,6 +101,10 @@ func (ss *simSession) SignOff(token string) (signOffResult, bool) {
 		Initials: conn.initials,
 	}
 
+	// Free any PTT slot this connection may have been holding so the slot
+	// doesn't get stranded on disconnect.
+	ss.sim.ClearTalkerForToken(token)
+
 	// Unsubscribe from events before deleting
 	if conn.stateUpdateEventSub != nil {
 		conn.stateUpdateEventSub.Unsubscribe()

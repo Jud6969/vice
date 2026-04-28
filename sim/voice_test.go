@@ -128,6 +128,25 @@ func TestStopPTT_PostsEndEvent(t *testing.T) {
 	}
 }
 
+// Disconnect cleanup: ClearTalkerForToken should free the slot for any
+// other token (covers the case where a talker's connection drops while
+// they're still mid-transmission).
+func TestClearTalkerForToken_FreesSlotForOtherTokens(t *testing.T) {
+	s := newSimWithVoice(t)
+	s.StartPTT("TCW-1", "tok-A")
+
+	// Sanity: B is denied while A holds.
+	if s.StartPTT("TCW-1", "tok-B") {
+		t.Fatal("setup: B should be denied while A holds the slot")
+	}
+
+	s.ClearTalkerForToken("tok-A")
+
+	if !s.StartPTT("TCW-1", "tok-B") {
+		t.Fatal("after ClearTalkerForToken(tok-A), tok-B should be granted")
+	}
+}
+
 func TestPrepareRadioTransmissionsForTCW_FiltersPeerVoice(t *testing.T) {
 	s := newSimWithVoice(t)
 
