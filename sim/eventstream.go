@@ -260,6 +260,7 @@ const (
 	STTCommandEvent
 	FlightPlanDirectEvent
 	FDAMLeaderLineEvent
+	PeerVoiceEvent
 )
 
 func (t EventType) String() string {
@@ -268,7 +269,7 @@ func (t EventType) String() string {
 		"ServerBroadcastMessage", "GlobalMessage", "AcknowledgedPointOut", "RejectedPointOut",
 		"SetGlobalLeaderLine", "ForceQL", "TransferAccepted", "TransferRejected",
 		"RecalledPointOut", "FlightPlanAssociated", "FixCoordinates", "STTCommand", "FlightPlanDirect",
-		"FDAMLeaderLine"}[t]
+		"FDAMLeaderLine", "PeerVoice"}[t]
 }
 
 type Event struct {
@@ -287,6 +288,12 @@ type Event struct {
 	STTCommand            string
 	STTTimings            string
 	Route                 av.WaypointArray // For QU
+
+	// PeerVoiceEvent fields
+	SourceTCW   TCW     // TCW the chunk originated on
+	SenderToken string  // talker's token, used to filter self
+	VoiceChunk  []int16 // 16 kHz mono PCM, ~320 samples per chunk; nil when VoiceEnd
+	VoiceEnd    bool    // true on the final event of a transmission
 }
 
 func (e *Event) String() string {
@@ -320,6 +327,13 @@ func (e Event) LogValue() slog.Value {
 	}
 	if e.SpokenText != "" {
 		attrs = append(attrs, slog.String("spoken_text", e.SpokenText))
+	}
+	if e.Type == PeerVoiceEvent {
+		attrs = append(attrs,
+			slog.String("source_tcw", string(e.SourceTCW)),
+			slog.String("sender_token", e.SenderToken),
+			slog.Int("voice_samples", len(e.VoiceChunk)),
+			slog.Bool("voice_end", e.VoiceEnd))
 	}
 	return slog.GroupValue(attrs...)
 }
