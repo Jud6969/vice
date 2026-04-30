@@ -5,6 +5,8 @@
 package panes
 
 import (
+	"sort"
+
 	av "github.com/mmp/vice/aviation"
 	"github.com/mmp/vice/client"
 	"github.com/mmp/vice/log"
@@ -100,7 +102,7 @@ func (mp *MapPane) DrawWindow(show *bool, c *client.ControlClient, p platform.Pl
 	imgui.SetNextWindowSizeV(imgui.Vec2{X: 800, Y: 600}, imgui.CondFirstUseEver)
 	if imgui.BeginV("Map", show, imgui.WindowFlagsNone) {
 		DrawPinButton("Map", unpinnedWindows, p)
-		mp.drawToolbar()
+		mp.drawToolbar(c)
 		mp.drawCanvas(c, p, lg)
 	}
 	imgui.End()
@@ -108,12 +110,55 @@ func (mp *MapPane) DrawWindow(show *bool, c *client.ControlClient, p platform.Pl
 
 // drawToolbar renders the floating-window toolbar. Mirrors DrawUI's
 // checkboxes — both are intentional (different surfaces).
-func (mp *MapPane) drawToolbar() {
+func (mp *MapPane) drawToolbar(c *client.ControlClient) {
 	imgui.Checkbox("Basemap", &mp.ShowBasemap)
 	imgui.SameLine()
 	imgui.Checkbox("Boundary", &mp.ShowBoundaries)
 	imgui.SameLine()
 	imgui.Checkbox("Airports", &mp.ShowAirports)
+	imgui.SameLine()
+
+	labels := []string{"All", "Untracked", "Tracked", "My TCW", "Specific TCW"}
+	if mp.Filter < 0 || mp.Filter >= len(labels) {
+		mp.Filter = 0 // fallback to All
+	}
+	imgui.SetNextItemWidth(140)
+	if imgui.BeginCombo("Filter", labels[mp.Filter]) {
+		for i, l := range labels {
+			if imgui.SelectableBoolV(l, mp.Filter == i, 0, imgui.Vec2{}) {
+				mp.Filter = i
+			}
+		}
+		imgui.EndCombo()
+	}
+
+	if aircraftFilter(mp.Filter) == filterTCW && c != nil && c.Connected() {
+		imgui.SameLine()
+		current := mp.FilterTCWFilter
+		if current == "" {
+			current = "(pick)"
+		}
+		imgui.SetNextItemWidth(80)
+		if imgui.BeginCombo("TCW", current) {
+			seen := make(map[string]struct{})
+			for _, trk := range c.State.Tracks {
+				if trk.FlightPlan != nil && trk.FlightPlan.OwningTCW != "" {
+					seen[string(trk.FlightPlan.OwningTCW)] = struct{}{}
+				}
+			}
+			keys := make([]string, 0, len(seen))
+			for k := range seen {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, tcw := range keys {
+				if imgui.SelectableBoolV(tcw, tcw == mp.FilterTCWFilter, 0, imgui.Vec2{}) {
+					mp.FilterTCWFilter = tcw
+				}
+			}
+			imgui.EndCombo()
+		}
+	}
 }
 
 func (mp *MapPane) drawCanvas(c *client.ControlClient, p platform.Platform, lg *log.Logger) {
