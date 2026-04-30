@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/mmp/vice/math"
+	"github.com/mmp/vice/sim"
 )
 
 func TestCameraTransformsRoundtrip(t *testing.T) {
@@ -104,5 +105,42 @@ func TestParseGeoJSONLineStrings(t *testing.T) {
 	if pls[4].bounds.P0[0] != 30 || pls[4].bounds.P1[0] != 31 ||
 		pls[4].bounds.P0[1] != 30 || pls[4].bounds.P1[1] != 31 {
 		t.Fatalf("multipolygon bounds wrong: %+v", pls[4].bounds)
+	}
+}
+
+func TestFilterMatch(t *testing.T) {
+	mkTrack := func(owner string) *sim.Track {
+		if owner == "" {
+			return &sim.Track{}
+		}
+		return &sim.Track{FlightPlan: &sim.NASFlightPlan{OwningTCW: sim.TCW(owner)}}
+	}
+	cases := []struct {
+		name      string
+		trk       *sim.Track
+		filter    aircraftFilter
+		userTCW   sim.TCW
+		tcwFilter string
+		want      bool
+	}{
+		{"all-untracked", mkTrack(""), filterAll, "", "", true},
+		{"all-tracked", mkTrack("ABC"), filterAll, "", "", true},
+		{"untracked-pass", mkTrack(""), filterUntracked, "", "", true},
+		{"untracked-block", mkTrack("ABC"), filterUntracked, "", "", false},
+		{"tracked-pass", mkTrack("ABC"), filterTracked, "", "", true},
+		{"tracked-block", mkTrack(""), filterTracked, "", "", false},
+		{"mine-pass", mkTrack("USR"), filterMyTCW, "USR", "", true},
+		{"mine-block-other", mkTrack("OTH"), filterMyTCW, "USR", "", false},
+		{"mine-block-untracked", mkTrack(""), filterMyTCW, "USR", "", false},
+		{"specific-pass", mkTrack("XYZ"), filterTCW, "USR", "XYZ", true},
+		{"specific-block", mkTrack("ABC"), filterTCW, "USR", "XYZ", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := filterMatch(tc.trk, tc.filter, tc.userTCW, tc.tcwFilter)
+			if got != tc.want {
+				t.Fatalf("got %v want %v", got, tc.want)
+			}
+		})
 	}
 }
