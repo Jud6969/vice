@@ -97,15 +97,39 @@ func (mp *MapPane) DrawUI(p platform.Platform, config *platform.Config) {
 func (mp *MapPane) Draw(ctx *Context, cb *renderer.CommandBuffer) {
 }
 
-// DrawWindow draws the MapPane inside a floating imgui window.
+// DrawWindow draws the MapPane inside a floating imgui window. In replay
+// mode it occupies the full main viewport (under the menu bar) so it
+// stands in for the radar pane.
 func (mp *MapPane) DrawWindow(show *bool, src TrackSource, p platform.Platform,
 	unpinnedWindows map[string]struct{}, lg *log.Logger) {
 	if !*show {
 		return
 	}
-	imgui.SetNextWindowSizeV(imgui.Vec2{X: 800, Y: 600}, imgui.CondFirstUseEver)
-	if imgui.BeginV("Map", show, imgui.WindowFlagsNone) {
-		DrawPinButton("Map", unpinnedWindows, p)
+	_, replayMode := src.(*ReplayPlayer)
+	flags := imgui.WindowFlagsNone
+	if replayMode {
+		// Pin the window to fill the main viewport's work area (everything
+		// below the main menu bar). NoCollapse + NoMove + NoResize +
+		// NoBringToFrontOnFocus mirror a layout-managed pane.
+		mvp := imgui.MainViewport()
+		imgui.SetNextWindowPosV(mvp.WorkPos(), imgui.CondAlways, imgui.Vec2{})
+		imgui.SetNextWindowSizeV(mvp.WorkSize(), imgui.CondAlways)
+		// Keep the title bar visible so the close X is reachable; it's how
+		// the user exits replay mode.
+		flags = imgui.WindowFlagsNoMove | imgui.WindowFlagsNoResize |
+			imgui.WindowFlagsNoCollapse |
+			imgui.WindowFlagsNoBringToFrontOnFocus
+	} else {
+		imgui.SetNextWindowSizeV(imgui.Vec2{X: 800, Y: 600}, imgui.CondFirstUseEver)
+	}
+	title := "Map"
+	if replayMode {
+		title = "Map (replay)"
+	}
+	if imgui.BeginV(title, show, flags) {
+		if !replayMode {
+			DrawPinButton("Map", unpinnedWindows, p)
+		}
 		mp.drawToolbar(src)
 		// Replay mode: render the timeline bar above the canvas.
 		if rp, ok := src.(*ReplayPlayer); ok {

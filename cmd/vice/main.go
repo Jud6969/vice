@@ -728,9 +728,13 @@ func runGUI(config *Config, configErr error, lg *log.Logger) error {
 		plat.NewFrame()
 		imgui.NewFrame()
 
-		// Generate and render vice draw lists
-		stats.drawPanes = panes.DrawPanes(activeRadarPane, plat, render, controlClient,
-			ui.menuBarHeight, lg)
+		// Generate and render vice draw lists. In replay mode the MapPane
+		// fills the main viewport in place of the radar pane, so we skip
+		// the layout-pane render entirely.
+		if ui.replayPlayer == nil {
+			stats.drawPanes = panes.DrawPanes(activeRadarPane, plat, render, controlClient,
+				ui.menuBarHeight, lg)
+		}
 
 		// Execute fuzz commands if in fuzz testing mode
 		if fuzzController != nil && controlClient != nil {

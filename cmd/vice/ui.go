@@ -349,12 +349,18 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 		if ui.showMap {
 			applyPinWindowClass("Map", config, p)
 			var src panes.TrackSource
-			if ui.replayPlayer != nil {
+			wasReplay := ui.replayPlayer != nil
+			if wasReplay {
 				src = ui.replayPlayer
 			} else {
 				src = panes.LiveTrackSource{C: controlClient}
 			}
 			config.MapPane.DrawWindow(&ui.showMap, src, p, config.UnpinnedWindows, lg)
+			// Closing the Map window in replay mode exits replay (so the
+			// next time the Map opens it shows the live sim).
+			if wasReplay && !ui.showMap {
+				ui.replayPlayer = nil
+			}
 		}
 		if ui.showFlightStrips {
 			applyPinWindowClass("Flight Strips", config, p)
