@@ -684,6 +684,7 @@ func runGUI(config *Config, configErr error, lg *log.Logger) error {
 		config.ShowScenarioInfo = ui.showScenarioInfo
 		config.ShowMessages = ui.showMessages
 		config.ShowFlightStrips = ui.showFlightStrips
+		config.ShowMap = ui.showMap
 		config.ShowKeyboardRef = keyboardWindowVisible
 
 		// Inform imgui about input events from the user.
