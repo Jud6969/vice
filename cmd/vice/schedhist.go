@@ -59,7 +59,13 @@ func drawScheduleHistogram(sch *schedule.Schedule, month time.Month, day time.We
 	actualW := rectMax.X - rectMin.X
 	actualH := rectMax.Y - rectMin.Y
 
-	dl := imgui.ForegroundDrawListViewportPtr()
+	// Multi-viewport: the configuration modal may live in its own OS
+	// viewport (separate from the main vice window). Draw to the
+	// current WINDOW's viewport's foreground DL so bars render on the
+	// same surface as the modal — the unparametered ForegroundDrawListViewportPtr()
+	// returns the MAIN viewport, which would put bars on the main
+	// window underneath.
+	dl := imgui.ForegroundDrawListViewportPtrV(imgui.WindowViewport())
 
 	// Background.
 	dl.AddRectFilled(pos, rectMax,
