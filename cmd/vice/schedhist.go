@@ -14,10 +14,18 @@ import (
 	"github.com/AllenDang/cimgui-go/imgui"
 )
 
-// drawScheduleHistogram renders 96 stacked 15-min bars for the picked
-// (month, weekday) summed across `airports`. Bottom slice = arrivals,
-// top = departures. Hovering a bar shows a per-airport breakdown tooltip.
-// Returns the bucket index 0..95 the user clicked, or -1 if no click.
+// drawScheduleHistogram renders 96 15-min bars (combined arr+dep) for the
+// picked (month, weekday) summed across `airports`. Hovering a bar shows a
+// per-airport breakdown tooltip. Returns the bucket index 0..95 the user
+// clicked, or -1 if no click.
+//
+// Implementation note: we use imgui.PlotHistogramFloatPtrV (the built-in
+// imgui histogram) rather than custom draw-list calls. Earlier custom
+// approaches via WindowDrawList / ForegroundDrawListViewportPtr / etc.
+// failed to render bars inside vice's modal popup (probably a multi-
+// viewport draw-channel interaction). The built-in widget Just Works
+// across viewports and clip rects. We trade dual-color stacking for
+// reliability — the tooltip still breaks down arr vs dep per airport.
 func drawScheduleHistogram(sch *schedule.Schedule, month time.Month, day time.Weekday,
 	airports []string, width, height float32) int {
 
@@ -26,8 +34,8 @@ func drawScheduleHistogram(sch *schedule.Schedule, month time.Month, day time.We
 		return -1
 	}
 
-	// Build a synthetic date with the given month + weekday so AggregateForDay
-	// (which uses time.Date) walks the right buckets.
+	// Build a synthetic date with the given month + weekday so
+	// AggregateForDay walks the right buckets.
 	year := time.Now().Year()
 	candidate := time.Date(year, month, 1, 0, 0, 0, 0, time.UTC)
 	for candidate.Weekday() != day {
@@ -35,74 +43,39 @@ func drawScheduleHistogram(sch *schedule.Schedule, month time.Month, day time.We
 	}
 	totals := sch.AggregateForDay(candidate, airports)
 
+	// Build a flat float32 array of combined arr+dep totals for PlotHistogram.
+	values := make([]float32, 96)
 	var maxH float32
-	for _, b := range totals {
-		if h := b.Dep + b.Arr; h > maxH {
-			maxH = h
+	for i, b := range totals {
+		v := b.Arr + b.Dep
+		values[i] = v
+		if v > maxH {
+			maxH = v
 		}
 	}
 	if maxH < 1 {
 		maxH = 1
 	}
 
-	// Reserve the canvas first so imgui can auto-size the modal correctly.
-	// Then read the FINAL screen rect via GetItemRectMin/Max — this is the
-	// only reliable way to know where to draw, since CursorScreenPos
-	// captured before the InvisibleButton can be stale relative to the
-	// modal's post-layout position.
-	imgui.InvisibleButtonV("##schedhist", imgui.Vec2{X: width, Y: height}, imgui.ButtonFlagsMouseButtonLeft)
+	imgui.PlotHistogramFloatPtrV("##schedhist", &values[0], 96, 0, "",
+		0, maxH, imgui.Vec2{X: width, Y: height}, 4)
+
 	hovered := imgui.IsItemHovered()
 	clicked := hovered && imgui.IsMouseClickedBool(imgui.MouseButtonLeft)
 	rectMin := imgui.ItemRectMin()
 	rectMax := imgui.ItemRectMax()
-	pos := rectMin
-	actualW := rectMax.X - rectMin.X
-	actualH := rectMax.Y - rectMin.Y
-
-	// Multi-viewport: the configuration modal may live in its own OS
-	// viewport (separate from the main vice window). Draw to the
-	// current WINDOW's viewport's foreground DL so bars render on the
-	// same surface as the modal — the unparametered ForegroundDrawListViewportPtr()
-	// returns the MAIN viewport, which would put bars on the main
-	// window underneath.
-	dl := imgui.ForegroundDrawListViewportPtrV(imgui.WindowViewport())
-
-	// Background.
-	dl.AddRectFilled(pos, rectMax,
-		imgui.ColorU32Vec4(imgui.Vec4{X: 0.10, Y: 0.10, Z: 0.12, W: 1}))
-
-	depColor := imgui.ColorU32Vec4(imgui.Vec4{X: 0.95, Y: 0.65, Z: 0.30, W: 1}) // departures = orange
-	arrColor := imgui.ColorU32Vec4(imgui.Vec4{X: 0.30, Y: 0.65, Z: 0.95, W: 1}) // arrivals = blue
-
-	barW := actualW / 96.0
-
-	for i, b := range totals {
-		x0 := pos.X + float32(i)*barW
-		x1 := x0 + barW - 1
-		// Arrivals: stacked at the bottom.
-		hArr := actualH * (b.Arr / maxH)
-		hDep := actualH * (b.Dep / maxH)
-		dl.AddRectFilled(
-			imgui.Vec2{X: x0, Y: pos.Y + actualH - hArr},
-			imgui.Vec2{X: x1, Y: pos.Y + actualH},
-			arrColor)
-		dl.AddRectFilled(
-			imgui.Vec2{X: x0, Y: pos.Y + actualH - hArr - hDep},
-			imgui.Vec2{X: x1, Y: pos.Y + actualH - hArr},
-			depColor)
-	}
 
 	mouse := imgui.MousePos()
+	barW := (rectMax.X - rectMin.X) / 96.0
 	hoverIdx := -1
-	if hovered {
-		hoverIdx = int((mouse.X - pos.X) / barW)
+	if hovered && barW > 0 {
+		hoverIdx = int((mouse.X - rectMin.X) / barW)
 		if hoverIdx < 0 || hoverIdx >= 96 {
 			hoverIdx = -1
 		}
 	}
 
 	if hoverIdx >= 0 {
-		// Tooltip: bucket label + per-airport breakdown.
 		bucketTime := time.Date(candidate.Year(), candidate.Month(), candidate.Day(),
 			hoverIdx/4, (hoverIdx%4)*15, 0, 0, time.UTC)
 		var sb strings.Builder
