@@ -93,27 +93,31 @@ Per frame:
 
 ### Coordinate system
 
-`MapPane` uses its own simple equirectangular projection rather than reusing
-`radar.ScopeTransformations`, because:
+`MapPane` reuses `radar.GetScopeTransformations` (in `radar/tools.go`) for its
+projection. It already provides `WindowFromLatLongP` (lat-lon → screen),
+`LatLongFromWindowP` (screen → lat-lon), and `LoadLatLongViewingMatrices`
+(GL viewing matrices for direct lat-lon vertex submission). It is the same
+pipeline STARS uses, so we get pixel-perfect parity with the rest of the app.
 
-- `ScopeTransformations` is parameterized for STARS-style window coords with
-  magnetic variation, nm-per-longitude, and a center anchored to facility
-  origin. It works, but the API is wider than we need and assumes a single
-  STARS reference frame.
-- A standalone equirectangular projection (lon→x, lat→y, scaled by
-  `cos(centerLat)` for x) is ~30 lines and is what every web map (including
-  vatsim-radar) uses at this zoom range.
-
-Camera state in `MapPane`:
+The map runs north-up (rotation = 0, magnetic variation = 0 for the projection
+call — a true map, not a STARS scope rotated to the facility's runway
+heading), with center and range driven by the camera:
 
 ```go
 type camera struct {
-    center [2]float32 // lon, lat
-    nmPerPixel float32
+    center  math.Point2LL // lon, lat
+    rangeNM float32       // half-width of the visible area in NM
 }
-func (c *camera) ll2screen(p math.Point2LL, paneExtent math.Extent2D) [2]float32
-func (c *camera) screen2ll([2]float32, paneExtent math.Extent2D) math.Point2LL
+
+func (c *camera) transforms(paneExtent math.Extent2D, nmPerLongitude float32) radar.ScopeTransformations {
+    return radar.GetScopeTransformations(paneExtent, 0, nmPerLongitude, c.center, c.rangeNM, 0)
+}
 ```
+
+Pan: drag delta in window pixels → convert to lat/lon delta via
+`LatLongFromWindowV` → subtract from camera center.
+Zoom: scroll wheel → multiply `rangeNM` by 0.9 (zoom in) or 1.1 (zoom out),
+clamped to `[0.1, 1000]` NM.
 
 ### Filter UI
 
