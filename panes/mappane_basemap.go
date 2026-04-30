@@ -149,10 +149,10 @@ func (mp *MapPane) drawBasemap(cam camera, canvasOrigin, canvasSize [2]float32, 
 
 	color := imgui.ColorU32Vec4(imgui.Vec4{X: 0.30, Y: 0.36, Z: 0.42, W: 1})
 
-	// Reuse a per-call buffer to avoid allocating per polyline; basemap polylines
-	// are drawn many times per frame.
-	var screenPts []imgui.Vec2
-
+	// AddLine per segment rather than AddPolyline per polyline: the Natural
+	// Earth admin-0 data contains rings with 9000+ points (e.g. Russia
+	// coastline), which crashes cimgui-go's AddPolyline rasterizer when
+	// the projected coordinates span very large screen distances.
 	for _, pl := range lines {
 		if !math.Overlaps(view, pl.bounds) {
 			continue
@@ -160,12 +160,15 @@ func (mp *MapPane) drawBasemap(cam camera, canvasOrigin, canvasSize [2]float32, 
 		if len(pl.pts) < 2 {
 			continue
 		}
-		screenPts = screenPts[:0]
-		for _, p := range pl.pts {
-			s := cam.llToScreen(p, canvasOrigin, canvasSize, nmPerLongitude)
-			screenPts = append(screenPts, imgui.Vec2{X: s[0], Y: s[1]})
+		prev := cam.llToScreen(pl.pts[0], canvasOrigin, canvasSize, nmPerLongitude)
+		for i := 1; i < len(pl.pts); i++ {
+			cur := cam.llToScreen(pl.pts[i], canvasOrigin, canvasSize, nmPerLongitude)
+			mp.canvasDrawList.AddLine(
+				imgui.Vec2{X: prev[0], Y: prev[1]},
+				imgui.Vec2{X: cur[0], Y: cur[1]},
+				color)
+			prev = cur
 		}
-		mp.canvasDrawList.AddPolyline(&screenPts[0], int32(len(screenPts)), color, imgui.DrawFlagsNone, 1.0)
 	}
 }
 
