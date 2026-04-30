@@ -7,25 +7,30 @@ package schedule
 import (
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
-	"path/filepath"
+	"path"
 	"strconv"
 
 	"github.com/mmp/vice/log"
 )
 
-// LoadARTCC reads dir/schedules.json plus the referenced per-airport CSVs and
-// returns the loaded Schedule. Returns (nil, nil) when schedules.json is
-// absent (the ARTCC simply doesn't have schedule data — that's fine).
-// Per-row CSV errors and per-airport CSV-missing errors are logged and the
-// offending entry is skipped; only manifest-level parse errors fail loudly.
+// LoadARTCC reads dir/schedules.json from the local filesystem. Wrapper
+// around LoadARTCCFromFS for tests and local-disk callers.
 func LoadARTCC(dir string, lg *log.Logger) (*Schedule, error) {
-	manifestPath := filepath.Join(dir, "schedules.json")
-	mb, err := os.ReadFile(manifestPath)
+	return LoadARTCCFromFS(os.DirFS(dir), ".", lg)
+}
+
+// LoadARTCCFromFS is like LoadARTCC but reads from an arbitrary fs.FS
+// rooted at dir. Returns (nil, nil) when schedules.json is absent.
+func LoadARTCCFromFS(fsys fs.FS, dir string, lg *log.Logger) (*Schedule, error) {
+	manifestPath := path.Join(dir, "schedules.json")
+	mb, err := fs.ReadFile(fsys, manifestPath)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("read %q: %w", manifestPath, err)
@@ -37,8 +42,8 @@ func LoadARTCC(dir string, lg *log.Logger) (*Schedule, error) {
 
 	out := &Schedule{Airports: make(map[string]*AirportSchedule)}
 	for icao, am := range m.Airports {
-		csvPath := filepath.Join(dir, am.CSV)
-		buckets, err := loadAirportCSV(csvPath)
+		csvPath := path.Join(dir, am.CSV)
+		buckets, err := loadAirportCSVFromFS(fsys, csvPath)
 		if err != nil {
 			if lg != nil {
 				lg.Warnf("schedule: %s: %v (skipping airport)", icao, err)
@@ -64,18 +69,20 @@ func LoadARTCC(dir string, lg *log.Logger) (*Schedule, error) {
 	return out, nil
 }
 
-var validDays = map[string]bool{
-	"MON": true, "TUE": true, "WED": true, "THU": true,
-	"FRI": true, "SAT": true, "SUN": true,
-}
-
-func loadAirportCSV(path string) (map[string]Bucket, error) {
-	f, err := os.Open(path)
+// loadAirportCSVFromFS is loadAirportCSV for an fs.FS.
+func loadAirportCSVFromFS(fsys fs.FS, p string) (map[string]Bucket, error) {
+	f, err := fsys.Open(p)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	r := csv.NewReader(f)
+	return readAirportCSV(f)
+}
+
+// readAirportCSV does the actual CSV -> map[bucketKey]Bucket parsing,
+// shared by both loaders.
+func readAirportCSV(rd io.Reader) (map[string]Bucket, error) {
+	r := csv.NewReader(rd)
 	r.FieldsPerRecord = -1 // tolerate trailing-comma rows
 	header, err := r.Read()
 	if err != nil {
@@ -119,6 +126,11 @@ func loadAirportCSV(path string) (map[string]Bucket, error) {
 		out[day+":"+bucket] = Bucket{Dep: float32(dep), Arr: float32(arr)}
 	}
 	return out, nil
+}
+
+var validDays = map[string]bool{
+	"MON": true, "TUE": true, "WED": true, "THU": true,
+	"FRI": true, "SAT": true, "SUN": true,
 }
 
 // validBucketStr accepts only "HH:MM" with MM in {00,15,30,45} and HH in

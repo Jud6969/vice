@@ -25,6 +25,7 @@ import (
 	"github.com/mmp/vice/renderer"
 	"github.com/mmp/vice/server"
 	"github.com/mmp/vice/sim"
+	"github.com/mmp/vice/sim/schedule"
 	"github.com/mmp/vice/util"
 	"github.com/mmp/vice/wx"
 
@@ -72,6 +73,20 @@ type NewSimConfiguration struct {
 	availableWXIntervals []util.TimeInterval
 
 	savedVFRDepartureRateScale float32
+
+	// Schedule is the loaded ARTCC schedule for the current facility (nil if
+	// the ARTCC has no schedules.json or the file failed to load).
+	Schedule *schedule.Schedule
+
+	// UseSchedule is the user's checkbox state. Only meaningful when
+	// Schedule != nil and at least one of the scenario's airports is in it.
+	UseSchedule bool
+
+	// SchedulePicked* hold the (month, day-of-week, time-of-day) the user
+	// chose. Used to compute StartTime when the sim launches.
+	SchedulePickedMonth   time.Month
+	SchedulePickedDay     time.Weekday
+	SchedulePickedMinutes int // minutes-of-day, 0..1425 in 15-min steps
 }
 
 // loadEmergencies loads all emergency types from the emergencies.json resource file.
@@ -176,6 +191,13 @@ func MakeNewSimConfiguration(mgr *client.ConnectionManager, defaultFacility *str
 
 	c.SetFacility(*defaultFacility)
 
+	// Default the picker fields to "now" rounded to nearest 15 min.
+	now := time.Now()
+	c.SchedulePickedMonth = now.Month()
+	c.SchedulePickedDay = now.Weekday()
+	mins := now.Hour()*60 + now.Minute()
+	c.SchedulePickedMinutes = (mins / 15) * 15
+
 	return c
 }
 
@@ -195,6 +217,7 @@ func (c *NewSimConfiguration) SetFacility(name string) {
 	c.GroupName, scenarioCatalog = util.FirstSortedMapEntry(c.selectedFacilityCatalogs)
 
 	c.SetScenario(c.GroupName, scenarioCatalog.DefaultScenario)
+	c.loadSchedule(c.lg)
 }
 
 func (c *NewSimConfiguration) SetScenario(groupName, scenarioName string) {
@@ -428,6 +451,46 @@ func getARTCCForFacility(facility string, catalog *server.ScenarioCatalog) strin
 		return atctInfo.ARTCC
 	}
 	return facility
+}
+
+// scheduleCache holds at most one *Schedule per ARTCC directory name.
+var scheduleCache = map[string]*schedule.Schedule{}
+
+// loadSchedule sets c.Schedule by loading the per-ARTCC schedules.json
+// from the resource FS. Caches results on the package level so flipping
+// between scenarios doesn't re-read the same files.
+func (c *NewSimConfiguration) loadSchedule(lg *log.Logger) {
+	c.Schedule = nil
+	artcc := c.scenarioARTCC()
+	if artcc == "" {
+		return
+	}
+	if cached, ok := scheduleCache[artcc]; ok {
+		c.Schedule = cached
+		return
+	}
+	dir := "configurations/" + artcc
+	sch, err := schedule.LoadARTCCFromFS(util.GetResourcesFS(), dir, lg)
+	if err != nil && lg != nil {
+		lg.Warnf("schedule: load %s: %v", artcc, err)
+	}
+	scheduleCache[artcc] = sch // may be nil
+	c.Schedule = sch
+}
+
+// scenarioARTCC returns the ARTCC directory name for the currently-
+// selected scenario. Returns "" if the selection isn't valid.
+func (c *NewSimConfiguration) scenarioARTCC() string {
+	if c.Facility == "" {
+		return ""
+	}
+	// Use the first catalog entry for the current facility to get the ARTCC.
+	var catalog *server.ScenarioCatalog
+	for _, cat := range c.selectedFacilityCatalogs {
+		catalog = cat
+		break
+	}
+	return getARTCCForFacility(c.Facility, catalog)
 }
 
 // trimFacilityName removes common suffixes from facility names for cleaner display.
