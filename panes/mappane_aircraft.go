@@ -70,6 +70,11 @@ func (mp *MapPane) drawAircraft(c *client.ControlClient, cam camera, canvasOrigi
 		if cs == mp.selectedCS {
 			ring := imgui.ColorU32Vec4(imgui.Vec4{X: 0.55, Y: 0.85, Z: 1.0, W: 1.0})
 			mp.canvasDrawList.AddCircle(imgui.Vec2{X: s[0], Y: s[1]}, 11, ring)
+		} else if cs == mp.hoveredCS {
+			// Yellow halo on hover (separate from the cyan selection ring so
+			// the user can see both the current and the prospective selection).
+			ring := imgui.ColorU32Vec4(imgui.Vec4{X: 1.0, Y: 0.85, Z: 0.30, W: 0.95})
+			mp.canvasDrawList.AddCircle(imgui.Vec2{X: s[0], Y: s[1]}, 11, ring)
 		}
 
 		// Offset 9px right (1px past the triangle nose at +8) and 7px up,
@@ -77,6 +82,34 @@ func (mp *MapPane) drawAircraft(c *client.ControlClient, cam camera, canvasOrigi
 		// Callsign label
 		labelPos := imgui.Vec2{X: s[0] + 9, Y: s[1] - 7}
 		mp.canvasDrawList.AddTextVec2(labelPos, colU32, string(cs))
+	}
+}
+
+// findHoveredAircraft updates mp.hoveredCS to the closest visible aircraft
+// within aircraftHitRadiusPx of the cursor, or "" if nothing is close. Must be
+// called after the camera has been finalized for the frame; the canvasHovered
+// flag short-circuits when the cursor isn't over the canvas.
+func (mp *MapPane) findHoveredAircraft(c *client.ControlClient, cam camera, canvasOrigin, canvasSize [2]float32, nmPerLongitude float32, canvasHovered bool) {
+	mp.hoveredCS = ""
+	if c == nil || !c.Connected() || !canvasHovered {
+		return
+	}
+	mouse := imgui.MousePos()
+	mpos := [2]float32{mouse.X, mouse.Y}
+
+	bestD := float32(aircraftHitRadiusPx * aircraftHitRadiusPx)
+	for cs, trk := range c.State.Tracks {
+		if !filterMatch(trk, aircraftFilter(mp.Filter), c.State.UserTCW, mp.FilterTCWFilter) {
+			continue
+		}
+		s := cam.llToScreen(trk.Location, canvasOrigin, canvasSize, nmPerLongitude)
+		dx := s[0] - mpos[0]
+		dy := s[1] - mpos[1]
+		d := dx*dx + dy*dy
+		if d < bestD {
+			bestD = d
+			mp.hoveredCS = cs
+		}
 	}
 }
 

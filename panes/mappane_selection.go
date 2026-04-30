@@ -7,7 +7,6 @@ package panes
 import (
 	"fmt"
 	gomath "math"
-	"time"
 
 	"github.com/AllenDang/cimgui-go/imgui"
 	av "github.com/mmp/vice/aviation"
@@ -55,7 +54,10 @@ func (mp *MapPane) handleSelection(c *client.ControlClient, cam camera, canvasOr
 	mp.selectedCS = hit // empty if no hit
 }
 
-const trailCap = 120 // ~2min at 1Hz
+// trailCap is generous so the trail captures every distinct position the
+// server has reported for several minutes of flight. Cheap (8 bytes/point ×
+// trailCap × ~50 aircraft = ~600 KB worst case).
+const trailCap = 1500
 
 func pushTrail(buf []math.Point2LL, p math.Point2LL, cap int) []math.Point2LL {
 	buf = append(buf, p)
@@ -65,26 +67,29 @@ func pushTrail(buf []math.Point2LL, p math.Point2LL, cap int) []math.Point2LL {
 	return buf
 }
 
-// updateTrails appends the current frame's track positions to the per-aircraft
-// trail buffer, gated to ~1Hz so high-frame-rate frames don't fill the buffer.
+// updateTrails appends the current track position for each aircraft, but only
+// when it differs from the most-recent buffered point. That way the trail
+// captures every distinct server-reported position (so the polyline curves
+// smoothly through turns instead of stepping at 1Hz wall-clock samples).
 // Aircraft that have left the sim have their entries pruned.
 func (mp *MapPane) updateTrails(c *client.ControlClient) {
 	if c == nil || !c.Connected() {
 		return
 	}
 
-	now := time.Now()
-	if !mp.lastTrailUpdate.IsZero() && now.Sub(mp.lastTrailUpdate) < time.Second {
-		return
-	}
-	mp.lastTrailUpdate = now
-
 	if mp.pastTrails == nil {
 		mp.pastTrails = make(map[av.ADSBCallsign][]math.Point2LL)
 	}
 
 	for cs, trk := range c.State.Tracks {
-		mp.pastTrails[cs] = pushTrail(mp.pastTrails[cs], trk.Location, trailCap)
+		buf := mp.pastTrails[cs]
+		if len(buf) > 0 {
+			last := buf[len(buf)-1]
+			if last == trk.Location {
+				continue // dedupe: position hasn't moved
+			}
+		}
+		mp.pastTrails[cs] = pushTrail(buf, trk.Location, trailCap)
 	}
 	for cs := range mp.pastTrails {
 		if _, ok := c.State.Tracks[cs]; !ok {
@@ -167,7 +172,35 @@ func drawDashedLine(dl *imgui.DrawList, a, b [2]float32, color uint32, dashLen, 
 	}
 }
 
-func (mp *MapPane) drawInfoPanel(c *client.ControlClient, cam camera, canvasOrigin, canvasSize [2]float32, nmPerLongitude float32) {
+// drawHoverTooltip shows a small floating box near the cursor for the
+// hovered aircraft (callsign, altitude, ground speed). Bails when nothing
+// is hovered.
+func (mp *MapPane) drawHoverTooltip(c *client.ControlClient) {
+	if mp.hoveredCS == "" || c == nil || !c.Connected() {
+		return
+	}
+	trk, ok := c.State.Tracks[mp.hoveredCS]
+	if !ok {
+		return
+	}
+
+	mouse := imgui.MousePos()
+	imgui.SetNextWindowPosV(imgui.Vec2{X: mouse.X + 16, Y: mouse.Y + 16}, imgui.CondAlways, imgui.Vec2{})
+	imgui.SetNextWindowBgAlpha(0.9)
+	flags := imgui.WindowFlagsNoTitleBar | imgui.WindowFlagsNoResize | imgui.WindowFlagsNoMove |
+		imgui.WindowFlagsAlwaysAutoResize | imgui.WindowFlagsNoFocusOnAppearing | imgui.WindowFlagsNoNav |
+		imgui.WindowFlagsNoInputs
+
+	if imgui.BeginV("##maphover", nil, flags) {
+		imgui.TextUnformatted(string(mp.hoveredCS))
+		imgui.TextUnformatted(fmt.Sprintf("ALT %d  GS %d", int(trk.TrueAltitude), int(trk.Groundspeed)))
+	}
+	imgui.End()
+}
+
+// drawCornerInfoPanel anchors the detailed info panel to the top-right of the
+// canvas. Bails when nothing is selected.
+func (mp *MapPane) drawCornerInfoPanel(c *client.ControlClient) {
 	if mp.selectedCS == "" || c == nil || !c.Connected() {
 		return
 	}
@@ -176,27 +209,60 @@ func (mp *MapPane) drawInfoPanel(c *client.ControlClient, cam camera, canvasOrig
 		mp.selectedCS = ""
 		return
 	}
-	s := cam.llToScreen(trk.Location, canvasOrigin, canvasSize, nmPerLongitude)
 
-	// Position the info panel a bit to the upper right of the aircraft.
-	imgui.SetNextWindowPosV(imgui.Vec2{X: s[0] + 18, Y: s[1] - 18}, imgui.CondAlways, imgui.Vec2{})
-	imgui.SetNextWindowBgAlpha(0.85)
+	// Anchor at the top-right of the canvas. Pivot {1,0} aligns the window's
+	// top-right corner to the anchor point so AlwaysAutoResize grows leftward.
+	cornerX := mp.canvasOrigin[0] + mp.canvasSize[0] - 8
+	cornerY := mp.canvasOrigin[1] + 8
+	imgui.SetNextWindowPosV(imgui.Vec2{X: cornerX, Y: cornerY}, imgui.CondAlways, imgui.Vec2{X: 1, Y: 0})
+	imgui.SetNextWindowBgAlpha(0.9)
 	flags := imgui.WindowFlagsNoTitleBar | imgui.WindowFlagsNoResize | imgui.WindowFlagsNoMove |
 		imgui.WindowFlagsAlwaysAutoResize | imgui.WindowFlagsNoFocusOnAppearing | imgui.WindowFlagsNoNav
 
-	if imgui.BeginV("##mapinfo_"+string(mp.selectedCS), nil, flags) {
+	if imgui.BeginV("##mapinfo", nil, flags) {
 		imgui.TextUnformatted(string(mp.selectedCS))
 		imgui.Separator()
-		dep := trk.DepartureAirport
-		arr := trk.ArrivalAirport
-		alt := int(trk.TrueAltitude)
-		gs := int(trk.Groundspeed)
-		hdg := int(trk.Heading)
-		imgui.TextUnformatted("DEP: " + dep)
-		imgui.TextUnformatted("ARR: " + arr)
-		imgui.TextUnformatted(fmt.Sprintf("ALT: %d ft", alt))
-		imgui.TextUnformatted(fmt.Sprintf("GS:  %d kt", gs))
-		imgui.TextUnformatted(fmt.Sprintf("HDG: %03d°", hdg))
+
+		acType := ""
+		squawk := ""
+		if trk.FlightPlan != nil {
+			acType = trk.FlightPlan.AircraftType
+			squawk = trk.FlightPlan.AssignedSquawk.String()
+		}
+		if acType != "" {
+			imgui.TextUnformatted("Type:    " + acType)
+		}
+		if squawk != "" {
+			imgui.TextUnformatted("Squawk:  " + squawk)
+		}
+		imgui.TextUnformatted("DEP:     " + trk.DepartureAirport)
+		imgui.TextUnformatted("ARR:     " + trk.ArrivalAirport)
+		imgui.TextUnformatted(fmt.Sprintf("ALT:     %d ft", int(trk.TrueAltitude)))
+		imgui.TextUnformatted(fmt.Sprintf("GS:      %d kt", int(trk.Groundspeed)))
+		imgui.TextUnformatted(fmt.Sprintf("HDG:     %03d°", int(trk.Heading)))
+		if trk.SID != "" {
+			imgui.TextUnformatted("SID:     " + trk.SID)
+		}
+		if trk.STAR != "" {
+			imgui.TextUnformatted("STAR:    " + trk.STAR)
+		}
+		if trk.Approach != "" {
+			status := "assigned"
+			if trk.ClearedForApproach {
+				status = "cleared"
+			} else if trk.OnApproach {
+				status = "on approach"
+			}
+			imgui.TextUnformatted(fmt.Sprintf("APP:     %s (%s)", trk.Approach, status))
+		}
+		if trk.HoldForRelease {
+			imgui.TextUnformatted("Hold for release")
+		}
+		if trk.MissingFlightPlan {
+			imgui.TextUnformatted("(missing flight plan)")
+		}
+
+		imgui.Separator()
 		imgui.TextUnformatted("Route:")
 		imgui.PushTextWrapPosV(imgui.CursorPosX() + 360)
 		if trk.FiledRoute != "" {

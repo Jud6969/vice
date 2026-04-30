@@ -6,7 +6,6 @@ package panes
 
 import (
 	"sort"
-	"time"
 
 	av "github.com/mmp/vice/aviation"
 	"github.com/mmp/vice/client"
@@ -40,10 +39,10 @@ type MapPane struct {
 	CameraSet bool
 
 	// Runtime-only state (not persisted)
-	font            *renderer.Font
-	selectedCS      av.ADSBCallsign
-	pastTrails      map[av.ADSBCallsign][]math.Point2LL
-	lastTrailUpdate time.Time
+	font       *renderer.Font
+	selectedCS av.ADSBCallsign
+	hoveredCS  av.ADSBCallsign
+	pastTrails map[av.ADSBCallsign][]math.Point2LL
 
 	// runtime canvas state (not persisted)
 	canvasOrigin   [2]float32
@@ -219,11 +218,15 @@ func (mp *MapPane) drawCanvas(c *client.ControlClient, p platform.Platform, lg *
 	mp.drawFacilityBoundary(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
 	mp.drawAirportLabels(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
 	mp.updateTrails(c)
+	mp.findHoveredAircraft(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon, canvasHovered)
+	mp.handleSelection(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon, canvasHovered)
+	// Selection-dependent draws come AFTER handleSelection so a click takes
+	// effect this frame instead of the next one.
 	mp.drawSelectedTrail(cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
 	mp.drawSelectedRoute(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
 	mp.drawAircraft(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
-	mp.handleSelection(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon, canvasHovered)
-	mp.drawInfoPanel(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
+	mp.drawHoverTooltip(c)
+	mp.drawCornerInfoPanel(c)
 
 	// Mouse: zoom on scroll inside canvas. canvasHovered was captured right
 	// after the canvas Dummy() so it reflects the canvas item, not whatever
