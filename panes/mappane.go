@@ -207,6 +207,7 @@ func (mp *MapPane) drawCanvas(c *client.ControlClient, p platform.Platform, lg *
 	mp.drawAirportLabels(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
 	mp.updateTrails(c)
 	mp.drawSelectedTrail(cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
+	mp.drawSelectedRoute(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
 	mp.drawAircraft(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
 	mp.handleSelection(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
 

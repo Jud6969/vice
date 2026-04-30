@@ -5,6 +5,7 @@
 package panes
 
 import (
+	gomath "math"
 	"time"
 
 	"github.com/AllenDang/cimgui-go/imgui"
@@ -106,4 +107,55 @@ func (mp *MapPane) drawSelectedTrail(cam camera, canvasOrigin, canvasSize [2]flo
 		screenPts = append(screenPts, imgui.Vec2{X: s[0], Y: s[1]})
 	}
 	mp.canvasDrawList.AddPolyline(&screenPts[0], int32(len(screenPts)), color, imgui.DrawFlagsNone, 1.0)
+}
+
+func (mp *MapPane) drawSelectedRoute(c *client.ControlClient, cam camera, canvasOrigin, canvasSize [2]float32, nmPerLongitude float32) {
+	if mp.selectedCS == "" || c == nil || !c.Connected() {
+		return
+	}
+	trk, ok := c.State.Tracks[mp.selectedCS]
+	if !ok {
+		return
+	}
+	if len(trk.Route) == 0 {
+		return
+	}
+
+	color := imgui.ColorU32Vec4(imgui.Vec4{X: 1.0, Y: 0.85, Z: 0.30, W: 0.95})
+
+	// Defensive copy so we never mutate the shared slice in c.State.Tracks.
+	pts := append([]math.Point2LL(nil), trk.Route...)
+	if (trk.ArrivalAirportLocation != math.Point2LL{}) {
+		pts = append(pts, trk.ArrivalAirportLocation)
+	}
+
+	prev := cam.llToScreen(trk.Location, canvasOrigin, canvasSize, nmPerLongitude)
+	for _, p := range pts {
+		cur := cam.llToScreen(p, canvasOrigin, canvasSize, nmPerLongitude)
+		drawDashedLine(mp.canvasDrawList, prev, cur, color, 6, 4)
+		prev = cur
+	}
+}
+
+// drawDashedLine draws a dashed line from a to b in screen space.
+func drawDashedLine(dl *imgui.DrawList, a, b [2]float32, color uint32, dashLen, gapLen float32) {
+	dx := b[0] - a[0]
+	dy := b[1] - a[1]
+	totalSq := dx*dx + dy*dy
+	if totalSq < 1 {
+		return
+	}
+	totalLen := float32(gomath.Sqrt(float64(totalSq)))
+	stepLen := dashLen + gapLen
+	t := float32(0)
+	for t < totalLen {
+		t1 := t + dashLen
+		if t1 > totalLen {
+			t1 = totalLen
+		}
+		p0 := imgui.Vec2{X: a[0] + dx*(t/totalLen), Y: a[1] + dy*(t/totalLen)}
+		p1 := imgui.Vec2{X: a[0] + dx*(t1/totalLen), Y: a[1] + dy*(t1/totalLen)}
+		dl.AddLine(p0, p1, color)
+		t += stepLen
+	}
 }
