@@ -127,6 +127,10 @@ type Sim struct {
 	LastSTTCommand *LastSTTCommand
 
 	AvailableStripCIDs []int
+
+	// lastScheduleBucket tracks the last "DAY:HH:MM" bucket key for which
+	// applyScheduledRates was called. Empty until the schedule first applies.
+	lastScheduleBucket string
 }
 
 // LastSTTCommand stores the nav snapshot from before the most recent STT command
@@ -514,6 +518,12 @@ func (s *Sim) FastForward() {
 
 	for range 15 {
 		s.State.SimTime = s.State.SimTime.Add(time.Second)
+		if s.State.LaunchConfig.Schedule != nil {
+			if k := scheduleBucketKey(s.State.SimTime.Time()); k != s.lastScheduleBucket {
+				s.lastScheduleBucket = k
+				s.applyScheduledRates()
+			}
+		}
 		s.updateState()
 	}
 	s.updateTimeSlop = 0
@@ -868,6 +878,12 @@ func (s *Sim) step(elapsed time.Duration) bool {
 
 	for range ns {
 		s.State.SimTime = s.State.SimTime.Add(time.Second)
+		if s.State.LaunchConfig.Schedule != nil {
+			if k := scheduleBucketKey(s.State.SimTime.Time()); k != s.lastScheduleBucket {
+				s.lastScheduleBucket = k
+				s.applyScheduledRates()
+			}
+		}
 		s.updateState()
 	}
 
@@ -1874,4 +1890,28 @@ func (s *Sim) processFutureOnCourse() {
 			}
 			return true
 		})
+}
+
+// scheduleBucketKey returns "DAY:HH:MM" for the given time, floored to the
+// nearest 15-min boundary. Mirrors schedule.bucketKey but inline so we
+// don't need to export it.
+func scheduleBucketKey(t time.Time) string {
+	day := ""
+	switch t.Weekday() {
+	case time.Monday:
+		day = "MON"
+	case time.Tuesday:
+		day = "TUE"
+	case time.Wednesday:
+		day = "WED"
+	case time.Thursday:
+		day = "THU"
+	case time.Friday:
+		day = "FRI"
+	case time.Saturday:
+		day = "SAT"
+	case time.Sunday:
+		day = "SUN"
+	}
+	return fmt.Sprintf("%s:%02d:%02d", day, t.Hour(), (t.Minute()/15)*15)
 }

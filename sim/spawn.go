@@ -12,6 +12,7 @@ import (
 	av "github.com/mmp/vice/aviation"
 	"github.com/mmp/vice/nav"
 	"github.com/mmp/vice/rand"
+	"github.com/mmp/vice/sim/schedule"
 
 	"github.com/goforj/godump"
 )
@@ -110,6 +111,11 @@ type LaunchConfig struct {
 	ArrivalPushLengthMinutes    int
 
 	EmergencyAircraftRate float32 // Aircraft per hour
+
+	// Schedule, when non-nil, drives IFR rates from authored CSVs instead
+	// of the static DepartureRates / InboundFlowRates above. Skipped from
+	// JSON because it's a runtime-derived pointer.
+	Schedule *schedule.Schedule `json:"-"`
 }
 
 func MakeLaunchConfig(dep []DepartureRunway, vfrRateScale float32, vfrAirports map[string]*av.Airport,
@@ -630,4 +636,116 @@ type ArrivalRunway struct {
 	Airport  string             `json:"airport"`
 	Runway   av.RunwayID        `json:"runway"`
 	GoAround *GoAroundProcedure `json:"go_around,omitempty"`
+}
+
+// staticDepartureTotal returns the sum of static DepartureRates across all
+// runways and categories for the given airport. Used as the proportional
+// denominator when scaling to a schedule-driven total.
+func (lc *LaunchConfig) staticDepartureTotal(airport string) float32 {
+	var sum float32
+	for _, runwayRates := range lc.DepartureRates[airport] {
+		for _, r := range runwayRates {
+			sum += r
+		}
+	}
+	return sum
+}
+
+// staticInboundTotalForAirport returns the sum of static InboundFlowRates
+// across all flows that feed the given airport.
+func (lc *LaunchConfig) staticInboundTotalForAirport(airport string) float32 {
+	var sum float32
+	for _, flowRates := range lc.InboundFlowRates {
+		sum += flowRates[airport]
+	}
+	return sum
+}
+
+// applyScheduledRates recomputes IFRSpawnRate per runway and
+// NextInboundSpawn per flow based on the current SimTime's schedule
+// bucket. No-op when LaunchConfig.Schedule is nil.
+//
+// Per-runway IFR spawn rate becomes:
+//
+//	(scheduledDepartures[airport]) × (this runway's static-rate share of the
+//	 airport's static total)
+//
+// Per-(flow, airport) arrival rate becomes:
+//
+//	(scheduledArrivals[airport]) × (this flow's static-rate share of the
+//	 airport's static inbound total)
+//
+// Overflights (entries with the special name "overflights" inside an inbound
+// flow) keep their static rate — overflights aren't airport-anchored.
+func (s *Sim) applyScheduledRates() {
+	lc := &s.State.LaunchConfig
+	if lc.Schedule == nil {
+		return
+	}
+	simTime := s.State.SimTime.Time()
+
+	// Departures: for each (airport, runway), set the IFRSpawnRate to the
+	// scheduled per-airport total scaled by this runway's static share.
+	for airport := range lc.DepartureRates {
+		if !lc.Schedule.HasAirport(airport) {
+			continue
+		}
+		scheduledDep, _ := lc.Schedule.RateAt(simTime, airport)
+		staticTotal := lc.staticDepartureTotal(airport)
+		for runway, categoryRates := range lc.DepartureRates[airport] {
+			var runwayStatic float32
+			for _, r := range categoryRates {
+				runwayStatic += r
+			}
+			var newRate float32
+			if staticTotal > 0 {
+				newRate = scheduledDep * (runwayStatic / staticTotal) * lc.DepartureRateScale
+			}
+			if state := s.DepartureState[airport][runway]; state != nil {
+				state.setIFRRate(s, newRate)
+			}
+		}
+	}
+
+	// Arrivals: per inbound flow, recompute its rate sum (across all
+	// covered airports). Adjust NextInboundSpawn if the new sum differs
+	// from the previous estimate.
+	for group, groupRates := range lc.InboundFlowRates {
+		var newSum float32
+		for airport, staticRate := range groupRates {
+			if airport == "overflights" {
+				newSum += staticRate
+				continue
+			}
+			if !lc.Schedule.HasAirport(airport) {
+				newSum += staticRate
+				continue
+			}
+			_, scheduledArr := lc.Schedule.RateAt(simTime, airport)
+			staticTotal := lc.staticInboundTotalForAirport(airport)
+			if staticTotal == 0 {
+				continue
+			}
+			newSum += scheduledArr * (staticRate / staticTotal)
+		}
+		newSum *= lc.InboundFlowRateScale
+		if newSum > 0 {
+			pushActive := s.State.SimTime.Before(s.PushEnd)
+			s.NextInboundSpawn[group] = s.State.SimTime.Add(randomWait(newSum, pushActive, s.Rand))
+		}
+	}
+}
+
+// SetSchedule attaches the schedule and immediately applies the current
+// bucket's rates so the sim doesn't lag behind. Pass nil to detach.
+func (s *Sim) SetSchedule(sch *schedule.Schedule) {
+	s.mu.Lock(s.lg)
+	defer s.mu.Unlock(s.lg)
+	s.State.LaunchConfig.Schedule = sch
+	s.lastScheduleBucket = ""
+	if sch != nil {
+		k := scheduleBucketKey(s.State.SimTime.Time())
+		s.lastScheduleBucket = k
+		s.applyScheduledRates()
+	}
 }
