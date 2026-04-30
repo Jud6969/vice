@@ -1312,6 +1312,28 @@ func drawSectionHeader(title string) {
 	imgui.Separator()
 }
 
+// scenarioAirportICAOs returns the list of airport ICAOs the currently
+// selected scenario operates on (departures + arrivals).
+func (c *NewSimConfiguration) scenarioAirportICAOs() []string {
+	if c.ScenarioSpec == nil {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	for ap := range c.ScenarioSpec.LaunchConfig.DepartureRates {
+		seen[ap] = struct{}{}
+	}
+	for _, flowRates := range c.ScenarioSpec.LaunchConfig.InboundFlowRates {
+		for ap := range flowRates {
+			seen[ap] = struct{}{}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for ap := range seen {
+		out = append(out, ap)
+	}
+	return out
+}
+
 // DrawConfigurationUI draws Screen 2: configuration options and traffic rates (combined)
 func (c *NewSimConfiguration) DrawConfigurationUI(p platform.Platform, config *Config) bool {
 	if c.displayError != nil {
@@ -1472,6 +1494,63 @@ func (c *NewSimConfiguration) DrawConfigurationUI(p platform.Platform, config *C
 	imgui.SetNextItemWidth(150)
 	imgui.SliderFloatV("##emergencyRate", &lc.EmergencyAircraftRate, 0, 20,
 		util.Select(lc.EmergencyAircraftRate == 0, "never", "%.1f /hr"), imgui.SliderFlagsNone)
+
+	imgui.Separator()
+
+	// Determine which of this scenario's airports are present in the
+	// loaded schedule. The checkbox is enabled iff at least one is.
+	scenarioAirports := c.scenarioAirportICAOs()
+	var eligible []string
+	for _, icao := range scenarioAirports {
+		if c.Schedule.HasAirport(icao) {
+			eligible = append(eligible, icao)
+		}
+	}
+	disabled := len(eligible) == 0
+	if disabled {
+		imgui.BeginDisabled()
+	}
+	imgui.Checkbox("Use real-world schedule", &c.UseSchedule)
+	if disabled {
+		imgui.EndDisabled()
+		c.UseSchedule = false
+		if imgui.IsItemHovered() {
+			imgui.SetTooltip("No schedules specified for this scenario")
+		}
+	}
+
+	if c.UseSchedule {
+		// Month slider 1..12
+		mo := int32(c.SchedulePickedMonth)
+		if imgui.SliderInt("Month", &mo, 1, 12) {
+			c.SchedulePickedMonth = time.Month(mo)
+		}
+		// Day slider: 1=Mon..7=Sun (Go's time.Sunday is 0; remap so the slider
+		// is contiguous Mon-Sun).
+		dayIdx := int32(c.SchedulePickedDay)
+		if dayIdx == int32(time.Sunday) {
+			dayIdx = 7
+		}
+		if imgui.SliderInt("Day (1=Mon..7=Sun)", &dayIdx, 1, 7) {
+			if dayIdx == 7 {
+				c.SchedulePickedDay = time.Sunday
+			} else {
+				c.SchedulePickedDay = time.Weekday(dayIdx)
+			}
+		}
+		// Time slider: 0..1425 in 15-min steps
+		mins := int32(c.SchedulePickedMinutes)
+		if imgui.SliderIntV("Time (15-min steps)", &mins, 0, 1425, fmt.Sprintf("%02d:%02d", mins/60, mins%60), imgui.SliderFlagsAlwaysClamp) {
+			mins = (mins / 15) * 15
+			c.SchedulePickedMinutes = int(mins)
+		}
+
+		// Histogram (stacked bars, 96 buckets), 600px wide x 80px tall.
+		if hit := drawScheduleHistogram(c.Schedule, c.SchedulePickedMonth, c.SchedulePickedDay,
+			eligible, 600, 80); hit >= 0 {
+			c.SchedulePickedMinutes = hit * 15
+		}
+	}
 
 	return false
 }
