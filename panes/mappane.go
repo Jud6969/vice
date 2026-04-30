@@ -176,6 +176,12 @@ func (mp *MapPane) drawCanvas(c *client.ControlClient, p platform.Platform, lg *
 		imgui.ColorU32Vec4(imgui.Vec4{X: 0.04, Y: 0.05, Z: 0.07, W: 1}))
 
 	imgui.Dummy(avail)
+	// Capture hover/active state immediately: IsItemHovered/IsItemActive
+	// reference the most-recently submitted imgui item, and many items get
+	// submitted between here and the mouse-handling block below (the info
+	// panel calls BeginV/End on a sibling window, etc.).
+	canvasHovered := imgui.IsItemHovered()
+	canvasActive := imgui.IsItemActive()
 
 	mp.canvasOrigin = [2]float32{pos.X, pos.Y}
 	mp.canvasSize = [2]float32{avail.X, avail.Y}
@@ -214,13 +220,13 @@ func (mp *MapPane) drawCanvas(c *client.ControlClient, p platform.Platform, lg *
 	mp.drawSelectedTrail(cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
 	mp.drawSelectedRoute(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
 	mp.drawAircraft(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
-	mp.handleSelection(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
+	mp.handleSelection(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon, canvasHovered)
 	mp.drawInfoPanel(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
 
-	// Mouse: zoom on scroll inside canvas.
-	// WantCaptureMouse guards against scroll events reaching both the canvas
-	// and a popup or combo rendered on top of it (e.g. Task 7's filter combo).
-	if imgui.IsItemHovered() && !imgui.CurrentIO().WantCaptureMouse() {
+	// Mouse: zoom on scroll inside canvas. canvasHovered was captured right
+	// after the canvas Dummy() so it reflects the canvas item, not whatever
+	// was submitted last by the overlays / info panel.
+	if canvasHovered {
 		if wheel := imgui.CurrentIO().MouseWheel(); wheel != 0 {
 			factor := float32(0.9)
 			if wheel < 0 {
@@ -231,7 +237,7 @@ func (mp *MapPane) drawCanvas(c *client.ControlClient, p platform.Platform, lg *
 	}
 
 	// Mouse: pan on left-drag inside canvas.
-	if imgui.IsItemActive() && imgui.IsMouseDragging(platform.MouseButtonPrimary) {
+	if canvasActive && imgui.IsMouseDragging(platform.MouseButtonPrimary) {
 		delta := imgui.MouseDragDeltaV(platform.MouseButtonPrimary, 0.)
 		imgui.ResetMouseDragDeltaV(platform.MouseButtonPrimary)
 		cam.applyPanPixels(delta.X, delta.Y, mp.canvasSize, nmPerLon)

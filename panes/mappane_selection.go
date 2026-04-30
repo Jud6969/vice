@@ -18,14 +18,15 @@ import (
 const aircraftHitRadiusPx = 15
 
 // handleSelection processes a click inside the canvas. Sets / clears
-// mp.selectedCS based on which aircraft (if any) was hit. Must be called
-// AFTER the camera state for the frame is finalized so the screen
-// projection matches what the user sees.
-func (mp *MapPane) handleSelection(c *client.ControlClient, cam camera, canvasOrigin, canvasSize [2]float32, nmPerLongitude float32) {
+// mp.selectedCS based on which aircraft (if any) was hit. The caller passes
+// canvasHovered captured immediately after the canvas Dummy(), since by the
+// time this runs many sibling imgui items have been submitted and
+// IsItemHovered() no longer references the canvas.
+func (mp *MapPane) handleSelection(c *client.ControlClient, cam camera, canvasOrigin, canvasSize [2]float32, nmPerLongitude float32, canvasHovered bool) {
 	if c == nil || !c.Connected() {
 		return
 	}
-	if !imgui.IsItemHovered() || !imgui.IsMouseClickedBool(imgui.MouseButtonLeft) {
+	if !canvasHovered || !imgui.IsMouseClickedBool(imgui.MouseButtonLeft) {
 		return
 	}
 	// Don't treat the end of a drag as a click — only fresh clicks.
