@@ -2119,6 +2119,10 @@ func LoadScenarioGroups(extraScenarioFilename string, extraVideoMapFilename stri
 		if d.IsDir() || filepath.Ext(path) != ".json" {
 			return nil
 		}
+		// Skip per-ARTCC schedule manifests; they're not facility configs.
+		if filepath.Base(path) == "schedules.json" {
+			return nil
+		}
 
 		fc := loadFacilityConfig(filesystem, path, e)
 		if fc != nil {
