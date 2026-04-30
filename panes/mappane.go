@@ -38,6 +38,11 @@ type MapPane struct {
 	pastTrails      map[av.ADSBCallsign][]math.Point2LL
 	lastTrailUpdate sim.Time
 	initialized     bool // first Draw() fits view to facility
+
+	// runtime canvas state (not persisted)
+	canvasOrigin   [2]float32
+	canvasSize     [2]float32
+	canvasDrawList *imgui.DrawList
 }
 
 func NewMapPane() *MapPane {
@@ -78,14 +83,12 @@ func (mp *MapPane) DrawUI(p platform.Platform, config *platform.Config) {
 	imgui.Checkbox("Show airport labels", &mp.ShowAirports)
 }
 
-// Draw is called when the pane is embedded in a layout. The map is normally
-// shown via DrawWindow; Draw is here to satisfy the Pane interface.
+// Draw is called when the pane is embedded in a layout. MapPane is rendered
+// through DrawWindow + imgui draw lists. No-op here.
 func (mp *MapPane) Draw(ctx *Context, cb *renderer.CommandBuffer) {
-	mp.draw(ctx, cb)
 }
 
-// DrawWindow draws the MapPane inside a floating imgui window. Wire this from
-// the main UI when ui.showMap is true.
+// DrawWindow draws the MapPane inside a floating imgui window.
 func (mp *MapPane) DrawWindow(show *bool, c *client.ControlClient, p platform.Platform,
 	unpinnedWindows map[string]struct{}, lg *log.Logger) {
 	if !*show {
@@ -94,12 +97,86 @@ func (mp *MapPane) DrawWindow(show *bool, c *client.ControlClient, p platform.Pl
 	imgui.SetNextWindowSizeV(imgui.Vec2{X: 800, Y: 600}, imgui.CondFirstUseEver)
 	if imgui.BeginV("Map", show, imgui.WindowFlagsNone) {
 		DrawPinButton("Map", unpinnedWindows, p)
-		imgui.TextUnformatted("MapPane (skeleton)")
+		mp.drawToolbar()
+		mp.drawCanvas(c, p, lg)
 	}
 	imgui.End()
 }
 
-// draw is the eventual entry point for OpenGL-rendered map content. For now
-// it's a no-op so the build is happy.
-func (mp *MapPane) draw(ctx *Context, cb *renderer.CommandBuffer) {
+func (mp *MapPane) drawToolbar() {
+	imgui.Checkbox("Basemap", &mp.ShowBasemap)
+	imgui.SameLine()
+	imgui.Checkbox("Boundary", &mp.ShowBoundaries)
+	imgui.SameLine()
+	imgui.Checkbox("Airports", &mp.ShowAirports)
+}
+
+func (mp *MapPane) drawCanvas(c *client.ControlClient, p platform.Platform, lg *log.Logger) {
+	avail := imgui.ContentRegionAvail()
+	if avail.X < 1 || avail.Y < 1 {
+		return
+	}
+	pos := imgui.CursorScreenPos()
+	dl := imgui.WindowDrawList()
+	dl.AddRectFilled(pos, imgui.Vec2{X: pos.X + avail.X, Y: pos.Y + avail.Y},
+		imgui.ColorU32Vec4(imgui.Vec4{X: 0.04, Y: 0.05, Z: 0.07, W: 1}))
+
+	imgui.Dummy(avail)
+
+	mp.canvasOrigin = [2]float32{pos.X, pos.Y}
+	mp.canvasSize = [2]float32{avail.X, avail.Y}
+	mp.canvasDrawList = dl
+
+	// Fit-to-facility on first open.
+	if !mp.initialized && c != nil && c.Connected() {
+		if facility, ok := av.DB.LookupFacility(c.State.Facility); ok {
+			mp.CenterLon = facility.Center()[0]
+			mp.CenterLat = facility.Center()[1]
+			mp.RangeNM = facility.Radius * 1.5
+			if mp.RangeNM < 30 {
+				mp.RangeNM = 30
+			}
+		} else {
+			mp.CenterLon, mp.CenterLat, mp.RangeNM = 0, 0, 100
+		}
+		mp.initialized = true
+	}
+
+	nmPerLon := float32(45.5)
+	if c != nil && c.Connected() {
+		nmPerLon = c.State.NmPerLongitude
+	}
+
+	// Future tasks add basemap / overlays / aircraft draws here.
+
+	// Mouse: zoom on scroll inside canvas.
+	if imgui.IsItemHovered() {
+		wheel := imgui.CurrentIO().MouseWheel()
+		if wheel != 0 {
+			factor := float32(0.9)
+			if wheel < 0 {
+				factor = 1.1
+			}
+			mp.RangeNM *= factor
+			if mp.RangeNM < minRangeNM {
+				mp.RangeNM = minRangeNM
+			}
+			if mp.RangeNM > maxRangeNM {
+				mp.RangeNM = maxRangeNM
+			}
+		}
+	}
+
+	// Mouse: pan on left-drag inside canvas.
+	if imgui.IsItemActive() && imgui.IsMouseDragging(platform.MouseButtonPrimary) {
+		delta := imgui.MouseDragDeltaV(platform.MouseButtonPrimary, 0.)
+		imgui.ResetMouseDragDeltaV(platform.MouseButtonPrimary)
+		cam := camera{center: math.Point2LL{mp.CenterLon, mp.CenterLat}, rangeNM: mp.RangeNM}
+		pixelDelta := [2]float32{delta.X, -delta.Y}
+		extent := math.Extent2D{P0: [2]float32{0, 0}, P1: mp.canvasSize}
+		xforms := cam.transforms(extent, nmPerLon)
+		dll := xforms.LatLongFromWindowV(pixelDelta)
+		mp.CenterLon -= dll[0]
+		mp.CenterLat -= dll[1]
+	}
 }
