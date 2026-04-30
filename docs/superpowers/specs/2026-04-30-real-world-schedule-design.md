@@ -295,6 +295,55 @@ After the existing options:
 
 **Build:** `go build -tags vulkan ./cmd/vice` must succeed.
 
+## Strict adherence (added 2026-04-30)
+
+Originally the spec said only IFR (departures + arrivals) is schedule-driven;
+VFR / overflights / pattern stay on the existing rate engine. Testing showed
+that produced a confusing UX: starting the sim at a dead IFR period still
+showed overflights, prespawned aircraft, and full-rate VFR — so the
+"dead period = empty sky" expectation was violated.
+
+Updated behavior: when `Schedule` is on, **all traffic** (IFR + overflights
++ VFR + prespawn) scales with a single per-bucket busyness factor.
+
+### The busyness factor
+
+At every 15-min bucket boundary, `applyScheduledRates` computes:
+
+```
+factor = clamp(currentTotalScheduled / peakTotalScheduled, 0.05, 1.0)
+```
+
+- `currentTotalScheduled` = sum of `(dep + arr)` over all schedule-covered
+  airports at the current sim time.
+- `peakTotalScheduled` = max of that sum across all 96 buckets of the
+  current weekday (cached once per day).
+- `0.05` floor keeps overflights / VFR from going completely silent overnight
+  (real airspace at 04:00 still sees the occasional flight).
+
+Stored on `Sim` as `scheduleBusyness float32`.
+
+### What `factor` controls
+
+| Component | Mechanism |
+|---|---|
+| IFR departures | Already schedule-driven (per-runway share × airport's scheduled dep total). |
+| IFR arrivals | Already schedule-driven (per-flow share × airport's scheduled arr total). |
+| Overflights | `runtimeInboundFlowRates[group]["overflights"] = staticOverflightRate × factor`. Re-applied at each bucket crossing. |
+| VFR departures | A new `Sim.scheduleVFRScale float32` (default 1.0) is multiplied INTO the existing `LaunchConfig.VFRDepartureRateScale` at the spawn site. Avoids stomping the user's authored scale. |
+| Prespawn (sim launch) | At `Sim.Prespawn`, when `Schedule` is non-nil, the targeted aircraft count is multiplied by `factor` evaluated at `s.State.StartTime`. Sky starts as empty as the schedule says. |
+
+Day/night cycle emerges naturally from the IFR schedule's overnight-trough
+shape — no separate VFR curve required for v1.
+
+### Restored custom histogram
+
+The temporary switch to `imgui.PlotHistogramFloatPtrV` was a workaround for
+a perceived rendering issue that turned out to be data (the user was on a
+non-Monday weekday with no authored buckets). The custom dual-color stacked
+histogram (`drawScheduleHistogram` with `AddRectFilled` per bar) is
+restored — same shape as originally specified.
+
 ## Open items / risks
 
 - **Authoring effort.** A full week × 96 buckets × ~5 airports = ~3360
