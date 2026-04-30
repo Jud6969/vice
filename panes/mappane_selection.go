@@ -102,12 +102,17 @@ func (mp *MapPane) drawSelectedTrail(cam camera, canvasOrigin, canvasSize [2]flo
 	}
 
 	color := imgui.ColorU32Vec4(imgui.Vec4{X: 0.55, Y: 0.55, Z: 0.85, W: 0.7})
-	screenPts := make([]imgui.Vec2, 0, len(pts))
-	for _, p := range pts {
-		s := cam.llToScreen(p, canvasOrigin, canvasSize, nmPerLongitude)
-		screenPts = append(screenPts, imgui.Vec2{X: s[0], Y: s[1]})
+	// AddLine per segment — cimgui-go's AddPolyline binding (v1.4.0) is broken;
+	// see drawFacilityBoundary for the explanation.
+	prev := cam.llToScreen(pts[0], canvasOrigin, canvasSize, nmPerLongitude)
+	for i := 1; i < len(pts); i++ {
+		cur := cam.llToScreen(pts[i], canvasOrigin, canvasSize, nmPerLongitude)
+		mp.canvasDrawList.AddLine(
+			imgui.Vec2{X: prev[0], Y: prev[1]},
+			imgui.Vec2{X: cur[0], Y: cur[1]},
+			color)
+		prev = cur
 	}
-	mp.canvasDrawList.AddPolyline(&screenPts[0], int32(len(screenPts)), color, imgui.DrawFlagsNone, 1.0)
 }
 
 func (mp *MapPane) drawSelectedRoute(c *client.ControlClient, cam camera, canvasOrigin, canvasSize [2]float32, nmPerLongitude float32) {

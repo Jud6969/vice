@@ -33,7 +33,10 @@ func (mp *MapPane) drawFacilityBoundary(c *client.ControlClient, cam camera, can
 
 	color := imgui.ColorU32Vec4(imgui.Vec4{X: 0.50, Y: 0.56, Z: 0.62, W: 1})
 
-	pts := make([]imgui.Vec2, 0, nSegments+1)
+	// Build segment-by-segment via AddLine; cimgui-go's AddPolyline binding
+	// (v1.4.0) calls internal.Wrap on the points pointer, which converts only
+	// the first element and leaves the rest pointing at uninitialized memory.
+	var prev imgui.Vec2
 	for i := 0; i <= nSegments; i++ {
 		theta := float64(i) / float64(nSegments) * 2 * gomath.Pi
 		// dy = radiusNM / NMPerLatitude; dx = radiusNM / nmPerLongitude
@@ -41,9 +44,12 @@ func (mp *MapPane) drawFacilityBoundary(c *client.ControlClient, cam camera, can
 		dlon := float32(radiusNM/float64(nmPerLongitude)) * float32(gomath.Cos(theta))
 		ll := math.Point2LL{center[0] + dlon, center[1] + dlat}
 		s := cam.llToScreen(ll, canvasOrigin, canvasSize, nmPerLongitude)
-		pts = append(pts, imgui.Vec2{X: s[0], Y: s[1]})
+		cur := imgui.Vec2{X: s[0], Y: s[1]}
+		if i > 0 {
+			mp.canvasDrawList.AddLine(prev, cur, color)
+		}
+		prev = cur
 	}
-	mp.canvasDrawList.AddPolyline(&pts[0], int32(len(pts)), color, imgui.DrawFlagsNone, 1.0)
 }
 
 func (mp *MapPane) drawAirportLabels(c *client.ControlClient, cam camera, canvasOrigin, canvasSize [2]float32, nmPerLongitude float32) {
