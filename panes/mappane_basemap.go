@@ -146,9 +146,13 @@ func (mp *MapPane) drawBasemap(canvasOrigin, canvasSize [2]float32, nmPerLongitu
 	}
 
 	cam := camera{center: math.Point2LL{mp.CenterLon, mp.CenterLat}, rangeNM: mp.RangeNM}
-	view := mp.viewExtent(canvasSize, nmPerLongitude)
+	view := mp.viewExtent(cam, canvasSize, nmPerLongitude)
 
 	color := imgui.ColorU32Vec4(imgui.Vec4{X: 0.30, Y: 0.36, Z: 0.42, W: 1})
+
+	// Reuse a per-call buffer to avoid allocating per polyline; basemap polylines
+	// are drawn many times per frame.
+	var screenPts []imgui.Vec2
 
 	for _, pl := range lines {
 		if !math.Overlaps(view, pl.bounds) {
@@ -157,26 +161,25 @@ func (mp *MapPane) drawBasemap(canvasOrigin, canvasSize [2]float32, nmPerLongitu
 		if len(pl.pts) < 2 {
 			continue
 		}
-		prev := cam.llToScreen(pl.pts[0], canvasOrigin, canvasSize, nmPerLongitude)
-		for i := 1; i < len(pl.pts); i++ {
-			cur := cam.llToScreen(pl.pts[i], canvasOrigin, canvasSize, nmPerLongitude)
-			mp.canvasDrawList.AddLine(
-				imgui.Vec2{X: prev[0], Y: prev[1]},
-				imgui.Vec2{X: cur[0], Y: cur[1]},
-				color)
-			prev = cur
+		screenPts = screenPts[:0]
+		for _, p := range pl.pts {
+			s := cam.llToScreen(p, canvasOrigin, canvasSize, nmPerLongitude)
+			screenPts = append(screenPts, imgui.Vec2{X: s[0], Y: s[1]})
 		}
+		mp.canvasDrawList.AddPolyline(&screenPts[0], int32(len(screenPts)), color, imgui.DrawFlagsNone, 1.0)
 	}
 }
 
 // viewExtent returns the lat-lon bounding box currently visible in the canvas.
-func (mp *MapPane) viewExtent(canvasSize [2]float32, nmPerLongitude float32) math.Extent2D {
-	cam := camera{center: math.Point2LL{mp.CenterLon, mp.CenterLat}, rangeNM: mp.RangeNM}
+func (mp *MapPane) viewExtent(cam camera, canvasSize [2]float32, nmPerLongitude float32) math.Extent2D {
 	corners := [4][2]float32{
 		{0, 0}, {canvasSize[0], 0}, {canvasSize[0], canvasSize[1]}, {0, canvasSize[1]},
 	}
 	var ext math.Extent2D
 	for i, c := range corners {
+		// canvas-local coords intentionally pair with zero origin in screenToLL —
+		// the Y-flip and origin offset are inverses of each other, so passing the
+		// actual canvasOrigin would double-cancel.
 		ll := cam.screenToLL(c, [2]float32{0, 0}, canvasSize, nmPerLongitude)
 		if i == 0 {
 			ext.P0, ext.P1 = ll, ll
