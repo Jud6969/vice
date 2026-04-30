@@ -14,6 +14,7 @@ import (
 	"time"
 
 	av "github.com/mmp/vice/aviation"
+	"github.com/mmp/vice/client/replay"
 	"github.com/mmp/vice/log"
 	"github.com/mmp/vice/math"
 	"github.com/mmp/vice/platform"
@@ -62,6 +63,8 @@ type ControlClient struct {
 	// This is all read-only data that we expect other parts of the system
 	// to access directly.
 	State SimState
+
+	recorder *replay.Recorder
 }
 
 // This is the client-side representation of a server (perhaps could be better-named...)
@@ -215,6 +218,21 @@ func NewControlClient(ss server.SimState, controllerToken string, disableTTSPtr 
 	return cc
 }
 
+// SetRecorder attaches an open Recorder. Pass nil to detach (e.g., on settings
+// toggle off mid-session). Safe to call before connect.
+func (c *ControlClient) SetRecorder(r *replay.Recorder) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.recorder = r
+}
+
+// GetRecorder returns the attached Recorder (or nil).
+func (c *ControlClient) GetRecorder() *replay.Recorder {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.recorder
+}
+
 func (c *ControlClient) Status() string {
 	if c == nil {
 		return "[disconnected]"
@@ -236,6 +254,11 @@ func (c *ControlClient) Status() string {
 func (c *ControlClient) Disconnect() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	if c.recorder != nil {
+		c.recorder.Close()
+		c.recorder = nil
+	}
 
 	if err := c.client.callWithTimeout(server.SignOffRPC, c.controllerToken, nil); err != nil {
 		c.lg.Errorf("Error signing off from sim: %v", err)
@@ -339,6 +362,16 @@ func (c *ControlClient) GetUpdates(eventStream *sim.EventStream, p platform.Plat
 	for _, call := range completedCalls {
 		call.InvokeCallback(eventStream, &c.State)
 	}
+
+	// Append a replay frame whenever new state was applied this cycle.
+	if c.recorder != nil && (updateCallFinished != nil || len(completedCalls) > 0) {
+		if err := c.recorder.AppendFrame(c.State.SimTime.Time(), c.State.Tracks); err != nil {
+			c.lg.Warnf("replay: AppendFrame failed (recording stops): %v", err)
+			c.recorder.Close()
+			c.recorder = nil
+		}
+	}
+
 	if callbackErr != nil && onErr != nil {
 		onErr(callbackErr)
 	}
