@@ -707,31 +707,35 @@ func (s *Sim) applyScheduledRates() {
 		}
 	}
 
-	// Arrivals: per inbound flow, recompute its rate sum (across all
-	// covered airports). Adjust NextInboundSpawn if the new sum differs
-	// from the previous estimate.
+	// Arrivals: build a runtime override map keyed [group][airport_or_overflights].
+	// spawnArrivalsAndOverflights reads from this when LaunchConfig.Schedule
+	// is set so every spawn within the bucket reflects the scheduled rate.
+	s.runtimeInboundFlowRates = make(map[string]map[string]float32, len(lc.InboundFlowRates))
 	for group, groupRates := range lc.InboundFlowRates {
-		var newSum float32
+		override := make(map[string]float32, len(groupRates))
+		var newSum, staticSum float32
 		for airport, staticRate := range groupRates {
-			if airport == "overflights" {
-				newSum += staticRate
-				continue
-			}
-			if !lc.Schedule.HasAirport(airport) {
+			staticSum += staticRate
+			if airport == "overflights" || !lc.Schedule.HasAirport(airport) {
+				override[airport] = staticRate
 				newSum += staticRate
 				continue
 			}
 			_, scheduledArr := lc.Schedule.RateAt(simTime, airport)
 			staticTotal := lc.staticInboundTotalForAirport(airport)
-			if staticTotal == 0 {
-				continue
+			var rate float32
+			if staticTotal > 0 {
+				rate = scheduledArr * (staticRate / staticTotal)
 			}
-			newSum += scheduledArr * (staticRate / staticTotal)
+			override[airport] = rate
+			newSum += rate
 		}
-		newSum *= lc.InboundFlowRateScale
-		if newSum > 0 {
+		s.runtimeInboundFlowRates[group] = override
+		// Only refresh the timer if the rate changed materially. Avoids the
+		// "Poisson hiccup every 15 minutes when nothing actually changed" case.
+		if newSum != staticSum && newSum > 0 {
 			pushActive := s.State.SimTime.Before(s.PushEnd)
-			s.NextInboundSpawn[group] = s.State.SimTime.Add(randomWait(newSum, pushActive, s.Rand))
+			s.NextInboundSpawn[group] = s.State.SimTime.Add(randomWait(newSum*lc.InboundFlowRateScale, pushActive, s.Rand))
 		}
 	}
 }
@@ -743,6 +747,7 @@ func (s *Sim) SetSchedule(sch *schedule.Schedule) {
 	defer s.mu.Unlock(s.lg)
 	s.State.LaunchConfig.Schedule = sch
 	s.lastScheduleBucket = ""
+	s.runtimeInboundFlowRates = nil
 	if sch != nil {
 		k := scheduleBucketKey(s.State.SimTime.Time())
 		s.lastScheduleBucket = k

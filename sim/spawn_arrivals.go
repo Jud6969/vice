@@ -38,7 +38,14 @@ func (s *Sim) spawnArrivalsAndOverflights() {
 
 	pushActive := now.Before(s.PushEnd)
 
-	for group, rates := range s.State.LaunchConfig.InboundFlowRates {
+	for group, staticRates := range s.State.LaunchConfig.InboundFlowRates {
+		// Use schedule-derived override rates when present; fall back to static.
+		rates := staticRates
+		if s.runtimeInboundFlowRates != nil {
+			if override, ok := s.runtimeInboundFlowRates[group]; ok {
+				rates = override
+			}
+		}
 		if now.After(s.NextInboundSpawn[group]) {
 			// Filter rates to only include types that are in automatic mode
 			filteredRates := make(map[string]float32)

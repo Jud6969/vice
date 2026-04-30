@@ -1604,6 +1604,16 @@ func (c *NewSimConfiguration) Start(config *Config) error {
 			return err
 		}
 	} else {
+		// Apply the schedule if the user opted in. Done here (not in
+		// updateStartTimeForRunways) because METAR fetch may not have completed
+		// when Start fires.
+		if c.UseSchedule && c.Schedule != nil {
+			c.StartTime = c.scheduleStartTime()
+			c.ScenarioSpec.LaunchConfig.Schedule = c.Schedule
+		} else {
+			c.ScenarioSpec.LaunchConfig.Schedule = nil
+		}
+
 		// Create sim configuration for new sim
 		c.NewSimRequest.Initials = config.ControllerInitials
 		if err := c.mgr.CreateNewSim(c.NewSimRequest, config.ControllerInitials, c.selectedServer, c.lg); err != nil {
@@ -2457,10 +2467,6 @@ func (c *NewSimConfiguration) updateStartTimeForRunways() {
 		}
 	}
 
-	if c.UseSchedule && c.Schedule != nil {
-		c.StartTime = c.scheduleStartTime()
-		c.ScenarioSpec.LaunchConfig.Schedule = c.Schedule
-	}
 }
 
 // scheduleStartTime returns a concrete date/time matching the user's

@@ -131,6 +131,13 @@ type Sim struct {
 	// lastScheduleBucket tracks the last "DAY:HH:MM" bucket key for which
 	// applyScheduledRates was called. Empty until the schedule first applies.
 	lastScheduleBucket string
+
+	// runtimeInboundFlowRates, when LaunchConfig.Schedule is non-nil, holds
+	// the schedule-derived per-(flow, airport) rates. spawnArrivalsAndOverflights
+	// reads from this instead of LaunchConfig.InboundFlowRates so that all
+	// spawns within a 15-min bucket use the scheduled rates, not just the
+	// first one after a bucket crossing.
+	runtimeInboundFlowRates map[string]map[string]float32
 }
 
 // LastSTTCommand stores the nav snapshot from before the most recent STT command
