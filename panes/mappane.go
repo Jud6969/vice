@@ -6,6 +6,7 @@ package panes
 
 import (
 	"sort"
+	"time"
 
 	av "github.com/mmp/vice/aviation"
 	"github.com/mmp/vice/client"
@@ -106,6 +107,11 @@ func (mp *MapPane) DrawWindow(show *bool, src TrackSource, p platform.Platform,
 	if imgui.BeginV("Map", show, imgui.WindowFlagsNone) {
 		DrawPinButton("Map", unpinnedWindows, p)
 		mp.drawToolbar(src)
+		// Replay mode: render the timeline bar above the canvas.
+		if rp, ok := src.(*ReplayPlayer); ok {
+			rp.Tick(time.Now())
+			rp.DrawTimelineBar()
+		}
 		mp.drawCanvas(src, p, lg)
 	}
 	imgui.End()

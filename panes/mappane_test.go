@@ -7,7 +7,10 @@ package panes
 import (
 	gomath "math"
 	"testing"
+	"time"
 
+	av "github.com/mmp/vice/aviation"
+	"github.com/mmp/vice/client/replay"
 	"github.com/mmp/vice/math"
 	"github.com/mmp/vice/sim"
 )
@@ -154,6 +157,36 @@ func TestPushTrailCapped(t *testing.T) {
 	}
 	if pts[119][0] != 199 {
 		t.Fatalf("newest %v", pts[119])
+	}
+}
+
+func TestReplayPlayerTickAdvances(t *testing.T) {
+	// Synthesize a replay with frames at t=0,1,2,3 seconds (in unix nanos).
+	base := time.Unix(1700000000, 0)
+	rp := &replay.Replay{
+		Header: replay.Header{StartTimeUnix: base.UnixNano()},
+		Frames: []replay.Frame{
+			{SimTimeUnix: base.UnixNano() + 0, Tracks: map[av.ADSBCallsign]*sim.Track{}},
+			{SimTimeUnix: base.UnixNano() + int64(time.Second), Tracks: map[av.ADSBCallsign]*sim.Track{}},
+			{SimTimeUnix: base.UnixNano() + int64(2*time.Second), Tracks: map[av.ADSBCallsign]*sim.Track{}},
+			{SimTimeUnix: base.UnixNano() + int64(3*time.Second), Tracks: map[av.ADSBCallsign]*sim.Track{}},
+		},
+	}
+	p := NewReplayPlayer(rp)
+	p.SetPlaying(true)
+	p.SetSpeed(1.0)
+
+	wallStart := time.Unix(2_000_000_000, 0)
+	p.SetWallReference(wallStart, 0)
+	// Advance wall by 1.5s; expect frame index = 1 (1.5s past frame 1, before frame 2).
+	p.Tick(wallStart.Add(1500 * time.Millisecond))
+	if got := p.CurFrame(); got != 1 {
+		t.Fatalf("after 1.5s want cur=1, got %d", got)
+	}
+	// Another 1s → 2.5s total → cur=2.
+	p.Tick(wallStart.Add(2500 * time.Millisecond))
+	if got := p.CurFrame(); got != 2 {
+		t.Fatalf("after 2.5s want cur=2, got %d", got)
 	}
 }
 
