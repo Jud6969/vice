@@ -73,3 +73,30 @@ func TestCameraApplyPanPixels(t *testing.T) {
 		t.Fatalf("expected lat to increase after downward drag, got %v", cam2.center[1])
 	}
 }
+
+func TestParseGeoJSONLineStrings(t *testing.T) {
+	// Minimal GeoJSON with one LineString and one MultiLineString polygon.
+	src := []byte(`{
+		"type": "FeatureCollection",
+		"features": [
+			{"type":"Feature","geometry":{"type":"LineString","coordinates":[[0,0],[1,1],[2,0]]}},
+			{"type":"Feature","geometry":{"type":"MultiLineString","coordinates":[[[10,10],[11,11]],[[20,20],[21,21],[22,22]]]}},
+			{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[5,5],[6,5],[6,6],[5,6],[5,5]]]}}
+		]
+	}`)
+	pls, err := parseGeoJSONPolylines(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 1 LineString + 2 sub-strings of MultiLineString + 1 polygon ring = 4 polylines.
+	if len(pls) != 4 {
+		t.Fatalf("want 4 polylines, got %d", len(pls))
+	}
+	if len(pls[0].pts) != 3 || pls[0].pts[1][0] != 1 || pls[0].pts[1][1] != 1 {
+		t.Fatalf("first polyline malformed: %+v", pls[0])
+	}
+	// Bounding box for second polyline (MultiLineString[0]).
+	if pls[1].bounds.P0[0] != 10 || pls[1].bounds.P1[0] != 11 {
+		t.Fatalf("second polyline bounds wrong: %+v", pls[1].bounds)
+	}
+}

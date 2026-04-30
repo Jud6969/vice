@@ -153,7 +153,7 @@ func (mp *MapPane) drawCanvas(c *client.ControlClient, p platform.Platform, lg *
 		nmPerLon = c.State.NmPerLongitude
 	}
 
-	// Future tasks add basemap / overlays / aircraft draws here.
+	mp.drawBasemap(mp.canvasOrigin, mp.canvasSize, nmPerLon, lg)
 
 	cam := camera{center: math.Point2LL{mp.CenterLon, mp.CenterLat}, rangeNM: mp.RangeNM}
 
