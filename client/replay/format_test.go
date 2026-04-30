@@ -119,3 +119,101 @@ func TestRecorderEndToEnd(t *testing.T) {
 		t.Fatalf("want 2 frames, got %d", count)
 	}
 }
+
+func TestLoadRoundtrip(t *testing.T) {
+	dir := t.TempDir()
+	rec, path, err := NewRecorder(dir, "ZNY", time.Unix(1700000000, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		if err := rec.AppendFrame(time.Unix(1700000000+int64(i+1), 0), map[av.ADSBCallsign]*sim.Track{
+			"AAL1": {RadarTrack: av.RadarTrack{ADSBCallsign: "AAL1"}},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := rec.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	rp, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rp.Header.Facility != "ZNY" {
+		t.Fatalf("facility %q", rp.Header.Facility)
+	}
+	if len(rp.Frames) != 3 {
+		t.Fatalf("want 3 frames, got %d", len(rp.Frames))
+	}
+	if rp.Frames[0].SimTimeUnix != time.Unix(1700000001, 0).UnixNano() {
+		t.Fatalf("frame 0 simtime %d", rp.Frames[0].SimTimeUnix)
+	}
+}
+
+func TestListMostRecent(t *testing.T) {
+	dir := t.TempDir()
+	mkfile := func(name string, mtime time.Time) {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(p, mtime, mtime); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mkfile("a.bin", time.Unix(1700000001, 0))
+	mkfile("b.bin", time.Unix(1700000002, 0))
+	mkfile("c.bin", time.Unix(1700000003, 0))
+	mkfile("ignore.txt", time.Unix(1700000004, 0))
+
+	got, err := ListMostRecent(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("want 3 .bin files, got %d", len(got))
+	}
+	if filepath.Base(got[0].Path) != "c.bin" {
+		t.Fatalf("newest should be c.bin, got %q", got[0].Path)
+	}
+	if filepath.Base(got[2].Path) != "a.bin" {
+		t.Fatalf("oldest should be a.bin, got %q", got[2].Path)
+	}
+}
+
+func TestPruneKeepsNewest(t *testing.T) {
+	dir := t.TempDir()
+	mkfile := func(name string, mtime time.Time) {
+		p := filepath.Join(dir, name)
+		os.WriteFile(p, []byte("x"), 0o644)
+		os.Chtimes(p, mtime, mtime)
+	}
+	mkfile("a.bin", time.Unix(1700000001, 0))
+	mkfile("b.bin", time.Unix(1700000002, 0))
+	mkfile("c.bin", time.Unix(1700000003, 0))
+	mkfile("d.bin", time.Unix(1700000004, 0))
+
+	if _, err := Prune(dir, 2); err != nil {
+		t.Fatal(err)
+	}
+	remaining := func() []string {
+		ents, _ := os.ReadDir(dir)
+		var n []string
+		for _, e := range ents {
+			n = append(n, e.Name())
+		}
+		return n
+	}()
+	gotSet := map[string]bool{}
+	for _, n := range remaining {
+		gotSet[n] = true
+	}
+	if !gotSet["c.bin"] || !gotSet["d.bin"] {
+		t.Fatalf("expected c.bin+d.bin to survive, got %v", remaining)
+	}
+	if gotSet["a.bin"] || gotSet["b.bin"] {
+		t.Fatalf("expected a.bin+b.bin pruned, got %v", remaining)
+	}
+}
