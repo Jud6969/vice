@@ -15,6 +15,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"strconv"
@@ -25,6 +26,7 @@ import (
 	"github.com/goforj/godump"
 	av "github.com/mmp/vice/aviation"
 	"github.com/mmp/vice/client"
+	"github.com/mmp/vice/client/replay"
 	"github.com/mmp/vice/log"
 	"github.com/mmp/vice/nav"
 	"github.com/mmp/vice/panes"
@@ -42,6 +44,14 @@ import (
 	"github.com/apenwarr/fixconsole"
 	"github.com/shirou/gopsutil/cpu"
 )
+
+func replayDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return filepath.Join(".", ".vice", "replays")
+	}
+	return filepath.Join(home, ".vice", "replays")
+}
 
 var (
 	// Command-line options are only used for developer features.
@@ -551,6 +561,14 @@ func runGUI(config *Config, configErr error, lg *log.Logger) error {
 
 	config.Activate(render, plat, eventStream, lg)
 
+	if config.AutoPruneReplays {
+		if deleted, err := replay.Prune(replayDir(), int(config.ReplayKeepCount)); err != nil {
+			lg.Warnf("replay prune: %v", err)
+		} else if len(deleted) > 0 {
+			lg.Infof("replay prune: deleted %d old files", len(deleted))
+		}
+	}
+
 	var mgr *client.ConnectionManager
 	var errorLogger util.ErrorLogger
 	var extraScenarioErrors string
@@ -661,6 +679,16 @@ func runGUI(config *Config, configErr error, lg *log.Logger) error {
 		}
 
 		mgr.Update(eventStream, plat, lg)
+
+		if controlClient != nil && config.RecordReplay && controlClient.GetRecorder() == nil {
+			rec, path, err := replay.NewRecorder(replayDir(), controlClient.State.Facility, time.Now())
+			if err != nil {
+				lg.Warnf("replay: failed to start recording: %v", err)
+			} else {
+				lg.Infof("replay: recording to %s", path)
+				controlClient.SetRecorder(rec)
+			}
+		}
 
 		// Report whisper benchmark to server (only sends once, when benchmark done and server available)
 		client.ReportWhisperBenchmark(mgr.RemoteServer, lg)
