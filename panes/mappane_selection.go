@@ -50,7 +50,16 @@ func (mp *MapPane) handleSelection(src TrackSource, cam camera, canvasOrigin, ca
 			hit = cs
 		}
 	}
-	mp.selectedCS = hit // empty if no hit
+	// Only update selection when an aircraft was hit. Empty-space clicks
+	// preserve the current selection so that click-drag pans don't clear it
+	// on the press frame. Toggle-off when the same aircraft is hit again.
+	if hit != "" {
+		if hit == mp.selectedCS {
+			mp.selectedCS = ""
+		} else {
+			mp.selectedCS = hit
+		}
+	}
 }
 
 // trailCap is generous so the trail captures every distinct position the
