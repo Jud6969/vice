@@ -112,3 +112,17 @@ func TestAggregateForBuckets(t *testing.T) {
 		}
 	}
 }
+
+func TestPeakAndCurrentTotal(t *testing.T) {
+	s := mkSched()
+	day := time.Date(2026, 5, 4, 0, 0, 0, 0, time.UTC) // Monday
+	peak := s.PeakTotalForDay(day, []string{"KLGA"})
+	if peak != 28+22 { // MON 07:00 has dep=28 arr=22 (largest bucket)
+		t.Fatalf("peak: %v", peak)
+	}
+	mon0700 := time.Date(2026, 5, 4, 7, 0, 0, 0, time.UTC)
+	cur := s.CurrentTotalForAirports(mon0700, []string{"KLGA"})
+	if cur != 50 {
+		t.Fatalf("current: %v", cur)
+	}
+}

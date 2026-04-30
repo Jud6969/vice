@@ -68,6 +68,49 @@ func bucketKey(t time.Time) string {
 	return fmt.Sprintf("%s:%02d:%02d", day, hh, mm)
 }
 
+// PeakTotalForDay returns the maximum (dep+arr) total summed across
+// `airports` across all 96 buckets of the day represented by simDate.
+// Used to compute a "fraction-of-peak" busyness factor.
+func (s *Schedule) PeakTotalForDay(simDate time.Time, airports []string) float32 {
+	if s == nil {
+		return 0
+	}
+	agg := s.AggregateForDay(simDate, airports)
+	var peak float32
+	for _, b := range agg {
+		if v := b.Dep + b.Arr; v > peak {
+			peak = v
+		}
+	}
+	return peak
+}
+
+// CurrentTotalForAirports returns (dep+arr) summed across `airports`
+// for the bucket containing simTime.
+func (s *Schedule) CurrentTotalForAirports(simTime time.Time, airports []string) float32 {
+	if s == nil {
+		return 0
+	}
+	var sum float32
+	for _, icao := range airports {
+		dep, arr := s.RateAt(simTime, icao)
+		sum += dep + arr
+	}
+	return sum
+}
+
+// ScheduleAirports returns the list of airport ICAOs the schedule covers.
+func (s *Schedule) ScheduleAirports() []string {
+	if s == nil {
+		return nil
+	}
+	out := make([]string, 0, len(s.Airports))
+	for icao := range s.Airports {
+		out = append(out, icao)
+	}
+	return out
+}
+
 func weekdayKey(d time.Weekday) string {
 	switch d {
 	case time.Monday:

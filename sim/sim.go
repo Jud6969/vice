@@ -132,6 +132,19 @@ type Sim struct {
 	// applyScheduledRates was called. Empty until the schedule first applies.
 	lastScheduleBucket string
 
+	// scheduleBusyness is the schedule's "how busy is right now" factor in
+	// [0.05, 1.0]. Drives overflight, VFR, and prespawn scaling so dead
+	// periods feel quiet and peaks feel realistic. Refreshed at each
+	// 15-min bucket boundary by applyScheduledRates.
+	scheduleBusyness float32
+
+	// peakBusyness is the maximum total scheduled rate seen across the
+	// 96 buckets of the current weekday. Cached per (weekday) so we
+	// don't recompute it every bucket crossing within the same day.
+	peakBusyness    float32
+	peakBusynessDay time.Weekday
+	peakBusynessSet bool
+
 	// runtimeInboundFlowRates, when LaunchConfig.Schedule is non-nil, holds
 	// the schedule-derived per-(flow, airport) rates. spawnArrivalsAndOverflights
 	// reads from this instead of LaunchConfig.InboundFlowRates so that all

@@ -432,6 +432,15 @@ func (s *Sim) Prespawn() {
 	start := time.Now()
 	s.lg.Info("starting aircraft prespawn")
 
+	// If a schedule is attached, apply its rates NOW so prespawn uses
+	// schedule-driven IFR/VFR/overflight rates instead of static ones.
+	if s.State.LaunchConfig.Schedule != nil {
+		s.mu.Lock(s.lg)
+		s.applyScheduledRates()
+		s.lastScheduleBucket = scheduleBucketKey(s.State.SimTime.Time())
+		s.mu.Unlock(s.lg)
+	}
+
 	s.setInitialSpawnTimes(s.State.SimTime)
 
 	s.mu.Lock(s.lg)
@@ -707,6 +716,31 @@ func (s *Sim) applyScheduledRates() {
 		}
 	}
 
+	// Compute the busyness factor (current scheduled total / peak for today).
+	covered := lc.Schedule.ScheduleAirports()
+	if len(covered) > 0 {
+		weekday := simTime.Weekday()
+		if !s.peakBusynessSet || s.peakBusynessDay != weekday {
+			s.peakBusyness = lc.Schedule.PeakTotalForDay(simTime, covered)
+			s.peakBusynessDay = weekday
+			s.peakBusynessSet = true
+		}
+		factor := float32(0.05) // floor
+		if s.peakBusyness > 0 {
+			current := lc.Schedule.CurrentTotalForAirports(simTime, covered)
+			factor = current / s.peakBusyness
+			if factor < 0.05 {
+				factor = 0.05
+			}
+			if factor > 1.0 {
+				factor = 1.0
+			}
+		}
+		s.scheduleBusyness = factor
+	} else {
+		s.scheduleBusyness = 1.0
+	}
+
 	// Arrivals: build a runtime override map keyed [group][airport_or_overflights].
 	// spawnArrivalsAndOverflights reads from this when LaunchConfig.Schedule
 	// is set so every spawn within the bucket reflects the scheduled rate.
@@ -716,7 +750,13 @@ func (s *Sim) applyScheduledRates() {
 		var newSum, staticSum float32
 		for airport, staticRate := range groupRates {
 			staticSum += staticRate
-			if airport == "overflights" || !lc.Schedule.HasAirport(airport) {
+			if airport == "overflights" {
+				scaled := staticRate * s.scheduleBusyness
+				override[airport] = scaled
+				newSum += scaled
+				continue
+			}
+			if !lc.Schedule.HasAirport(airport) {
 				override[airport] = staticRate
 				newSum += staticRate
 				continue
@@ -736,6 +776,15 @@ func (s *Sim) applyScheduledRates() {
 		if newSum != staticSum && newSum > 0 {
 			pushActive := s.State.SimTime.Before(s.PushEnd)
 			s.NextInboundSpawn[group] = s.State.SimTime.Add(randomWait(newSum*lc.InboundFlowRateScale, pushActive, s.Rand))
+		}
+	}
+
+	// VFR: rescale all VFR rates by the busyness factor.
+	for name, rate := range lc.VFRAirportRates {
+		r := scaleRate(float32(rate), lc.VFRDepartureRateScale*s.scheduleBusyness)
+		rwy := s.State.VFRRunways[name]
+		if state, ok := s.DepartureState[name][av.RunwayID(rwy.Id)]; ok && state != nil {
+			state.setVFRRate(s, r)
 		}
 	}
 }
