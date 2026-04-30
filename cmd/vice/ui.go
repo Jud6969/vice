@@ -228,19 +228,37 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 			imgui.SetTooltip("Show summary of keyboard commands")
 		}
 
-		flashDep := controlClient != nil && !ui.showLaunchControl &&
+		// Disable the launch-control toolbar button entirely when a
+		// real-world schedule is driving rates; manual launch control
+		// would fight the schedule.
+		scheduleActive := controlClient != nil && controlClient.State.LaunchConfig.Schedule != nil
+		if scheduleActive && ui.showLaunchControl {
+			ui.showLaunchControl = false
+		}
+
+		flashDep := controlClient != nil && !ui.showLaunchControl && !scheduleActive &&
 			len(controlClient.State.GetRegularReleaseDepartures()) > 0 && (time.Now().UnixMilli()/500)&1 == 1
 		if flashDep {
 			imgui.PushStyleColorVec4(imgui.ColText, imgui.Vec4{0, .8, 0, 1})
 		}
+		if scheduleActive {
+			imgui.BeginDisabled()
+		}
 		if imgui.Button(renderer.FontAwesomeIconPlaneDeparture) {
 			ui.showLaunchControl = !ui.showLaunchControl
+		}
+		if scheduleActive {
+			imgui.EndDisabled()
 		}
 		if flashDep {
 			imgui.PopStyleColor()
 		}
 		if imgui.IsItemHovered() {
-			imgui.SetTooltip("Control spawning new aircraft and grant departure releases")
+			if scheduleActive {
+				imgui.SetTooltip("Launch control disabled — using real-world schedule")
+			} else {
+				imgui.SetTooltip("Control spawning new aircraft and grant departure releases")
+			}
 		}
 
 		if controlClient != nil && controlClient.Connected() {
