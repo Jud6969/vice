@@ -4,7 +4,7 @@
 
 **Goal:** Add a separate map window — toggled from the main menu bar — that shows aircraft on a dark vector world map with pan/zoom, facility boundaries, optional airport labels, filterable visibility (all / untracked / tracked / my TCW / specific TCW), click-to-select with floating info panel, and past-trail + future-route for the selected aircraft.
 
-**Architecture:** New `panes.MapPane` type in package `panes/`, alongside `MessagesPane` and `FlightStripPane`. Wired into the menu bar via a new `ui.showMap` toggle in `cmd/vice/ui.go`. Reuses `radar.ScopeTransformations` for lat-lon ↔ screen, `client.ControlClient.State` for tracks/airports/facility data, and `renderer.{Lines,Triangles,Text}DrawBuilder` for drawing. Background map data is bundled at build time via Go `//go:embed` from a small Natural Earth GeoJSON dataset committed under `resources/mapdata/`.
+**Architecture:** New `panes.MapPane` type in package `panes/`, alongside `MessagesPane` and `FlightStripPane`. Wired into the menu bar via a new `ui.showMap` toggle in `cmd/vice/ui.go`. Reuses `radar.ScopeTransformations` for lat-lon ↔ screen, `client.ControlClient.State` for tracks/airports/facility data, and `renderer.{Lines,Triangles,Text}DrawBuilder` for drawing. Background map data is bundled at build time via Go `//go:embed` from a small Natural Earth GeoJSON dataset committed under `panes/mapdata/`.
 
 **Tech Stack:** Go, `github.com/AllenDang/cimgui-go/imgui` (UI), `github.com/mmp/vice/{aviation,client,math,panes,radar,renderer,sim}` (vice internals), Natural Earth public-domain coastline + admin-0 GeoJSON, Go stdlib `encoding/json`.
 
@@ -30,8 +30,8 @@
 - `panes/mappane_aircraft.go` — `aircraftFilter` enum, `filterMatch()` predicate, `drawAircraft` (rotated plane glyph + callsign).
 - `panes/mappane_selection.go` — click hit-test, past-trail ring buffer, future-route draw, info-panel imgui window.
 - `panes/mappane_test.go` — unit tests for camera math, filter predicate, hit-test, trail buffer.
-- `resources/mapdata/ne_50m_coastline.geojson` — Natural Earth 1:50m coastline (public domain, manually downloaded).
-- `resources/mapdata/ne_50m_admin_0_countries.geojson` — Natural Earth 1:50m country borders (public domain, manually downloaded).
+- `panes/mapdata/ne_50m_coastline.geojson` — Natural Earth 1:50m coastline (public domain, manually downloaded).
+- `panes/mapdata/ne_50m_admin_0_countries.geojson` — Natural Earth 1:50m country borders (public domain, manually downloaded).
 
 **Modified files:**
 
@@ -674,8 +674,8 @@ from `https://www.naturalearthdata.com/downloads/50m-physical-vectors/` and
   user prefers, the smaller `ne_110m_*` versions also work)
 - `ne_50m_admin_0_countries.geojson`
 
-Place them at `resources/mapdata/ne_50m_coastline.geojson` and
-`resources/mapdata/ne_50m_admin_0_countries.geojson`. Both are public domain.
+Place them at `panes/mapdata/ne_50m_coastline.geojson` and
+`panes/mapdata/ne_50m_admin_0_countries.geojson`. Both are public domain.
 
 The plan assumes these files exist when basemap rendering is implemented.
 If they're missing, `drawBasemap` logs a warning and renders nothing — the
@@ -683,8 +683,8 @@ rest of the pane still works.
 
 **Files:**
 - Create: `panes/mappane_basemap.go`
-- Create: `resources/mapdata/ne_50m_coastline.geojson` (downloaded)
-- Create: `resources/mapdata/ne_50m_admin_0_countries.geojson` (downloaded)
+- Create: `panes/mapdata/ne_50m_coastline.geojson` (downloaded)
+- Create: `panes/mapdata/ne_50m_admin_0_countries.geojson` (downloaded)
 - Extend: `panes/mappane_test.go`
 - Modify: `panes/mappane.go` (call `drawBasemap`)
 
@@ -970,7 +970,7 @@ Replace the hardcoded `45.5` in the panning block (Step 2.9) with `nmPerLon`.
 Run: `go build -tags vulkan ./cmd/vice`
 
 If build fails because `coastlineGeoJSON`/`countriesGeoJSON` are empty (the
-files at `resources/mapdata/` are missing), the engineer should pause and
+files at `panes/mapdata/` are missing), the engineer should pause and
 download them per the manual prerequisite at the top of this task.
 
 Run vice, click map → coastlines and country borders should be visible. Pan
@@ -980,7 +980,7 @@ them.
 - [ ] **Step 3.7: Commit**
 
 ```bash
-git add panes/mappane.go panes/mappane_basemap.go panes/mappane_test.go resources/mapdata/
+git add panes/mappane.go panes/mappane_basemap.go panes/mappane_test.go panes/mapdata/
 git commit -m "panes: MapPane Natural Earth basemap
 
 Bundles ne_50m_coastline + ne_50m_admin_0_countries via go:embed.
