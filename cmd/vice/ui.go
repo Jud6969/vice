@@ -905,6 +905,22 @@ func uiDrawSettingsWindow(c *client.ControlClient, config *Config, activeRadarPa
 		}
 	}
 
+	if imgui.CollapsingHeaderBoolPtr("Session Replay", nil) {
+		imgui.Checkbox("Record this session", &config.RecordReplay)
+		imgui.Checkbox("Auto-prune old replays at startup", &config.AutoPruneReplays)
+		if config.AutoPruneReplays {
+			if config.ReplayKeepCount < 1 {
+				config.ReplayKeepCount = 1
+			}
+			imgui.SetNextItemWidth(80)
+			imgui.InputIntV("Keep most recent", &config.ReplayKeepCount, 1, 5, 0)
+			if config.ReplayKeepCount < 1 {
+				config.ReplayKeepCount = 1
+			}
+		}
+		imgui.TextDisabled("Files: ~/.vice/replays/")
+	}
+
 	if imgui.CollapsingHeaderBoolPtr("Speech to Text", nil) {
 		// Push-to-talk key
 		if config.UserPTTKey == imgui.KeyNone {

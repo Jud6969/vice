@@ -60,6 +60,10 @@ type ConfigNoSim struct {
 	ShowFlightStrips bool
 	ShowMap          bool
 
+	RecordReplay     bool
+	AutoPruneReplays bool
+	ReplayKeepCount  int32
+
 	AskedDiscordOptIn      bool
 	InhibitDiscordActivity util.AtomicBool
 	NotifiedTargetGenMode  bool
@@ -211,6 +215,9 @@ func getDefaultConfig() *Config {
 			ShowMessages:          true,
 			ShowMap:               false,
 			ShowFlightStrips:      true,
+			RecordReplay:          false,
+			AutoPruneReplays:      false,
+			ReplayKeepCount:       10,
 		},
 	}
 }
