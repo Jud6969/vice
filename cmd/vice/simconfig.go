@@ -2470,22 +2470,28 @@ func (c *NewSimConfiguration) updateStartTimeForRunways() {
 }
 
 // scheduleStartTime returns a concrete date/time matching the user's
-// picked (month, weekday, time-of-day). Walks backward from "now" until
-// it finds a date with the picked month and weekday — the result is
-// always in the past (or today), close enough to the present that
-// vice's wx data covers it.
+// picked weekday + time-of-day, anchored to the already-set c.StartTime
+// (which METAR sampling chose inside vice's wx data window). Walks
+// forward up to 6 days from c.StartTime to find a matching weekday,
+// then overrides the hour/minute.
+//
+// Limitation: the user's picked Month is honored for the histogram but
+// not for the actual sim calendar — moving by months would step outside
+// wx coverage. The Schedule's monthly multiplier in RateAt therefore
+// uses the actual sim month, not the picked month. Acceptable v1
+// limitation; v2 could plumb the picked month into RateAt explicitly.
 func (c *NewSimConfiguration) scheduleStartTime() time.Time {
+	base := c.StartTime
+	if base.IsZero() {
+		base = time.Now().UTC()
+	}
+	for i := 0; i < 7; i++ {
+		if base.Weekday() == c.SchedulePickedDay {
+			break
+		}
+		base = base.AddDate(0, 0, 1)
+	}
 	hh := c.SchedulePickedMinutes / 60
 	mm := c.SchedulePickedMinutes % 60
-	// Walk backward day-by-day from today. At most ~370 iterations to
-	// cover any (weekday, month) combination.
-	t := time.Now().UTC()
-	for i := 0; i < 400; i++ {
-		if t.Month() == c.SchedulePickedMonth && t.Weekday() == c.SchedulePickedDay {
-			return time.Date(t.Year(), t.Month(), t.Day(), hh, mm, 0, 0, time.UTC)
-		}
-		t = t.AddDate(0, 0, -1)
-	}
-	// Unreachable; return now as a safe fallback.
-	return time.Now().UTC()
+	return time.Date(base.Year(), base.Month(), base.Day(), hh, mm, 0, 0, base.Location())
 }
