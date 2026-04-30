@@ -548,11 +548,10 @@ func Load(path string) (*Replay, error) {
 	}
 	defer f.Close()
 
-	h, err := DecodeHeader(f)
+	h, dec, err := DecodeHeader(f)
 	if err != nil {
 		return nil, err
 	}
-	dec := msgpack.NewDecoder(f)
 	var frames []Frame
 	for {
 		fr, err := DecodeFrame(f, dec)
@@ -567,6 +566,11 @@ func Load(path string) (*Replay, error) {
 	return &Replay{Header: h, Frames: frames}, nil
 }
 ```
+
+(Note: `DecodeHeader` returns `(Header, *msgpack.Decoder, error)` because msgpack
+buffers ahead from `*os.File`; reusing the same decoder for `DecodeFrame` is
+required so frame reads pick up where the header left off. The unused `msgpack`
+import in this file becomes redundant after this change — remove it.)
 
 - [ ] **Step 3.4: Create `client/replay/prune.go`**
 
