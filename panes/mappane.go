@@ -105,35 +105,37 @@ func (mp *MapPane) DrawWindow(show *bool, src TrackSource, p platform.Platform,
 	if !*show {
 		return
 	}
-	_, replayMode := src.(*ReplayPlayer)
+	rp, replayMode := src.(*ReplayPlayer)
 	flags := imgui.WindowFlagsNone
 	if replayMode {
 		// Pin the window to fill the main viewport's work area (everything
-		// below the main menu bar). NoCollapse + NoMove + NoResize +
-		// NoBringToFrontOnFocus mirror a layout-managed pane.
+		// below the main menu bar). Setting the viewport to the main one
+		// stops imgui's multi-viewport from detaching it into a standalone
+		// OS window. No title bar so it visually replaces the radar pane;
+		// the timeline bar gains a close button to exit replay mode.
 		mvp := imgui.MainViewport()
 		imgui.SetNextWindowPosV(mvp.WorkPos(), imgui.CondAlways, imgui.Vec2{})
 		imgui.SetNextWindowSizeV(mvp.WorkSize(), imgui.CondAlways)
-		// Keep the title bar visible so the close X is reachable; it's how
-		// the user exits replay mode.
+		imgui.SetNextWindowViewport(mvp.ID())
 		flags = imgui.WindowFlagsNoMove | imgui.WindowFlagsNoResize |
-			imgui.WindowFlagsNoCollapse |
+			imgui.WindowFlagsNoCollapse | imgui.WindowFlagsNoTitleBar |
 			imgui.WindowFlagsNoBringToFrontOnFocus
 	} else {
 		imgui.SetNextWindowSizeV(imgui.Vec2{X: 800, Y: 600}, imgui.CondFirstUseEver)
 	}
-	title := "Map"
-	if replayMode {
-		title = "Map (replay)"
-	}
-	if imgui.BeginV(title, show, flags) {
+	if imgui.BeginV("Map", show, flags) {
 		if !replayMode {
 			DrawPinButton("Map", unpinnedWindows, p)
 		}
 		mp.drawToolbar(src)
-		// Replay mode: render the timeline bar above the canvas.
-		if rp, ok := src.(*ReplayPlayer); ok {
+		// Replay mode: render the timeline bar above the canvas, with a
+		// close button on the left to exit replay (the title bar is gone).
+		if replayMode {
 			rp.Tick(time.Now())
+			if imgui.Button("Exit replay") {
+				*show = false
+			}
+			imgui.SameLine()
 			rp.DrawTimelineBar()
 		}
 		mp.drawCanvas(src, p, lg)
