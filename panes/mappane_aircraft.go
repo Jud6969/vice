@@ -8,7 +8,6 @@ import (
 	gomath "math"
 
 	"github.com/AllenDang/cimgui-go/imgui"
-	"github.com/mmp/vice/client"
 	"github.com/mmp/vice/sim"
 )
 
@@ -42,14 +41,14 @@ func filterMatch(trk *sim.Track, f aircraftFilter, userTCW sim.TCW, filterTCWFil
 	return true
 }
 
-func (mp *MapPane) drawAircraft(c *client.ControlClient, cam camera, canvasOrigin, canvasSize [2]float32, nmPerLongitude float32) {
-	if c == nil || !c.Connected() {
+func (mp *MapPane) drawAircraft(src TrackSource, cam camera, canvasOrigin, canvasSize [2]float32, nmPerLongitude float32) {
+	if !src.Connected() {
 		return
 	}
 	view := mp.viewExtent(cam, canvasSize, nmPerLongitude)
 
-	for cs, trk := range c.State.Tracks {
-		if !filterMatch(trk, aircraftFilter(mp.Filter), c.State.UserTCW, mp.FilterTCWFilter) {
+	for cs, trk := range src.Tracks() {
+		if !filterMatch(trk, aircraftFilter(mp.Filter), src.UserTCW(), mp.FilterTCWFilter) {
 			continue
 		}
 		loc := trk.Location
@@ -89,17 +88,17 @@ func (mp *MapPane) drawAircraft(c *client.ControlClient, cam camera, canvasOrigi
 // within aircraftHitRadiusPx of the cursor, or "" if nothing is close. Must be
 // called after the camera has been finalized for the frame; the canvasHovered
 // flag short-circuits when the cursor isn't over the canvas.
-func (mp *MapPane) findHoveredAircraft(c *client.ControlClient, cam camera, canvasOrigin, canvasSize [2]float32, nmPerLongitude float32, canvasHovered bool) {
+func (mp *MapPane) findHoveredAircraft(src TrackSource, cam camera, canvasOrigin, canvasSize [2]float32, nmPerLongitude float32, canvasHovered bool) {
 	mp.hoveredCS = ""
-	if c == nil || !c.Connected() || !canvasHovered {
+	if !src.Connected() || !canvasHovered {
 		return
 	}
 	mouse := imgui.MousePos()
 	mpos := [2]float32{mouse.X, mouse.Y}
 
 	bestD := float32(aircraftHitRadiusPx * aircraftHitRadiusPx)
-	for cs, trk := range c.State.Tracks {
-		if !filterMatch(trk, aircraftFilter(mp.Filter), c.State.UserTCW, mp.FilterTCWFilter) {
+	for cs, trk := range src.Tracks() {
+		if !filterMatch(trk, aircraftFilter(mp.Filter), src.UserTCW(), mp.FilterTCWFilter) {
 			continue
 		}
 		s := cam.llToScreen(trk.Location, canvasOrigin, canvasSize, nmPerLongitude)

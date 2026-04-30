@@ -10,7 +10,6 @@ import (
 
 	"github.com/AllenDang/cimgui-go/imgui"
 	av "github.com/mmp/vice/aviation"
-	"github.com/mmp/vice/client"
 	"github.com/mmp/vice/math"
 )
 
@@ -21,8 +20,8 @@ const aircraftHitRadiusPx = 15
 // canvasHovered captured immediately after the canvas Dummy(), since by the
 // time this runs many sibling imgui items have been submitted and
 // IsItemHovered() no longer references the canvas.
-func (mp *MapPane) handleSelection(c *client.ControlClient, cam camera, canvasOrigin, canvasSize [2]float32, nmPerLongitude float32, canvasHovered bool) {
-	if c == nil || !c.Connected() {
+func (mp *MapPane) handleSelection(src TrackSource, cam camera, canvasOrigin, canvasSize [2]float32, nmPerLongitude float32, canvasHovered bool) {
+	if !src.Connected() {
 		return
 	}
 	if !canvasHovered || !imgui.IsMouseClickedBool(imgui.MouseButtonLeft) {
@@ -38,8 +37,8 @@ func (mp *MapPane) handleSelection(c *client.ControlClient, cam camera, canvasOr
 	bestD := float32(aircraftHitRadiusPx * aircraftHitRadiusPx)
 	var hit av.ADSBCallsign
 
-	for cs, trk := range c.State.Tracks {
-		if !filterMatch(trk, aircraftFilter(mp.Filter), c.State.UserTCW, mp.FilterTCWFilter) {
+	for cs, trk := range src.Tracks() {
+		if !filterMatch(trk, aircraftFilter(mp.Filter), src.UserTCW(), mp.FilterTCWFilter) {
 			continue
 		}
 		s := cam.llToScreen(trk.Location, canvasOrigin, canvasSize, nmPerLongitude)
@@ -72,8 +71,8 @@ func pushTrail(buf []math.Point2LL, p math.Point2LL, cap int) []math.Point2LL {
 // captures every distinct server-reported position (so the polyline curves
 // smoothly through turns instead of stepping at 1Hz wall-clock samples).
 // Aircraft that have left the sim have their entries pruned.
-func (mp *MapPane) updateTrails(c *client.ControlClient) {
-	if c == nil || !c.Connected() {
+func (mp *MapPane) updateTrails(src TrackSource) {
+	if !src.Connected() {
 		return
 	}
 
@@ -81,7 +80,8 @@ func (mp *MapPane) updateTrails(c *client.ControlClient) {
 		mp.pastTrails = make(map[av.ADSBCallsign][]math.Point2LL)
 	}
 
-	for cs, trk := range c.State.Tracks {
+	tracks := src.Tracks()
+	for cs, trk := range tracks {
 		buf := mp.pastTrails[cs]
 		if len(buf) > 0 {
 			last := buf[len(buf)-1]
@@ -92,7 +92,7 @@ func (mp *MapPane) updateTrails(c *client.ControlClient) {
 		mp.pastTrails[cs] = pushTrail(buf, trk.Location, trailCap)
 	}
 	for cs := range mp.pastTrails {
-		if _, ok := c.State.Tracks[cs]; !ok {
+		if _, ok := tracks[cs]; !ok {
 			delete(mp.pastTrails, cs)
 		}
 	}
@@ -121,11 +121,12 @@ func (mp *MapPane) drawSelectedTrail(cam camera, canvasOrigin, canvasSize [2]flo
 	}
 }
 
-func (mp *MapPane) drawSelectedRoute(c *client.ControlClient, cam camera, canvasOrigin, canvasSize [2]float32, nmPerLongitude float32) {
-	if mp.selectedCS == "" || c == nil || !c.Connected() {
+func (mp *MapPane) drawSelectedRoute(src TrackSource, cam camera, canvasOrigin, canvasSize [2]float32, nmPerLongitude float32) {
+	if mp.selectedCS == "" || !src.Connected() {
 		return
 	}
-	trk, ok := c.State.Tracks[mp.selectedCS]
+	tr := src.Tracks()
+	trk, ok := tr[mp.selectedCS]
 	if !ok {
 		return
 	}
@@ -175,11 +176,11 @@ func drawDashedLine(dl *imgui.DrawList, a, b [2]float32, color uint32, dashLen, 
 // drawHoverTooltip shows a small floating box near the cursor for the
 // hovered aircraft (callsign, altitude, ground speed). Bails when nothing
 // is hovered.
-func (mp *MapPane) drawHoverTooltip(c *client.ControlClient) {
-	if mp.hoveredCS == "" || c == nil || !c.Connected() {
+func (mp *MapPane) drawHoverTooltip(src TrackSource) {
+	if mp.hoveredCS == "" || !src.Connected() {
 		return
 	}
-	trk, ok := c.State.Tracks[mp.hoveredCS]
+	trk, ok := src.Tracks()[mp.hoveredCS]
 	if !ok {
 		return
 	}
@@ -200,11 +201,11 @@ func (mp *MapPane) drawHoverTooltip(c *client.ControlClient) {
 
 // drawCornerInfoPanel anchors the detailed info panel to the top-right of the
 // canvas. Bails when nothing is selected.
-func (mp *MapPane) drawCornerInfoPanel(c *client.ControlClient) {
-	if mp.selectedCS == "" || c == nil || !c.Connected() {
+func (mp *MapPane) drawCornerInfoPanel(src TrackSource) {
+	if mp.selectedCS == "" || !src.Connected() {
 		return
 	}
-	trk, ok := c.State.Tracks[mp.selectedCS]
+	trk, ok := src.Tracks()[mp.selectedCS]
 	if !ok {
 		mp.selectedCS = ""
 		return

@@ -97,7 +97,7 @@ func (mp *MapPane) Draw(ctx *Context, cb *renderer.CommandBuffer) {
 }
 
 // DrawWindow draws the MapPane inside a floating imgui window.
-func (mp *MapPane) DrawWindow(show *bool, c *client.ControlClient, p platform.Platform,
+func (mp *MapPane) DrawWindow(show *bool, src TrackSource, p platform.Platform,
 	unpinnedWindows map[string]struct{}, lg *log.Logger) {
 	if !*show {
 		return
@@ -105,15 +105,15 @@ func (mp *MapPane) DrawWindow(show *bool, c *client.ControlClient, p platform.Pl
 	imgui.SetNextWindowSizeV(imgui.Vec2{X: 800, Y: 600}, imgui.CondFirstUseEver)
 	if imgui.BeginV("Map", show, imgui.WindowFlagsNone) {
 		DrawPinButton("Map", unpinnedWindows, p)
-		mp.drawToolbar(c)
-		mp.drawCanvas(c, p, lg)
+		mp.drawToolbar(src)
+		mp.drawCanvas(src, p, lg)
 	}
 	imgui.End()
 }
 
 // drawToolbar renders the floating-window toolbar. Mirrors DrawUI's
 // checkboxes — both are intentional (different surfaces).
-func (mp *MapPane) drawToolbar(c *client.ControlClient) {
+func (mp *MapPane) drawToolbar(src TrackSource) {
 	imgui.Checkbox("Basemap", &mp.ShowBasemap)
 	imgui.SameLine()
 	imgui.Checkbox("Boundary", &mp.ShowBoundaries)
@@ -135,7 +135,7 @@ func (mp *MapPane) drawToolbar(c *client.ControlClient) {
 		imgui.EndCombo()
 	}
 
-	if aircraftFilter(mp.Filter) == filterTCW && c != nil && c.Connected() {
+	if aircraftFilter(mp.Filter) == filterTCW && src.Connected() {
 		imgui.SameLine()
 		current := mp.FilterTCWFilter
 		if current == "" {
@@ -144,7 +144,7 @@ func (mp *MapPane) drawToolbar(c *client.ControlClient) {
 		imgui.SetNextItemWidth(80)
 		if imgui.BeginCombo("TCW", current) {
 			seen := make(map[string]struct{})
-			for _, trk := range c.State.Tracks {
+			for _, trk := range src.Tracks() {
 				if trk.FlightPlan != nil && trk.FlightPlan.OwningTCW != "" {
 					seen[string(trk.FlightPlan.OwningTCW)] = struct{}{}
 				}
@@ -164,7 +164,7 @@ func (mp *MapPane) drawToolbar(c *client.ControlClient) {
 	}
 }
 
-func (mp *MapPane) drawCanvas(c *client.ControlClient, p platform.Platform, lg *log.Logger) {
+func (mp *MapPane) drawCanvas(src TrackSource, p platform.Platform, lg *log.Logger) {
 	avail := imgui.ContentRegionAvail()
 	if avail.X < 1 || avail.Y < 1 {
 		return
@@ -190,8 +190,8 @@ func (mp *MapPane) drawCanvas(c *client.ControlClient, p platform.Platform, lg *
 
 	// Fit-to-facility on first open (CameraSet stays true across reloads so
 	// the user's pan/zoom is preserved; only LoadedSim/ResetSim clear it).
-	if !mp.CameraSet && c != nil && c.Connected() {
-		if facility, ok := av.DB.LookupFacility(c.State.Facility); ok {
+	if !mp.CameraSet && src.Connected() {
+		if facility, ok := av.DB.LookupFacility(src.Facility()); ok {
 			mp.CenterLon = facility.Center()[0]
 			mp.CenterLat = facility.Center()[1]
 			mp.RangeNM = facility.Radius * 1.5
@@ -207,26 +207,28 @@ func (mp *MapPane) drawCanvas(c *client.ControlClient, p platform.Platform, lg *
 	}
 
 	nmPerLon := defaultNmPerLongitude
-	if c != nil && c.Connected() {
-		nmPerLon = c.State.NmPerLongitude
+	if src.Connected() {
+		if x := src.NmPerLongitude(); x != 0 {
+			nmPerLon = x
+		}
 	}
 
 	cam := camera{center: math.Point2LL{mp.CenterLon, mp.CenterLat}, rangeNM: mp.RangeNM}
 
 	mp.drawBasemap(cam, mp.canvasOrigin, mp.canvasSize, nmPerLon, lg)
 
-	mp.drawFacilityBoundary(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
-	mp.drawAirportLabels(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
-	mp.updateTrails(c)
-	mp.findHoveredAircraft(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon, canvasHovered)
-	mp.handleSelection(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon, canvasHovered)
+	mp.drawFacilityBoundary(src, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
+	mp.drawAirportLabels(src, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
+	mp.updateTrails(src)
+	mp.findHoveredAircraft(src, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon, canvasHovered)
+	mp.handleSelection(src, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon, canvasHovered)
 	// Selection-dependent draws come AFTER handleSelection so a click takes
 	// effect this frame instead of the next one.
 	mp.drawSelectedTrail(cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
-	mp.drawSelectedRoute(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
-	mp.drawAircraft(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
-	mp.drawHoverTooltip(c)
-	mp.drawCornerInfoPanel(c)
+	mp.drawSelectedRoute(src, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
+	mp.drawAircraft(src, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
+	mp.drawHoverTooltip(src)
+	mp.drawCornerInfoPanel(src)
 
 	// Mouse: zoom on scroll inside canvas. canvasHovered was captured right
 	// after the canvas Dummy() so it reflects the canvas item, not whatever

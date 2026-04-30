@@ -9,7 +9,6 @@ import (
 
 	"github.com/AllenDang/cimgui-go/imgui"
 	av "github.com/mmp/vice/aviation"
-	"github.com/mmp/vice/client"
 	"github.com/mmp/vice/math"
 )
 
@@ -18,11 +17,11 @@ import (
 // AddLatLongCircle (stars/stars.go:1380); we draw the equivalent in
 // screen-space through the imgui draw list because MapPane uses imgui rendering,
 // not the GL command buffer.
-func (mp *MapPane) drawFacilityBoundary(c *client.ControlClient, cam camera, canvasOrigin, canvasSize [2]float32, nmPerLongitude float32) {
-	if !mp.ShowBoundaries || c == nil || !c.Connected() {
+func (mp *MapPane) drawFacilityBoundary(src TrackSource, cam camera, canvasOrigin, canvasSize [2]float32, nmPerLongitude float32) {
+	if !mp.ShowBoundaries || !src.Connected() {
 		return
 	}
-	facility, ok := av.DB.LookupFacility(c.State.Facility)
+	facility, ok := av.DB.LookupFacility(src.Facility())
 	if !ok {
 		return
 	}
@@ -52,17 +51,17 @@ func (mp *MapPane) drawFacilityBoundary(c *client.ControlClient, cam camera, can
 	}
 }
 
-func (mp *MapPane) drawAirportLabels(c *client.ControlClient, cam camera, canvasOrigin, canvasSize [2]float32, nmPerLongitude float32) {
-	if !mp.ShowAirports || c == nil || !c.Connected() {
+func (mp *MapPane) drawAirportLabels(src TrackSource, cam camera, canvasOrigin, canvasSize [2]float32, nmPerLongitude float32) {
+	if !mp.ShowAirports || !src.Connected() {
 		return
 	}
 
 	airports := make(map[string]struct{})
-	for ap := range c.State.Airports {
+	for ap := range src.Airports() {
 		airports[ap] = struct{}{}
 	}
 	// Also include departure/arrival airports referenced by current tracks.
-	for _, trk := range c.State.Tracks {
+	for _, trk := range src.Tracks() {
 		if trk.DepartureAirport != "" {
 			airports[trk.DepartureAirport] = struct{}{}
 		}

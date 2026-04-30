@@ -346,7 +346,7 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 		}
 		if ui.showMap {
 			applyPinWindowClass("Map", config, p)
-			config.MapPane.DrawWindow(&ui.showMap, controlClient, p, config.UnpinnedWindows, lg)
+			config.MapPane.DrawWindow(&ui.showMap, panes.LiveTrackSource{C: controlClient}, p, config.UnpinnedWindows, lg)
 		}
 		if ui.showFlightStrips {
 			applyPinWindowClass("Flight Strips", config, p)
