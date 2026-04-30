@@ -218,8 +218,9 @@ func NewControlClient(ss server.SimState, controllerToken string, disableTTSPtr 
 	return cc
 }
 
-// SetRecorder attaches an open Recorder. Pass nil to detach (e.g., on settings
-// toggle off mid-session). Safe to call before connect.
+// SetRecorder attaches an open Recorder. Pass nil to detach. Safe to call
+// before connect; the main loop reconciles the active recorder against the
+// settings toggle each frame.
 func (c *ControlClient) SetRecorder(r *replay.Recorder) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

@@ -681,13 +681,18 @@ func runGUI(config *Config, configErr error, lg *log.Logger) error {
 		mgr.Update(eventStream, plat, lg)
 
 		if controlClient != nil && config.RecordReplay && controlClient.GetRecorder() == nil {
-			rec, path, err := replay.NewRecorder(replayDir(), controlClient.State.Facility, time.Now())
+			rec, path, err := replay.NewRecorder(replayDir(), controlClient.State.Facility, time.Now(), server.ViceSerializeVersion)
 			if err != nil {
 				lg.Warnf("replay: failed to start recording: %v", err)
 			} else {
 				lg.Infof("replay: recording to %s", path)
 				controlClient.SetRecorder(rec)
 			}
+		}
+		// If recording was disabled while connected, detach the recorder.
+		if controlClient != nil && !config.RecordReplay && controlClient.GetRecorder() != nil {
+			controlClient.GetRecorder().Close()
+			controlClient.SetRecorder(nil)
 		}
 
 		// Report whisper benchmark to server (only sends once, when benchmark done and server available)

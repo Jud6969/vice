@@ -72,7 +72,7 @@ func TestFrameRoundtrip(t *testing.T) {
 
 func TestRecorderEndToEnd(t *testing.T) {
 	dir := t.TempDir()
-	rec, path, err := NewRecorder(dir, "ZNY", time.Unix(1700000000, 0))
+	rec, path, err := NewRecorder(dir, "ZNY", time.Unix(1700000000, 0), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestRecorderEndToEnd(t *testing.T) {
 
 func TestLoadRoundtrip(t *testing.T) {
 	dir := t.TempDir()
-	rec, path, err := NewRecorder(dir, "ZNY", time.Unix(1700000000, 0))
+	rec, path, err := NewRecorder(dir, "ZNY", time.Unix(1700000000, 0), 0)
 	if err != nil {
 		t.Fatal(err)
 	}

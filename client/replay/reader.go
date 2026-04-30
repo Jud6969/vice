@@ -28,6 +28,9 @@ func Load(path string) (*Replay, error) {
 	if err != nil {
 		return nil, err
 	}
+	if h.FormatVersion != FormatVersion {
+		return nil, fmt.Errorf("replay format version %d unsupported (expected %d)", h.FormatVersion, FormatVersion)
+	}
 	var frames []Frame
 	for {
 		fr, err := DecodeFrame(f, dec)

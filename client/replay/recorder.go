@@ -24,7 +24,7 @@ type Recorder struct {
 // NewRecorder opens (or creates) a replay file in dir for the given facility
 // and start time, writes the header, and returns the open Recorder plus the
 // chosen path. Returns (nil, "", err) on failure.
-func NewRecorder(dir, facility string, startTime time.Time) (*Recorder, string, error) {
+func NewRecorder(dir, facility string, startTime time.Time, serVersion int) (*Recorder, string, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, "", fmt.Errorf("mkdir %q: %w", dir, err)
 	}
@@ -42,7 +42,7 @@ func NewRecorder(dir, facility string, startTime time.Time) (*Recorder, string, 
 		FormatVersion: FormatVersion,
 		Facility:      facility,
 		StartTimeUnix: startTime.UnixNano(),
-		// SerVersion left zero; caller can set if available before AppendFrame.
+		SerVersion:    serVersion,
 	}
 	if err := EncodeHeader(f, h); err != nil {
 		f.Close()
