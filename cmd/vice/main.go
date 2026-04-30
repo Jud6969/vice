@@ -565,6 +565,7 @@ func runGUI(config *Config, configErr error, lg *log.Logger) error {
 				// Reset each pane for the new sim
 				activeRadarPane.ResetSim(c, plat, lg)
 				config.MessagesPane.ResetSim(c, plat, lg)
+				config.MapPane.ResetSim(c, plat, lg)
 				config.FlightStripPane.ResetSim(c, plat, lg)
 
 				// Apply waypoint commands if specified via command line (only for new clients)

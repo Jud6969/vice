@@ -53,10 +53,12 @@ type ConfigNoSim struct {
 	ERAMPane        *eram.ERAMPane
 	MessagesPane    *panes.MessagesPane
 	FlightStripPane *panes.FlightStripPane
+	MapPane         *panes.MapPane
 
 	// Whether the floating windows are visible
 	ShowMessages     bool
 	ShowFlightStrips bool
+	ShowMap          bool
 
 	AskedDiscordOptIn      bool
 	InhibitDiscordActivity util.AtomicBool
@@ -205,7 +207,9 @@ func getDefaultConfig() *Config {
 			ERAMPane:              eram.NewERAMPane(),
 			MessagesPane:          panes.NewMessagesPane(),
 			FlightStripPane:       panes.NewFlightStripPane(),
+			MapPane:               panes.NewMapPane(),
 			ShowMessages:          true,
+			ShowMap:               false,
 			ShowFlightStrips:      true,
 		},
 	}
@@ -250,6 +254,9 @@ func LoadOrMakeDefaultConfig(lg *log.Logger) (config *Config, configErr error) {
 		}
 		if config.MessagesPane == nil {
 			config.MessagesPane = panes.NewMessagesPane()
+		}
+		if config.MapPane == nil {
+			config.MapPane = panes.NewMapPane()
 		}
 		if config.FlightStripPane == nil {
 			config.FlightStripPane = panes.NewFlightStripPane()

@@ -55,6 +55,7 @@ var (
 		showLaunchControl bool
 		showMessages      bool
 		showFlightStrips  bool
+		showMap           bool
 
 		// STT state
 		pttRecording              bool
@@ -143,6 +144,7 @@ func uiInit(r renderer.Renderer, p platform.Platform, config *Config, es *sim.Ev
 	ui.showScenarioInfo = config.ShowScenarioInfo
 	ui.showMessages = config.ShowMessages
 	ui.showFlightStrips = config.ShowFlightStrips
+	ui.showMap = config.ShowMap
 	keyboardWindowVisible = config.ShowKeyboardRef
 }
 
@@ -251,6 +253,13 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 				imgui.SetTooltip("Toggle messages window")
 			}
 
+			if imgui.Button(renderer.FontAwesomeIconGlobe) {
+				ui.showMap = !ui.showMap
+			}
+			if imgui.IsItemHovered() {
+				imgui.SetTooltip("Toggle map window")
+			}
+
 			if imgui.Button(renderer.FontAwesomeIconClipboardList) {
 				ui.showFlightStrips = !ui.showFlightStrips
 			}
@@ -334,6 +343,9 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 		if ui.showMessages {
 			applyPinWindowClass("Messages", config, p)
 			config.MessagesPane.DrawWindow(&ui.showMessages, controlClient, p, config.UnpinnedWindows, lg)
+		}
+		if ui.showMap {
+			config.MapPane.DrawWindow(&ui.showMap, controlClient, p, config.UnpinnedWindows, lg)
 		}
 		if ui.showFlightStrips {
 			applyPinWindowClass("Flight Strips", config, p)

@@ -209,6 +209,7 @@ var (
 	FontAwesomeIconFile                = faUsedIcons["File"]
 	FontAwesomeIconFolder              = faUsedIcons["Folder"]
 	FontAwesomeIconGithub              = faBrandsUsedIcons["Github"]
+	FontAwesomeIconGlobe               = faUsedIcons["Globe"]
 	FontAwesomeIconHandPointLeft       = faUsedIcons["HandPointLeft"]
 	FontAwesomeIconHome                = faUsedIcons["Home"]
 	FontAwesomeIconInfoCircle          = faUsedIcons["InfoCircle"]
@@ -255,6 +256,7 @@ var (
 		"CloudShowersHeavy":   FontAwesomeString("CloudShowersHeavy"),
 		"CloudSun":            FontAwesomeString("CloudSun"),
 		"Comment":             FontAwesomeString("Comment"),
+		"Globe":               FontAwesomeString("Globe"),
 		"CompressAlt":         FontAwesomeString("CompressAlt"),
 		"Cog":                 FontAwesomeString("Cog"),
 		"Copyright":           FontAwesomeString("Copyright"),
