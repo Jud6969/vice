@@ -2470,21 +2470,22 @@ func (c *NewSimConfiguration) updateStartTimeForRunways() {
 }
 
 // scheduleStartTime returns a concrete date/time matching the user's
-// picked (month, weekday, time-of-day). Picks the most recent matching
-// weekday in the selected month of the current year (a year always has
-// at least one of every weekday in every month).
+// picked (month, weekday, time-of-day). Walks backward from "now" until
+// it finds a date with the picked month and weekday — the result is
+// always in the past (or today), close enough to the present that
+// vice's wx data covers it.
 func (c *NewSimConfiguration) scheduleStartTime() time.Time {
-	year := time.Now().Year()
 	hh := c.SchedulePickedMinutes / 60
 	mm := c.SchedulePickedMinutes % 60
-	// Walk back from the 28th to the 1st; first matching weekday wins.
-	for d := 28; d >= 1; d-- {
-		t := time.Date(year, c.SchedulePickedMonth, d, hh, mm, 0, 0, time.UTC)
-		if t.Weekday() == c.SchedulePickedDay {
-			return t
+	// Walk backward day-by-day from today. At most ~370 iterations to
+	// cover any (weekday, month) combination.
+	t := time.Now().UTC()
+	for i := 0; i < 400; i++ {
+		if t.Month() == c.SchedulePickedMonth && t.Weekday() == c.SchedulePickedDay {
+			return time.Date(t.Year(), t.Month(), t.Day(), hh, mm, 0, 0, time.UTC)
 		}
+		t = t.AddDate(0, 0, -1)
 	}
-	// Should never hit (every weekday occurs in every 28-day window) but
-	// fall back to the 1st.
-	return time.Date(year, c.SchedulePickedMonth, 1, hh, mm, 0, 0, time.UTC)
+	// Unreachable; return now as a safe fallback.
+	return time.Now().UTC()
 }
