@@ -5,6 +5,7 @@
 package panes
 
 import (
+	"fmt"
 	gomath "math"
 	"time"
 
@@ -158,4 +159,46 @@ func drawDashedLine(dl *imgui.DrawList, a, b [2]float32, color uint32, dashLen, 
 		dl.AddLine(p0, p1, color)
 		t += stepLen
 	}
+}
+
+func (mp *MapPane) drawInfoPanel(c *client.ControlClient, cam camera, canvasOrigin, canvasSize [2]float32, nmPerLongitude float32) {
+	if mp.selectedCS == "" || c == nil || !c.Connected() {
+		return
+	}
+	trk, ok := c.State.Tracks[mp.selectedCS]
+	if !ok {
+		mp.selectedCS = ""
+		return
+	}
+	s := cam.llToScreen(trk.Location, canvasOrigin, canvasSize, nmPerLongitude)
+
+	// Position the info panel a bit to the upper right of the aircraft.
+	imgui.SetNextWindowPosV(imgui.Vec2{X: s[0] + 18, Y: s[1] - 18}, imgui.CondAlways, imgui.Vec2{})
+	imgui.SetNextWindowBgAlpha(0.85)
+	flags := imgui.WindowFlagsNoTitleBar | imgui.WindowFlagsNoResize | imgui.WindowFlagsNoMove |
+		imgui.WindowFlagsAlwaysAutoResize | imgui.WindowFlagsNoFocusOnAppearing | imgui.WindowFlagsNoNav
+
+	if imgui.BeginV("##mapinfo_"+string(mp.selectedCS), nil, flags) {
+		imgui.TextUnformatted(string(mp.selectedCS))
+		imgui.Separator()
+		dep := trk.DepartureAirport
+		arr := trk.ArrivalAirport
+		alt := int(trk.TrueAltitude)
+		gs := int(trk.Groundspeed)
+		hdg := int(trk.Heading)
+		imgui.TextUnformatted("DEP: " + dep)
+		imgui.TextUnformatted("ARR: " + arr)
+		imgui.TextUnformatted(fmt.Sprintf("ALT: %d ft", alt))
+		imgui.TextUnformatted(fmt.Sprintf("GS:  %d kt", gs))
+		imgui.TextUnformatted(fmt.Sprintf("HDG: %03d°", hdg))
+		imgui.TextUnformatted("Route:")
+		imgui.PushTextWrapPosV(imgui.CursorPosX() + 360)
+		if trk.FiledRoute != "" {
+			imgui.TextUnformatted(trk.FiledRoute)
+		} else {
+			imgui.TextUnformatted("(none)")
+		}
+		imgui.PopTextWrapPos()
+	}
+	imgui.End()
 }

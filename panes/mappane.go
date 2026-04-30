@@ -210,6 +210,7 @@ func (mp *MapPane) drawCanvas(c *client.ControlClient, p platform.Platform, lg *
 	mp.drawSelectedRoute(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
 	mp.drawAircraft(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
 	mp.handleSelection(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
+	mp.drawInfoPanel(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
 
 	// Mouse: zoom on scroll inside canvas.
 	// WantCaptureMouse guards against scroll events reaching both the canvas
