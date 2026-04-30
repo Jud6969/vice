@@ -45,11 +45,12 @@ func drawScheduleHistogram(sch *schedule.Schedule, month time.Month, day time.We
 		maxH = 1
 	}
 
-	// Drawing pattern matches wxpicker.go: paint via the draw list FIRST,
-	// then submit the imgui item that reserves space and participates in
-	// hit-testing. Doing it the other way around (InvisibleButton, then
-	// AddRectFilled) leaves the draws clipped against a stale region.
-	dl := imgui.WindowDrawList()
+	// Use the viewport's foreground draw list rather than the window's
+	// draw list: the modal popup's window-DL was leaving the bars
+	// invisible (some draw-order or clip-rect interaction). The
+	// foreground DL is on top of the entire viewport so it reliably
+	// renders over the modal's content area.
+	dl := imgui.ForegroundDrawListViewportPtr()
 	pos := imgui.CursorScreenPos()
 
 	// Background.
