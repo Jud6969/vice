@@ -115,6 +115,9 @@ func TestFilterMatch(t *testing.T) {
 		}
 		return &sim.Track{FlightPlan: &sim.NASFlightPlan{OwningTCW: sim.TCW(owner)}}
 	}
+	// Note: filterTCW with FilterTCWFilter=="" matches nothing — the UI
+	// (Task 7) is responsible for setting FilterTCWFilter before allowing
+	// Filter == filterTCW.
 	cases := []struct {
 		name      string
 		trk       *sim.Track
@@ -134,6 +137,7 @@ func TestFilterMatch(t *testing.T) {
 		{"mine-block-untracked", mkTrack(""), filterMyTCW, "USR", "", false},
 		{"specific-pass", mkTrack("XYZ"), filterTCW, "USR", "XYZ", true},
 		{"specific-block", mkTrack("ABC"), filterTCW, "USR", "XYZ", false},
+		{"specific-empty-filter", mkTrack("XYZ"), filterTCW, "USR", "", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

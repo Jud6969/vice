@@ -24,6 +24,8 @@ const (
 
 // filterMatch returns true iff the track passes the current filter.
 func filterMatch(trk *sim.Track, f aircraftFilter, userTCW sim.TCW, filterTCWFilter string) bool {
+	// A track with a flight plan but no owning TCW (pre-coordination) is
+	// treated as untracked for filter purposes.
 	owned := trk.FlightPlan != nil && trk.FlightPlan.OwningTCW != ""
 	switch f {
 	case filterAll:
@@ -65,6 +67,8 @@ func (mp *MapPane) drawAircraft(c *client.ControlClient, cam camera, canvasOrigi
 
 		drawAircraftTriangle(mp.canvasDrawList, s, float32(trk.Heading), colU32)
 
+		// Offset 9px right (1px past the triangle nose at +8) and 7px up,
+		// placing the label flush with the top of the glyph.
 		// Callsign label
 		labelPos := imgui.Vec2{X: s[0] + 9, Y: s[1] - 7}
 		mp.canvasDrawList.AddTextVec2(labelPos, colU32, string(cs))
