@@ -108,6 +108,38 @@ func TestParseGeoJSONLineStrings(t *testing.T) {
 	}
 }
 
+func TestNearestAircraftHit(t *testing.T) {
+	type cand struct {
+		cs  string
+		pos [2]float32 // screen
+	}
+	cands := []cand{
+		{"AAL1", [2]float32{100, 100}},
+		{"AAL2", [2]float32{200, 200}},
+		{"AAL3", [2]float32{300, 100}},
+	}
+	pick := func(mouse [2]float32) string {
+		var best string
+		bestD := float32(15 * 15)
+		for _, c := range cands {
+			dx := c.pos[0] - mouse[0]
+			dy := c.pos[1] - mouse[1]
+			d := dx*dx + dy*dy
+			if d < bestD {
+				bestD = d
+				best = c.cs
+			}
+		}
+		return best
+	}
+	if got := pick([2]float32{102, 99}); got != "AAL1" {
+		t.Fatalf("near AAL1 got %q", got)
+	}
+	if got := pick([2]float32{500, 500}); got != "" {
+		t.Fatalf("far from all got %q", got)
+	}
+}
+
 func TestFilterMatch(t *testing.T) {
 	mkTrack := func(owner string) *sim.Track {
 		if owner == "" {
