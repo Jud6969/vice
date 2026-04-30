@@ -158,6 +158,7 @@ func (mp *MapPane) drawCanvas(c *client.ControlClient, p platform.Platform, lg *
 	cam := camera{center: math.Point2LL{mp.CenterLon, mp.CenterLat}, rangeNM: mp.RangeNM}
 
 	mp.drawFacilityBoundary(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
+	mp.drawAirportLabels(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
 
 	// Mouse: zoom on scroll inside canvas.
 	// WantCaptureMouse guards against scroll events reaching both the canvas

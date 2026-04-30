@@ -45,3 +45,41 @@ func (mp *MapPane) drawFacilityBoundary(c *client.ControlClient, cam camera, can
 	}
 	mp.canvasDrawList.AddPolyline(&pts[0], int32(len(pts)), color, imgui.DrawFlagsNone, 1.0)
 }
+
+func (mp *MapPane) drawAirportLabels(c *client.ControlClient, cam camera, canvasOrigin, canvasSize [2]float32, nmPerLongitude float32) {
+	if !mp.ShowAirports || c == nil || !c.Connected() {
+		return
+	}
+
+	airports := make(map[string]struct{})
+	for ap := range c.State.Airports {
+		airports[ap] = struct{}{}
+	}
+	// Also include departure/arrival airports referenced by current tracks.
+	for _, trk := range c.State.Tracks {
+		if trk.DepartureAirport != "" {
+			airports[trk.DepartureAirport] = struct{}{}
+		}
+		if trk.ArrivalAirport != "" {
+			airports[trk.ArrivalAirport] = struct{}{}
+		}
+	}
+
+	view := mp.viewExtent(cam, canvasSize, nmPerLongitude)
+	color := imgui.ColorU32Vec4(imgui.Vec4{X: 0.85, Y: 0.85, Z: 0.40, W: 1})
+	dotColor := imgui.ColorU32Vec4(imgui.Vec4{X: 1.0, Y: 1.0, Z: 0.5, W: 1})
+
+	for icao := range airports {
+		ap, ok := av.DB.Airports[icao]
+		if !ok {
+			continue
+		}
+		loc := ap.Location
+		if loc[0] < view.P0[0] || loc[0] > view.P1[0] || loc[1] < view.P0[1] || loc[1] > view.P1[1] {
+			continue
+		}
+		s := cam.llToScreen(loc, canvasOrigin, canvasSize, nmPerLongitude)
+		mp.canvasDrawList.AddCircleFilled(imgui.Vec2{X: s[0], Y: s[1]}, 3, dotColor)
+		mp.canvasDrawList.AddTextVec2(imgui.Vec2{X: s[0] + 5, Y: s[1] - 7}, color, icao)
+	}
+}
