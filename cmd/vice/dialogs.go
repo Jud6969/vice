@@ -251,8 +251,7 @@ func (c *ScenarioSelectionModalClient) Buttons() []ModalDialogButton {
 	}
 
 	b = append(b, ModalDialogButton{
-		text:     "Replay last session",
-		disabled: c.allowCancel, // disable when there's a live sim to fall back to
+		text: "Replay last session",
 		action: func() bool {
 			entries, _ := replay.ListMostRecent(replayDir())
 			if len(entries) == 0 {
@@ -274,8 +273,7 @@ func (c *ScenarioSelectionModalClient) Buttons() []ModalDialogButton {
 		},
 	})
 	b = append(b, ModalDialogButton{
-		text:     "Replay session…",
-		disabled: c.allowCancel,
+		text: "Replay session…",
 		action: func() bool {
 			picker := &ReplayPickerModalClient{platform: c.platform, lg: c.lg}
 			uiShowModalDialog(NewModalDialogBox(picker, c.platform), false)
