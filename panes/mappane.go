@@ -175,11 +175,13 @@ func (mp *MapPane) drawCanvas(c *client.ControlClient, p platform.Platform, lg *
 	dl.AddRectFilled(pos, imgui.Vec2{X: pos.X + avail.X, Y: pos.Y + avail.Y},
 		imgui.ColorU32Vec4(imgui.Vec4{X: 0.04, Y: 0.05, Z: 0.07, W: 1}))
 
-	imgui.Dummy(avail)
+	// InvisibleButton (vs Dummy) is interactive — it records the click/hold
+	// state needed for IsItemActive to be true while the user drags.
+	imgui.InvisibleButtonV("##map_canvas", avail, imgui.ButtonFlagsMouseButtonLeft)
 	// Capture hover/active state immediately: IsItemHovered/IsItemActive
 	// reference the most-recently submitted imgui item, and many items get
-	// submitted between here and the mouse-handling block below (the info
-	// panel calls BeginV/End on a sibling window, etc.).
+	// submitted between here and the mouse-handling block below (info panel
+	// BeginV/End on a sibling window, etc.).
 	canvasHovered := imgui.IsItemHovered()
 	canvasActive := imgui.IsItemActive()
 
