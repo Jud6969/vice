@@ -11,6 +11,12 @@ import (
 const (
 	minRangeNM = 0.5
 	maxRangeNM = 1500.0
+
+	// defaultNmPerLongitude is the fallback nm-per-longitude used before a sim
+	// connects. Calibrated for ~40°N (60 * cos(40°) ≈ 45.96 nm/° lon); the real
+	// value from the connected sim's State.NmPerLongitude is used as soon as
+	// available.
+	defaultNmPerLongitude = float32(45.5)
 )
 
 type camera struct {
@@ -22,6 +28,10 @@ type camera struct {
 // coordinate conversion. It mirrors the relevant subset of
 // radar.ScopeTransformations without importing the radar package (which
 // itself imports panes, creating a cycle).
+//
+// ndcFromLatLong and ndcFromWindow are intentionally omitted: the map pane
+// renders into an imgui draw list (screen pixels), not a GL command buffer,
+// so the NDC matrices aren't needed.
 type scopeXforms struct {
 	latLongFromWindow math.Matrix3
 	windowFromLatLong math.Matrix3
@@ -65,6 +75,29 @@ func (c *camera) transforms(paneExtent math.Extent2D, nmPerLongitude float32) sc
 		latLongFromWindow: latLongFromWindow,
 		windowFromLatLong: windowFromLatLong,
 	}
+}
+
+// applyZoomFactor multiplies the camera's range by `factor` and clamps to
+// [minRangeNM, maxRangeNM]. Use factor < 1 to zoom in, > 1 to zoom out.
+func (c *camera) applyZoomFactor(factor float32) {
+	c.rangeNM *= factor
+	if c.rangeNM < minRangeNM {
+		c.rangeNM = minRangeNM
+	}
+	if c.rangeNM > maxRangeNM {
+		c.rangeNM = maxRangeNM
+	}
+}
+
+// applyPanPixels shifts the camera center to compensate for a screen-space
+// drag of (dx, dy) pixels (imgui convention: +y is down). After the call,
+// the lat/lon under the original mouse position is at the new mouse position.
+func (c *camera) applyPanPixels(dx, dy float32, canvasSize [2]float32, nmPerLongitude float32) {
+	extent := math.Extent2D{P0: [2]float32{0, 0}, P1: canvasSize}
+	xforms := c.transforms(extent, nmPerLongitude)
+	dll := xforms.LatLongFromWindowV([2]float32{dx, -dy}) // imgui Y down → ll Y up
+	c.center[0] -= dll[0]
+	c.center[1] -= dll[1]
 }
 
 // llToScreen returns a screen-space point in imgui coordinates (top-left origin)

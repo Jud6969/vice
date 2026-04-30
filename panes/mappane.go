@@ -77,6 +77,9 @@ func (mp *MapPane) CanTakeKeyboardFocus() bool { return false }
 
 func (mp *MapPane) DisplayName() string { return "Map" }
 
+// DrawUI renders the pane's settings panel for the layout-config modal.
+// The same checkboxes are duplicated in drawToolbar for the floating-window
+// toolbar; both are intentional.
 func (mp *MapPane) DrawUI(p platform.Platform, config *platform.Config) {
 	imgui.Checkbox("Show world basemap", &mp.ShowBasemap)
 	imgui.Checkbox("Show facility boundary", &mp.ShowBoundaries)
@@ -103,6 +106,8 @@ func (mp *MapPane) DrawWindow(show *bool, c *client.ControlClient, p platform.Pl
 	imgui.End()
 }
 
+// drawToolbar renders the floating-window toolbar. Mirrors DrawUI's
+// checkboxes — both are intentional (different surfaces).
 func (mp *MapPane) drawToolbar() {
 	imgui.Checkbox("Basemap", &mp.ShowBasemap)
 	imgui.SameLine()
@@ -133,6 +138,7 @@ func (mp *MapPane) drawCanvas(c *client.ControlClient, p platform.Platform, lg *
 			mp.CenterLon = facility.Center()[0]
 			mp.CenterLat = facility.Center()[1]
 			mp.RangeNM = facility.Radius * 1.5
+			// Floor so tiny ATCTs (tower-only facilities) still show surrounding context.
 			if mp.RangeNM < 30 {
 				mp.RangeNM = 30
 			}
@@ -142,28 +148,25 @@ func (mp *MapPane) drawCanvas(c *client.ControlClient, p platform.Platform, lg *
 		mp.initialized = true
 	}
 
-	nmPerLon := float32(45.5)
+	nmPerLon := defaultNmPerLongitude
 	if c != nil && c.Connected() {
 		nmPerLon = c.State.NmPerLongitude
 	}
 
 	// Future tasks add basemap / overlays / aircraft draws here.
 
+	cam := camera{center: math.Point2LL{mp.CenterLon, mp.CenterLat}, rangeNM: mp.RangeNM}
+
 	// Mouse: zoom on scroll inside canvas.
-	if imgui.IsItemHovered() {
-		wheel := imgui.CurrentIO().MouseWheel()
-		if wheel != 0 {
+	// WantCaptureMouse guards against scroll events reaching both the canvas
+	// and a popup or combo rendered on top of it (e.g. Task 7's filter combo).
+	if imgui.IsItemHovered() && !imgui.CurrentIO().WantCaptureMouse() {
+		if wheel := imgui.CurrentIO().MouseWheel(); wheel != 0 {
 			factor := float32(0.9)
 			if wheel < 0 {
 				factor = 1.1
 			}
-			mp.RangeNM *= factor
-			if mp.RangeNM < minRangeNM {
-				mp.RangeNM = minRangeNM
-			}
-			if mp.RangeNM > maxRangeNM {
-				mp.RangeNM = maxRangeNM
-			}
+			cam.applyZoomFactor(factor)
 		}
 	}
 
@@ -171,12 +174,8 @@ func (mp *MapPane) drawCanvas(c *client.ControlClient, p platform.Platform, lg *
 	if imgui.IsItemActive() && imgui.IsMouseDragging(platform.MouseButtonPrimary) {
 		delta := imgui.MouseDragDeltaV(platform.MouseButtonPrimary, 0.)
 		imgui.ResetMouseDragDeltaV(platform.MouseButtonPrimary)
-		cam := camera{center: math.Point2LL{mp.CenterLon, mp.CenterLat}, rangeNM: mp.RangeNM}
-		pixelDelta := [2]float32{delta.X, -delta.Y}
-		extent := math.Extent2D{P0: [2]float32{0, 0}, P1: mp.canvasSize}
-		xforms := cam.transforms(extent, nmPerLon)
-		dll := xforms.LatLongFromWindowV(pixelDelta)
-		mp.CenterLon -= dll[0]
-		mp.CenterLat -= dll[1]
+		cam.applyPanPixels(delta.X, delta.Y, mp.canvasSize, nmPerLon)
 	}
+
+	mp.CenterLon, mp.CenterLat, mp.RangeNM = cam.center[0], cam.center[1], cam.rangeNM
 }

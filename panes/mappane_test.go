@@ -43,3 +43,33 @@ func TestCameraScreenRoundtrip(t *testing.T) {
 		t.Fatalf("center not at canvas center: got=%v want=(%v,%v)", centerScreen, wantX, wantY)
 	}
 }
+
+func TestCameraApplyZoomFactorClamps(t *testing.T) {
+	cam := camera{center: math.Point2LL{0, 0}, rangeNM: 50}
+	cam.applyZoomFactor(0.0001) // would go below minimum
+	if cam.rangeNM != minRangeNM {
+		t.Fatalf("expected clamp to minRangeNM, got %v", cam.rangeNM)
+	}
+	cam.applyZoomFactor(1e9) // would explode above max
+	if cam.rangeNM != maxRangeNM {
+		t.Fatalf("expected clamp to maxRangeNM, got %v", cam.rangeNM)
+	}
+}
+
+func TestCameraApplyPanPixels(t *testing.T) {
+	// Panning right by half the canvas width should shift center by -1*range_in_lon.
+	cam := camera{center: math.Point2LL{0, 0}, rangeNM: 60}
+	size := [2]float32{800, 600}
+	const nmPerLon = 60.0
+	startLL := cam.center
+	cam.applyPanPixels(400, 0, size, nmPerLon)
+	if cam.center[0] >= startLL[0] {
+		t.Fatalf("expected longitude to decrease after rightward drag, before=%v after=%v", startLL, cam.center)
+	}
+	// Vertical: drag downward → camera center moves north (lat increases) in imgui frame.
+	cam2 := camera{center: math.Point2LL{0, 0}, rangeNM: 60}
+	cam2.applyPanPixels(0, 300, size, nmPerLon)
+	if cam2.center[1] <= 0 {
+		t.Fatalf("expected lat to increase after downward drag, got %v", cam2.center[1])
+	}
+}
