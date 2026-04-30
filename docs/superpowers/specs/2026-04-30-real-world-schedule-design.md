@@ -124,6 +124,11 @@ panes/schedulehist.go (new, *or* cmd/vice helper)  Histogram drawer.
 - `csv` is the filename relative to the ARTCC folder.
 - `monthlyMultiplier` is optional; missing months default to `1.0`.
 - Keys "1"–"12" are calendar months (January = 1).
+- **Monthly multiplier is the only "seasonal" lever in v1** — it scales every
+  bucket of every day uniformly for the picked month. Per-month *shape*
+  changes (e.g., longer evening pushes in summer than in winter) are NOT
+  expressible in v1; they would need either per-season CSVs or a
+  per-month-per-bucket grid, both deferred to v2.
 
 #### `<ICAO>-schedule.csv` (per airport)
 
@@ -294,8 +299,18 @@ After the existing options:
 
 - **Authoring effort.** A full week × 96 buckets × ~5 airports = ~3360
   rows per ARTCC. Acceptable in a spreadsheet but won't be done by the
-  developer in one sitting. The user said they may pull seed data from
-  an existing simulator — that's a v0 win.
+  developer in one sitting.
+- **eATS as a seed-data source (v2 tool).** ATSim 2020's eATS data lives
+  under `%LOCALAPPDATA%\ATSim2020\eATS\` and contains
+  `<TRACON>-FlightPlans.txt` files where each row is a flight-pattern
+  template: `FPX TRACON AIRPORT TYPE 01 START_HHMM END_HHMM RATE DAYS_BITMASK
+  CALLSIGN ACTYPE ALT TAS ROUTE`. A planned `cmd/eats2schedule` tool
+  could parse these, aggregate per (airport, weekday, 15-min bucket),
+  and emit our CSV format. Direction is one-way (eATS templates →
+  vice CSVs); fine because the templates carry strictly more
+  information than our totals need. Not part of v1 — but the v1 file
+  shape is intentionally compatible with this future ingestion path.
+  Hand-authored CSVs and tool-generated CSVs are interchangeable.
 - **Histogram data point: 96 × N airports.** Aggregating 96 buckets
   across a handful of airports is trivial CPU. The hover-tooltip per-
   airport breakdown means we keep per-airport data resident, not just
