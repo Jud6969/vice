@@ -2456,4 +2456,29 @@ func (c *NewSimConfiguration) updateStartTimeForRunways() {
 			c.weatherFilterError = "No weather matching filters found"
 		}
 	}
+
+	if c.UseSchedule && c.Schedule != nil {
+		c.StartTime = c.scheduleStartTime()
+		c.ScenarioSpec.LaunchConfig.Schedule = c.Schedule
+	}
+}
+
+// scheduleStartTime returns a concrete date/time matching the user's
+// picked (month, weekday, time-of-day). Picks the most recent matching
+// weekday in the selected month of the current year (a year always has
+// at least one of every weekday in every month).
+func (c *NewSimConfiguration) scheduleStartTime() time.Time {
+	year := time.Now().Year()
+	hh := c.SchedulePickedMinutes / 60
+	mm := c.SchedulePickedMinutes % 60
+	// Walk back from the 28th to the 1st; first matching weekday wins.
+	for d := 28; d >= 1; d-- {
+		t := time.Date(year, c.SchedulePickedMonth, d, hh, mm, 0, 0, time.UTC)
+		if t.Weekday() == c.SchedulePickedDay {
+			return t
+		}
+	}
+	// Should never hit (every weekday occurs in every 28-day window) but
+	// fall back to the 1st.
+	return time.Date(year, c.SchedulePickedMonth, 1, hh, mm, 0, 0, time.UTC)
 }
