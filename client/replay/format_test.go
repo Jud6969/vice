@@ -6,12 +6,13 @@ package replay
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	av "github.com/mmp/vice/aviation"
 	"github.com/mmp/vice/sim"
-
-	"github.com/vmihailenco/msgpack/v5"
 )
 
 func TestHeaderRoundtrip(t *testing.T) {
@@ -20,7 +21,7 @@ func TestHeaderRoundtrip(t *testing.T) {
 	if err := EncodeHeader(&buf, in); err != nil {
 		t.Fatal(err)
 	}
-	out, err := DecodeHeader(&buf)
+	out, _, err := DecodeHeader(&buf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,11 +51,11 @@ func TestFrameRoundtrip(t *testing.T) {
 		}
 	}
 
-	if _, err := DecodeHeader(&buf); err != nil {
+	_, dec, err := DecodeHeader(&buf)
+	if err != nil {
 		t.Fatal(err)
 	}
 
-	dec := msgpack.NewDecoder(&buf)
 	for i, want := range frames {
 		got, err := DecodeFrame(&buf, dec)
 		if err != nil {
@@ -66,5 +67,55 @@ func TestFrameRoundtrip(t *testing.T) {
 		if len(got.Tracks) != len(want.Tracks) {
 			t.Fatalf("frame %d len: got %d want %d", i, len(got.Tracks), len(want.Tracks))
 		}
+	}
+}
+
+func TestRecorderEndToEnd(t *testing.T) {
+	dir := t.TempDir()
+	rec, path, err := NewRecorder(dir, "ZNY", time.Unix(1700000000, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Dir(path) != dir {
+		t.Fatalf("recorder path %q not in dir %q", path, dir)
+	}
+	if err := rec.AppendFrame(time.Unix(1700000001, 0), map[av.ADSBCallsign]*sim.Track{
+		"AAL1": {RadarTrack: av.RadarTrack{ADSBCallsign: "AAL1"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := rec.AppendFrame(time.Unix(1700000002, 0), map[av.ADSBCallsign]*sim.Track{
+		"AAL1": {RadarTrack: av.RadarTrack{ADSBCallsign: "AAL1"}},
+		"DAL2": {RadarTrack: av.RadarTrack{ADSBCallsign: "DAL2"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := rec.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	h, dec, err := DecodeHeader(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.Facility != "ZNY" || h.FormatVersion != FormatVersion {
+		t.Fatalf("bad header: %+v", h)
+	}
+	count := 0
+	for {
+		_, err := DecodeFrame(f, dec)
+		if err != nil {
+			break
+		}
+		count++
+	}
+	if count != 2 {
+		t.Fatalf("want 2 frames, got %d", count)
 	}
 }

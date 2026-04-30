@@ -45,14 +45,17 @@ func EncodeFrame(w io.Writer, f Frame) error {
 	return enc.Encode(f)
 }
 
-// DecodeHeader reads the first msgpack value from r and returns it as a Header.
-func DecodeHeader(r io.Reader) (Header, error) {
+// DecodeHeader reads the first msgpack value from r and returns the decoded
+// Header plus the Decoder that consumed it. Callers MUST use the returned
+// Decoder (not a new one) for all subsequent DecodeFrame calls on the same
+// reader; reusing the decoder avoids re-buffering the underlying stream.
+func DecodeHeader(r io.Reader) (Header, *msgpack.Decoder, error) {
 	var h Header
 	dec := msgpack.NewDecoder(r)
 	if err := dec.Decode(&h); err != nil {
-		return Header{}, fmt.Errorf("decode header: %w", err)
+		return Header{}, nil, fmt.Errorf("decode header: %w", err)
 	}
-	return h, nil
+	return h, dec, nil
 }
 
 // DecodeFrame reads one Frame from r. Returns io.EOF when the stream ends.
