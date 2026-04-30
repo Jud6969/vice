@@ -9,7 +9,9 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
+	"time"
 )
 
 func TestManifestRoundtrip(t *testing.T) {
@@ -111,5 +113,25 @@ func TestLoadARTCC_MissingManifest(t *testing.T) {
 	}
 	if sch != nil {
 		t.Fatalf("expected nil Schedule for missing manifest, got %+v", sch)
+	}
+}
+
+func TestLoadZNYSample(t *testing.T) {
+	_, thisFile, _, _ := runtime.Caller(0)
+	dir := filepath.Join(filepath.Dir(thisFile), "..", "..", "resources", "configurations", "ZNY")
+	if _, err := os.Stat(filepath.Join(dir, "schedules.json")); os.IsNotExist(err) {
+		t.Skip("ZNY schedules.json not present")
+	}
+	sch, err := LoadARTCC(dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sch.HasAirport("KLGA") {
+		t.Fatal("KLGA missing from sample data")
+	}
+	mon0700 := time.Date(2026, 5, 4, 7, 0, 0, 0, time.UTC) // Monday
+	dep, arr := sch.RateAt(mon0700, "KLGA")
+	if dep < 20 || arr < 18 {
+		t.Fatalf("MON 07:00 KLGA rates look wrong: dep=%v arr=%v", dep, arr)
 	}
 }
