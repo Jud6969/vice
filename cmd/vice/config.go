@@ -299,4 +299,5 @@ func (c *Config) Activate(r renderer.Renderer, p platform.Platform, eventStream 
 	c.ERAMPane.Activate(r, p, eventStream, lg)
 	c.MessagesPane.Activate(r, p, eventStream, lg)
 	c.FlightStripPane.Activate(r, p, eventStream, lg)
+	c.MapPane.Activate(r, p, eventStream, lg)
 }
