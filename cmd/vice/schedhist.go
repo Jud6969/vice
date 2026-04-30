@@ -45,12 +45,12 @@ func drawScheduleHistogram(sch *schedule.Schedule, month time.Month, day time.We
 		maxH = 1
 	}
 
-	// Reserve canvas.
-	pos := imgui.CursorScreenPos()
-	imgui.InvisibleButtonV("##schedhist", imgui.Vec2{X: width, Y: height}, imgui.ButtonFlagsMouseButtonLeft)
-	hovered := imgui.IsItemHovered()
-	clicked := hovered && imgui.IsMouseClickedBool(imgui.MouseButtonLeft)
+	// Drawing pattern matches wxpicker.go: paint via the draw list FIRST,
+	// then submit the imgui item that reserves space and participates in
+	// hit-testing. Doing it the other way around (InvisibleButton, then
+	// AddRectFilled) leaves the draws clipped against a stale region.
 	dl := imgui.WindowDrawList()
+	pos := imgui.CursorScreenPos()
 
 	// Background.
 	dl.AddRectFilled(pos, imgui.Vec2{X: pos.X + width, Y: pos.Y + height},
@@ -60,14 +60,6 @@ func drawScheduleHistogram(sch *schedule.Schedule, month time.Month, day time.We
 	arrColor := imgui.ColorU32Vec4(imgui.Vec4{X: 0.30, Y: 0.65, Z: 0.95, W: 1}) // arrivals = blue
 
 	barW := width / 96.0
-	mouse := imgui.MousePos()
-	hoverIdx := -1
-	if hovered {
-		hoverIdx = int((mouse.X - pos.X) / barW)
-		if hoverIdx < 0 || hoverIdx >= 96 {
-			hoverIdx = -1
-		}
-	}
 
 	for i, b := range totals {
 		x0 := pos.X + float32(i)*barW
@@ -83,6 +75,21 @@ func drawScheduleHistogram(sch *schedule.Schedule, month time.Month, day time.We
 			imgui.Vec2{X: x0, Y: pos.Y + height - hArr - hDep},
 			imgui.Vec2{X: x1, Y: pos.Y + height - hArr},
 			depColor)
+	}
+
+	// Reserve the same region for hit-testing (after the draws so the
+	// modal's auto-resize sees us).
+	imgui.InvisibleButtonV("##schedhist", imgui.Vec2{X: width, Y: height}, imgui.ButtonFlagsMouseButtonLeft)
+	hovered := imgui.IsItemHovered()
+	clicked := hovered && imgui.IsMouseClickedBool(imgui.MouseButtonLeft)
+
+	mouse := imgui.MousePos()
+	hoverIdx := -1
+	if hovered {
+		hoverIdx = int((mouse.X - pos.X) / barW)
+		if hoverIdx < 0 || hoverIdx >= 96 {
+			hoverIdx = -1
+		}
 	}
 
 	if hoverIdx >= 0 {
