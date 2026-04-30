@@ -45,44 +45,46 @@ func drawScheduleHistogram(sch *schedule.Schedule, month time.Month, day time.We
 		maxH = 1
 	}
 
-	// Use the viewport's foreground draw list rather than the window's
-	// draw list: the modal popup's window-DL was leaving the bars
-	// invisible (some draw-order or clip-rect interaction). The
-	// foreground DL is on top of the entire viewport so it reliably
-	// renders over the modal's content area.
+	// Reserve the canvas first so imgui can auto-size the modal correctly.
+	// Then read the FINAL screen rect via GetItemRectMin/Max — this is the
+	// only reliable way to know where to draw, since CursorScreenPos
+	// captured before the InvisibleButton can be stale relative to the
+	// modal's post-layout position.
+	imgui.InvisibleButtonV("##schedhist", imgui.Vec2{X: width, Y: height}, imgui.ButtonFlagsMouseButtonLeft)
+	hovered := imgui.IsItemHovered()
+	clicked := hovered && imgui.IsMouseClickedBool(imgui.MouseButtonLeft)
+	rectMin := imgui.ItemRectMin()
+	rectMax := imgui.ItemRectMax()
+	pos := rectMin
+	actualW := rectMax.X - rectMin.X
+	actualH := rectMax.Y - rectMin.Y
+
 	dl := imgui.ForegroundDrawListViewportPtr()
-	pos := imgui.CursorScreenPos()
 
 	// Background.
-	dl.AddRectFilled(pos, imgui.Vec2{X: pos.X + width, Y: pos.Y + height},
+	dl.AddRectFilled(pos, rectMax,
 		imgui.ColorU32Vec4(imgui.Vec4{X: 0.10, Y: 0.10, Z: 0.12, W: 1}))
 
 	depColor := imgui.ColorU32Vec4(imgui.Vec4{X: 0.95, Y: 0.65, Z: 0.30, W: 1}) // departures = orange
 	arrColor := imgui.ColorU32Vec4(imgui.Vec4{X: 0.30, Y: 0.65, Z: 0.95, W: 1}) // arrivals = blue
 
-	barW := width / 96.0
+	barW := actualW / 96.0
 
 	for i, b := range totals {
 		x0 := pos.X + float32(i)*barW
 		x1 := x0 + barW - 1
 		// Arrivals: stacked at the bottom.
-		hArr := height * (b.Arr / maxH)
-		hDep := height * (b.Dep / maxH)
+		hArr := actualH * (b.Arr / maxH)
+		hDep := actualH * (b.Dep / maxH)
 		dl.AddRectFilled(
-			imgui.Vec2{X: x0, Y: pos.Y + height - hArr},
-			imgui.Vec2{X: x1, Y: pos.Y + height},
+			imgui.Vec2{X: x0, Y: pos.Y + actualH - hArr},
+			imgui.Vec2{X: x1, Y: pos.Y + actualH},
 			arrColor)
 		dl.AddRectFilled(
-			imgui.Vec2{X: x0, Y: pos.Y + height - hArr - hDep},
-			imgui.Vec2{X: x1, Y: pos.Y + height - hArr},
+			imgui.Vec2{X: x0, Y: pos.Y + actualH - hArr - hDep},
+			imgui.Vec2{X: x1, Y: pos.Y + actualH - hArr},
 			depColor)
 	}
-
-	// Reserve the same region for hit-testing (after the draws so the
-	// modal's auto-resize sees us).
-	imgui.InvisibleButtonV("##schedhist", imgui.Vec2{X: width, Y: height}, imgui.ButtonFlagsMouseButtonLeft)
-	hovered := imgui.IsItemHovered()
-	clicked := hovered && imgui.IsMouseClickedBool(imgui.MouseButtonLeft)
 
 	mouse := imgui.MousePos()
 	hoverIdx := -1
