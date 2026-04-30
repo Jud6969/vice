@@ -157,6 +157,8 @@ func (mp *MapPane) drawCanvas(c *client.ControlClient, p platform.Platform, lg *
 
 	cam := camera{center: math.Point2LL{mp.CenterLon, mp.CenterLat}, rangeNM: mp.RangeNM}
 
+	mp.drawFacilityBoundary(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
+
 	// Mouse: zoom on scroll inside canvas.
 	// WantCaptureMouse guards against scroll events reaching both the canvas
 	// and a popup or combo rendered on top of it (e.g. Task 7's filter combo).
