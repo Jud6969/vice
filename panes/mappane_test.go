@@ -140,6 +140,23 @@ func TestNearestAircraftHit(t *testing.T) {
 	}
 }
 
+func TestPushTrailCapped(t *testing.T) {
+	pts := []math.Point2LL{}
+	for i := 0; i < 200; i++ {
+		pts = pushTrail(pts, math.Point2LL{float32(i), float32(i)}, 120)
+	}
+	if len(pts) != 120 {
+		t.Fatalf("expected cap 120, got %d", len(pts))
+	}
+	// Oldest should be index 80 (200-120).
+	if pts[0][0] != 80 {
+		t.Fatalf("oldest %v", pts[0])
+	}
+	if pts[119][0] != 199 {
+		t.Fatalf("newest %v", pts[119])
+	}
+}
+
 func TestFilterMatch(t *testing.T) {
 	mkTrack := func(owner string) *sim.Track {
 		if owner == "" {

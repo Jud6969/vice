@@ -6,6 +6,7 @@ package panes
 
 import (
 	"sort"
+	"time"
 
 	av "github.com/mmp/vice/aviation"
 	"github.com/mmp/vice/client"
@@ -38,7 +39,7 @@ type MapPane struct {
 	font            *renderer.Font
 	selectedCS      av.ADSBCallsign
 	pastTrails      map[av.ADSBCallsign][]math.Point2LL
-	lastTrailUpdate sim.Time
+	lastTrailUpdate time.Time
 	initialized     bool // first Draw() fits view to facility
 
 	// runtime canvas state (not persisted)
@@ -204,6 +205,8 @@ func (mp *MapPane) drawCanvas(c *client.ControlClient, p platform.Platform, lg *
 
 	mp.drawFacilityBoundary(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
 	mp.drawAirportLabels(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
+	mp.updateTrails(c)
+	mp.drawSelectedTrail(cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
 	mp.drawAircraft(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
 	mp.handleSelection(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
 
