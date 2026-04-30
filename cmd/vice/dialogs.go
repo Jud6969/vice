@@ -299,6 +299,7 @@ func (c *ScenarioSelectionModalClient) Buttons() []ModalDialogButton {
 				return true
 			} else {
 				// Join flow - start directly
+				ui.replayPlayer = nil
 				c.simConfig.displayError = c.simConfig.Start(c.config)
 				return c.simConfig.displayError == nil
 			}
@@ -361,6 +362,7 @@ func (c *ConfigurationModalClient) Buttons() []ModalDialogButton {
 		text:     "Create",
 		disabled: c.simConfig.ConfigurationDisabled(c.config),
 		action: func() bool {
+			ui.replayPlayer = nil
 			c.simConfig.displayError = c.simConfig.Start(c.config)
 			return c.simConfig.displayError == nil
 		},
