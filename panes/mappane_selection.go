@@ -226,10 +226,14 @@ func (mp *MapPane) drawCornerInfoPanel(src TrackSource) {
 	cornerY := mp.canvasOrigin[1] + 8
 	imgui.SetNextWindowPosV(imgui.Vec2{X: cornerX, Y: cornerY}, imgui.CondAlways, imgui.Vec2{X: 1, Y: 0})
 	imgui.SetNextWindowBgAlpha(0.9)
-	flags := imgui.WindowFlagsNoTitleBar | imgui.WindowFlagsNoResize | imgui.WindowFlagsNoMove |
+	// NoTitleBar omitted so imgui renders the close-X button. The ##mapinfo
+	// ID makes the title text render as empty (anything before ## is the
+	// visible title, after ## is the ID), so we get just the X.
+	flags := imgui.WindowFlagsNoResize | imgui.WindowFlagsNoMove |
 		imgui.WindowFlagsAlwaysAutoResize | imgui.WindowFlagsNoFocusOnAppearing | imgui.WindowFlagsNoNav
 
-	if imgui.BeginV("##mapinfo", nil, flags) {
+	open := true
+	if imgui.BeginV("##mapinfo", &open, flags) {
 		imgui.TextUnformatted(string(mp.selectedCS))
 		imgui.Separator()
 
@@ -283,4 +287,8 @@ func (mp *MapPane) drawCornerInfoPanel(src TrackSource) {
 		imgui.PopTextWrapPos()
 	}
 	imgui.End()
+	if !open {
+		// User clicked the close-X.
+		mp.selectedCS = ""
+	}
 }
