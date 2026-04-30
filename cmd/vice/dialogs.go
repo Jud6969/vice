@@ -19,7 +19,9 @@ import (
 	"time"
 
 	"github.com/mmp/vice/client"
+	"github.com/mmp/vice/client/replay"
 	"github.com/mmp/vice/log"
+	"github.com/mmp/vice/panes"
 	"github.com/mmp/vice/platform"
 	"github.com/mmp/vice/renderer"
 	"github.com/mmp/vice/util"
@@ -247,6 +249,37 @@ func (c *ScenarioSelectionModalClient) Buttons() []ModalDialogButton {
 	if c.allowCancel {
 		b = append(b, ModalDialogButton{text: "Cancel"})
 	}
+
+	b = append(b, ModalDialogButton{
+		text: "Replay last session",
+		action: func() bool {
+			entries, _ := replay.ListMostRecent(replayDir())
+			if len(entries) == 0 {
+				uiShowModalDialog(NewModalDialogBox(
+					&MessageModalClient{title: "No replays", message: "No replay files found in ~/.vice/replays/"},
+					c.platform), true)
+				return false
+			}
+			rp, err := replay.Load(entries[0].Path)
+			if err != nil {
+				uiShowModalDialog(NewModalDialogBox(
+					&MessageModalClient{title: "Replay error", message: err.Error()},
+					c.platform), true)
+				return false
+			}
+			ui.replayPlayer = panes.NewReplayPlayer(rp)
+			ui.showMap = true
+			return true
+		},
+	})
+	b = append(b, ModalDialogButton{
+		text: "Replay session…",
+		action: func() bool {
+			picker := &ReplayPickerModalClient{platform: c.platform, lg: c.lg}
+			uiShowModalDialog(NewModalDialogBox(picker, c.platform), false)
+			return true
+		},
+	})
 
 	next := ModalDialogButton{
 		text:     c.simConfig.UIButtonText(),

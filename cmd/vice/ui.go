@@ -57,6 +57,8 @@ var (
 		showFlightStrips  bool
 		showMap           bool
 
+		replayPlayer *panes.ReplayPlayer
+
 		// STT state
 		pttRecording              bool
 		pttGarbling               bool      // true if PTT pressed while audio was playing (no recording)
@@ -346,7 +348,13 @@ func uiDraw(mgr *client.ConnectionManager, config *Config, p platform.Platform, 
 		}
 		if ui.showMap {
 			applyPinWindowClass("Map", config, p)
-			config.MapPane.DrawWindow(&ui.showMap, panes.LiveTrackSource{C: controlClient}, p, config.UnpinnedWindows, lg)
+			var src panes.TrackSource
+			if ui.replayPlayer != nil {
+				src = ui.replayPlayer
+			} else {
+				src = panes.LiveTrackSource{C: controlClient}
+			}
+			config.MapPane.DrawWindow(&ui.showMap, src, p, config.UnpinnedWindows, lg)
 		}
 		if ui.showFlightStrips {
 			applyPinWindowClass("Flight Strips", config, p)
