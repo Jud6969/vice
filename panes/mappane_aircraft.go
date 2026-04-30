@@ -67,6 +67,11 @@ func (mp *MapPane) drawAircraft(c *client.ControlClient, cam camera, canvasOrigi
 
 		drawAircraftTriangle(mp.canvasDrawList, s, float32(trk.Heading), colU32)
 
+		if cs == mp.selectedCS {
+			ring := imgui.ColorU32Vec4(imgui.Vec4{X: 0.55, Y: 0.85, Z: 1.0, W: 1.0})
+			mp.canvasDrawList.AddCircle(imgui.Vec2{X: s[0], Y: s[1]}, 11, ring)
+		}
+
 		// Offset 9px right (1px past the triangle nose at +8) and 7px up,
 		// placing the label flush with the top of the glyph.
 		// Callsign label

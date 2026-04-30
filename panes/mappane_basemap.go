@@ -135,7 +135,7 @@ func makePolyline(raw [][2]float32) polyline {
 	return pl
 }
 
-func (mp *MapPane) drawBasemap(canvasOrigin, canvasSize [2]float32, nmPerLongitude float32, lg *log.Logger) {
+func (mp *MapPane) drawBasemap(cam camera, canvasOrigin, canvasSize [2]float32, nmPerLongitude float32, lg *log.Logger) {
 	if !mp.ShowBasemap {
 		return
 	}
@@ -145,7 +145,6 @@ func (mp *MapPane) drawBasemap(canvasOrigin, canvasSize [2]float32, nmPerLongitu
 		return
 	}
 
-	cam := camera{center: math.Point2LL{mp.CenterLon, mp.CenterLat}, rangeNM: mp.RangeNM}
 	view := mp.viewExtent(cam, canvasSize, nmPerLongitude)
 
 	color := imgui.ColorU32Vec4(imgui.Vec4{X: 0.30, Y: 0.36, Z: 0.42, W: 1})

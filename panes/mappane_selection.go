@@ -122,7 +122,7 @@ func (mp *MapPane) drawSelectedRoute(c *client.ControlClient, cam camera, canvas
 		return
 	}
 
-	color := imgui.ColorU32Vec4(imgui.Vec4{X: 1.0, Y: 0.85, Z: 0.30, W: 0.95})
+	color := imgui.ColorU32Vec4(imgui.Vec4{X: 0.40, Y: 0.85, Z: 1.0, W: 0.95})
 
 	// Defensive copy so we never mutate the shared slice in c.State.Tracks.
 	pts := append([]math.Point2LL(nil), trk.Route...)

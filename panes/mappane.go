@@ -34,13 +34,16 @@ type MapPane struct {
 	CenterLat float32
 	CenterLon float32
 	RangeNM   float32
+	// CameraSet is true after the first fit-to-facility. Persisted so that
+	// reloading the sim preserves the user's pan/zoom; only LoadedSim /
+	// ResetSim clear it to force a new fit.
+	CameraSet bool
 
 	// Runtime-only state (not persisted)
 	font            *renderer.Font
 	selectedCS      av.ADSBCallsign
 	pastTrails      map[av.ADSBCallsign][]math.Point2LL
 	lastTrailUpdate time.Time
-	initialized     bool // first Draw() fits view to facility
 
 	// runtime canvas state (not persisted)
 	canvasOrigin   [2]float32
@@ -66,12 +69,12 @@ func (mp *MapPane) Activate(r renderer.Renderer, p platform.Platform, eventStrea
 }
 
 func (mp *MapPane) LoadedSim(c *client.ControlClient, pl platform.Platform, lg *log.Logger) {
-	mp.initialized = false
+	mp.CameraSet = false
 	mp.pastTrails = make(map[av.ADSBCallsign][]math.Point2LL)
 }
 
 func (mp *MapPane) ResetSim(c *client.ControlClient, pl platform.Platform, lg *log.Logger) {
-	mp.initialized = false
+	mp.CameraSet = false
 	mp.pastTrails = make(map[av.ADSBCallsign][]math.Point2LL)
 	mp.selectedCS = ""
 }
@@ -178,8 +181,9 @@ func (mp *MapPane) drawCanvas(c *client.ControlClient, p platform.Platform, lg *
 	mp.canvasSize = [2]float32{avail.X, avail.Y}
 	mp.canvasDrawList = dl
 
-	// Fit-to-facility on first open.
-	if !mp.initialized && c != nil && c.Connected() {
+	// Fit-to-facility on first open (CameraSet stays true across reloads so
+	// the user's pan/zoom is preserved; only LoadedSim/ResetSim clear it).
+	if !mp.CameraSet && c != nil && c.Connected() {
 		if facility, ok := av.DB.LookupFacility(c.State.Facility); ok {
 			mp.CenterLon = facility.Center()[0]
 			mp.CenterLat = facility.Center()[1]
@@ -191,7 +195,8 @@ func (mp *MapPane) drawCanvas(c *client.ControlClient, p platform.Platform, lg *
 		} else {
 			mp.CenterLon, mp.CenterLat, mp.RangeNM = 0, 0, 100
 		}
-		mp.initialized = true
+		// After first frame this stays true so reloads preserve the user's pan/zoom.
+		mp.CameraSet = true
 	}
 
 	nmPerLon := defaultNmPerLongitude
@@ -199,9 +204,9 @@ func (mp *MapPane) drawCanvas(c *client.ControlClient, p platform.Platform, lg *
 		nmPerLon = c.State.NmPerLongitude
 	}
 
-	mp.drawBasemap(mp.canvasOrigin, mp.canvasSize, nmPerLon, lg)
-
 	cam := camera{center: math.Point2LL{mp.CenterLon, mp.CenterLat}, rangeNM: mp.RangeNM}
+
+	mp.drawBasemap(cam, mp.canvasOrigin, mp.canvasSize, nmPerLon, lg)
 
 	mp.drawFacilityBoundary(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
 	mp.drawAirportLabels(c, cam, mp.canvasOrigin, mp.canvasSize, nmPerLon)
