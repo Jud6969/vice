@@ -75,22 +75,23 @@ func TestCameraApplyPanPixels(t *testing.T) {
 }
 
 func TestParseGeoJSONLineStrings(t *testing.T) {
-	// Minimal GeoJSON with one LineString and one MultiLineString polygon.
+	// Minimal GeoJSON covering all four geometry types.
 	src := []byte(`{
 		"type": "FeatureCollection",
 		"features": [
 			{"type":"Feature","geometry":{"type":"LineString","coordinates":[[0,0],[1,1],[2,0]]}},
 			{"type":"Feature","geometry":{"type":"MultiLineString","coordinates":[[[10,10],[11,11]],[[20,20],[21,21],[22,22]]]}},
-			{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[5,5],[6,5],[6,6],[5,6],[5,5]]]}}
+			{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[5,5],[6,5],[6,6],[5,6],[5,5]]]}},
+			{"type":"Feature","geometry":{"type":"MultiPolygon","coordinates":[[[[30,30],[31,30],[31,31],[30,30]]]]}}
 		]
 	}`)
 	pls, err := parseGeoJSONPolylines(src)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 1 LineString + 2 sub-strings of MultiLineString + 1 polygon ring = 4 polylines.
-	if len(pls) != 4 {
-		t.Fatalf("want 4 polylines, got %d", len(pls))
+	// 1 LineString + 2 sub-strings of MultiLineString + 1 polygon ring + 1 multipolygon ring = 5 polylines.
+	if len(pls) != 5 {
+		t.Fatalf("want 5 polylines, got %d", len(pls))
 	}
 	if len(pls[0].pts) != 3 || pls[0].pts[1][0] != 1 || pls[0].pts[1][1] != 1 {
 		t.Fatalf("first polyline malformed: %+v", pls[0])
@@ -98,5 +99,10 @@ func TestParseGeoJSONLineStrings(t *testing.T) {
 	// Bounding box for second polyline (MultiLineString[0]).
 	if pls[1].bounds.P0[0] != 10 || pls[1].bounds.P1[0] != 11 {
 		t.Fatalf("second polyline bounds wrong: %+v", pls[1].bounds)
+	}
+	// Bounding box for fifth polyline (MultiPolygon[0][0]).
+	if pls[4].bounds.P0[0] != 30 || pls[4].bounds.P1[0] != 31 ||
+		pls[4].bounds.P0[1] != 30 || pls[4].bounds.P1[1] != 31 {
+		t.Fatalf("multipolygon bounds wrong: %+v", pls[4].bounds)
 	}
 }
