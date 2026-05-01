@@ -1446,7 +1446,7 @@ func (c *NewSimConfiguration) DrawConfigurationUI(p platform.Platform, config *C
 		depRate := lc.TotalDepartureRate()
 		headerText := fmt.Sprintf("Departures (Total: %d/hr)###departures", int(depRate+0.5))
 		if imgui.CollapsingHeaderBoolPtr(headerText, nil) {
-			drawDepartureUI(lc, p)
+			drawDepartureUI(lc, p, false)
 			imgui.Spacing()
 		}
 	}
@@ -1472,7 +1472,7 @@ func (c *NewSimConfiguration) DrawConfigurationUI(p platform.Platform, config *C
 		arrRate := lc.TotalArrivalRate()
 		headerText := fmt.Sprintf("Arrivals (Total: %d/hr)###arrivals", int(arrRate+0.5))
 		if imgui.CollapsingHeaderBoolPtr(headerText, nil) {
-			drawArrivalUI(lc, p)
+			drawArrivalUI(lc, p, false)
 			imgui.Spacing()
 		}
 	}
@@ -1571,9 +1571,9 @@ func (c *NewSimConfiguration) DrawRatesUI(p platform.Platform) bool {
 		imgui.PopStyleColor()
 	}
 
-	drawDepartureUI(&c.ScenarioSpec.LaunchConfig, p)
+	drawDepartureUI(&c.ScenarioSpec.LaunchConfig, p, false)
 	drawVFRDepartureUI(&c.ScenarioSpec.LaunchConfig, p)
-	drawArrivalUI(&c.ScenarioSpec.LaunchConfig, p)
+	drawArrivalUI(&c.ScenarioSpec.LaunchConfig, p, false)
 	drawOverflightUI(&c.ScenarioSpec.LaunchConfig, p)
 	drawEmergencyAircraftUI(&c.ScenarioSpec.LaunchConfig, p)
 	return false
@@ -1626,7 +1626,7 @@ func (c *NewSimConfiguration) Start(config *Config) error {
 	return nil
 }
 
-func drawDepartureUI(lc *sim.LaunchConfig, p platform.Platform) (changed bool) {
+func drawDepartureUI(lc *sim.LaunchConfig, p platform.Platform, scheduleActive bool) (changed bool) {
 	if len(lc.DepartureRates) == 0 {
 		return
 	}
@@ -1644,21 +1644,26 @@ func drawDepartureUI(lc *sim.LaunchConfig, p platform.Platform) (changed bool) {
 
 	// SliderFlagsNoInput is more or less a hack to prevent keyboard focus
 	// from being here initially.
+	if scheduleActive {
+		imgui.BeginDisabled()
+	}
 	changed = imgui.SliderFloatV("Departure rate scale", &lc.DepartureRateScale, 0, 5, "%.1f", imgui.SliderFlagsNoInput) || changed
+	if scheduleActive {
+		imgui.EndDisabled()
+	}
 
 	flags := imgui.TableFlagsBordersV | imgui.TableFlagsBordersOuterH | imgui.TableFlagsRowBg | imgui.TableFlagsSizingStretchProp
 
-	if lc.DepartureRateScale == 0 {
-		imgui.BeginDisabled()
-	}
 	adrColumns := min(3, maxDepartureCategories)
 	tableScale := util.Select(runtime.GOOS == "windows", p.DPIScale(), float32(1))
-	if imgui.BeginTableV("departureRunways", int32(1+3*adrColumns), flags, imgui.Vec2{tableScale * float32(200+250*adrColumns), 0}, 0.) {
+	// 4 columns per category-set: Runway, Category, ADR, MINIT
+	if imgui.BeginTableV("departureRunways", int32(1+4*adrColumns), flags, imgui.Vec2{tableScale * float32(200+300*adrColumns), 0}, 0.) {
 		imgui.TableSetupColumn("Airport")
 		for range adrColumns {
 			imgui.TableSetupColumn("Runway")
 			imgui.TableSetupColumn("Category")
 			imgui.TableSetupColumn("ADR")
+			imgui.TableSetupColumn("MINIT")
 		}
 		imgui.TableHeadersRow()
 
@@ -1687,9 +1692,30 @@ func drawDepartureUI(lc *sim.LaunchConfig, p platform.Platform) (changed bool) {
 					}
 					imgui.TableNextColumn()
 
+					if scheduleActive || lc.DepartureRateScale == 0 {
+						imgui.BeginDisabled()
+					}
 					r := int32(lc.DepartureRateScale*lc.DepartureRates[airport][runway][category] + 0.5)
 					if imgui.InputIntV("##adr", &r, 0, 120, 0) {
 						lc.DepartureRates[airport][runway][category] = float32(r) / max(.01, lc.DepartureRateScale)
+						changed = true
+					}
+					if scheduleActive || lc.DepartureRateScale == 0 {
+						imgui.EndDisabled()
+					}
+
+					// MINIT column — always editable even when schedule is active
+					imgui.TableNextColumn()
+					key := airport + "/" + string(runway)
+					v := lc.DepartureMINIT[key]
+					if imgui.InputFloatV("##minit", &v, 0.5, 1.0, "%.1f", 0) {
+						if lc.DepartureMINIT == nil {
+							lc.DepartureMINIT = map[string]float32{}
+						}
+						if v < 0 {
+							v = 0
+						}
+						lc.DepartureMINIT[key] = v
 						changed = true
 					}
 
@@ -1708,9 +1734,6 @@ func drawDepartureUI(lc *sim.LaunchConfig, p platform.Platform) (changed bool) {
 			imgui.PopID()
 		}
 		imgui.EndTable()
-	}
-	if lc.DepartureRateScale == 0 {
-		imgui.EndDisabled()
 	}
 
 	imgui.Separator()
@@ -1740,7 +1763,7 @@ func drawVFRDepartureUI(lc *sim.LaunchConfig, p platform.Platform) (changed bool
 	return
 }
 
-func drawArrivalUI(lc *sim.LaunchConfig, p platform.Platform) (changed bool) {
+func drawArrivalUI(lc *sim.LaunchConfig, p platform.Platform, scheduleActive bool) (changed bool) {
 	// Figure out the maximum number of inbound flows per airport to figure
 	// out the number of table columns and also sum up the overall arrival
 	// rate.
@@ -1760,6 +1783,9 @@ func drawArrivalUI(lc *sim.LaunchConfig, p platform.Platform) (changed bool) {
 		maxAirportFlows = max(n, maxAirportFlows)
 	}
 
+	if scheduleActive {
+		imgui.BeginDisabled()
+	}
 	changed = imgui.SliderFloatV("Arrival/overflight rate scale", &lc.InboundFlowRateScale, 0, 5, "%.1f", imgui.SliderFlagsNoInput) || changed
 
 	changed = imgui.SliderFloatV("Go around probability", &lc.GoAroundRate, 0, 1, "%.02f", 0) || changed
@@ -1777,18 +1803,20 @@ func drawArrivalUI(lc *sim.LaunchConfig, p platform.Platform) (changed bool) {
 	if !lc.ArrivalPushes {
 		imgui.EndDisabled()
 	}
+	if scheduleActive {
+		imgui.EndDisabled()
+	}
 
 	aarColumns := min(3, maxAirportFlows)
 	flags := imgui.TableFlagsBordersV | imgui.TableFlagsBordersOuterH | imgui.TableFlagsRowBg | imgui.TableFlagsSizingStretchProp
 	tableScale := util.Select(runtime.GOOS == "windows", p.DPIScale(), float32(1))
-	if lc.InboundFlowRateScale == 0 {
-		imgui.BeginDisabled()
-	}
-	if imgui.BeginTableV("arrivalgroups", int32(1+2*aarColumns), flags, imgui.Vec2{tableScale * float32(150+250*aarColumns), 0}, 0.) {
+	// 3 columns per flow-set: Arrival, AAR, MIT
+	if imgui.BeginTableV("arrivalgroups", int32(1+3*aarColumns), flags, imgui.Vec2{tableScale * float32(150+300*aarColumns), 0}, 0.) {
 		imgui.TableSetupColumn("Airport")
 		for range aarColumns {
 			imgui.TableSetupColumn("Arrival")
 			imgui.TableSetupColumn("AAR")
+			imgui.TableSetupColumn("MIT")
 		}
 		imgui.TableHeadersRow()
 
@@ -1811,10 +1839,30 @@ func drawArrivalUI(lc *sim.LaunchConfig, p platform.Platform) (changed bool) {
 					imgui.TableNextColumn()
 					imgui.Text(group)
 					imgui.TableNextColumn()
+					if scheduleActive || lc.InboundFlowRateScale == 0 {
+						imgui.BeginDisabled()
+					}
 					r := int32(rate*lc.InboundFlowRateScale + 0.5)
 					if imgui.InputIntV("##aar-"+ap, &r, 0, 120, 0) {
 						changed = true
 						lc.InboundFlowRates[group][ap] = float32(r) / max(.01, lc.InboundFlowRateScale)
+					}
+					if scheduleActive || lc.InboundFlowRateScale == 0 {
+						imgui.EndDisabled()
+					}
+
+					// MIT column — always editable even when schedule is active
+					imgui.TableNextColumn()
+					v := lc.ArrivalMIT[group]
+					if imgui.InputFloatV("##mit-"+ap+"-"+group, &v, 1.0, 5.0, "%.0f", 0) {
+						if lc.ArrivalMIT == nil {
+							lc.ArrivalMIT = map[string]float32{}
+						}
+						if v < 0 {
+							v = 0
+						}
+						lc.ArrivalMIT[group] = v
+						changed = true
 					}
 					aarCol++
 
@@ -1824,9 +1872,6 @@ func drawArrivalUI(lc *sim.LaunchConfig, p platform.Platform) (changed bool) {
 			imgui.PopID()
 		}
 		imgui.EndTable()
-	}
-	if lc.InboundFlowRateScale == 0 {
-		imgui.EndDisabled()
 	}
 
 	imgui.Separator()

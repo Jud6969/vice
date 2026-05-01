@@ -525,13 +525,7 @@ func (lc *LaunchControlWindow) Draw(eventStream *sim.EventStream, p platform.Pla
 					imgui.EndTable()
 				}
 			} else {
-				if scheduleActive {
-					imgui.BeginDisabled()
-				}
-				changed = drawDepartureUI(&lc.client.State.LaunchConfig, p) || changed
-				if scheduleActive {
-					imgui.EndDisabled()
-				}
+				changed = drawDepartureUI(&lc.client.State.LaunchConfig, p, scheduleActive) || changed
 			}
 		}
 
@@ -783,13 +777,7 @@ func (lc *LaunchControlWindow) Draw(eventStream *sim.EventStream, p platform.Pla
 					imgui.EndTable()
 				}
 			} else {
-				if scheduleActive {
-					imgui.BeginDisabled()
-				}
-				changed = drawArrivalUI(&lc.client.State.LaunchConfig, p) || changed
-				if scheduleActive {
-					imgui.EndDisabled()
-				}
+				changed = drawArrivalUI(&lc.client.State.LaunchConfig, p, scheduleActive) || changed
 			}
 		}
 

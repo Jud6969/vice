@@ -132,6 +132,11 @@ type Sim struct {
 	// applyScheduledRates was called. Empty until the schedule first applies.
 	lastScheduleBucket string
 
+	// LastInboundSpawn records the sim time of the most recent
+	// arrival/overflight spawn for each inbound-flow group. Used by MIT
+	// enforcement to floor the next-spawn interval.
+	LastInboundSpawn map[string]Time
+
 	// scheduleBusyness is the schedule's "how busy is right now" factor in
 	// [0.05, 1.0]. Drives overflight, VFR, and prespawn scaling so dead
 	// periods feel quiet and peaks feel realistic. Refreshed at each

@@ -79,7 +79,24 @@ func (s *Sim) spawnArrivalsAndOverflights() {
 				s.lg.Errorf("create inbound error: %v", err)
 			} else if ac != nil {
 				s.addAircraftNoLock(*ac)
-				s.NextInboundSpawn[group] = now.Add(randomWait(rateSum, pushActive, s.Rand))
+				if s.LastInboundSpawn == nil {
+					s.LastInboundSpawn = make(map[string]Time)
+				}
+				s.LastInboundSpawn[group] = now
+
+				const typicalGroundspeed = 200.0 // kt; v1 approximation for MIT → seconds conversion
+				nextScheduled := now.Add(randomWait(rateSum, pushActive, s.Rand))
+				if mit := s.State.LaunchConfig.ArrivalMIT[group]; mit > 0 {
+					if last, ok := s.LastInboundSpawn[group]; ok && !last.IsZero() {
+						secondsPerNM := float32(3600.0 / typicalGroundspeed) // = 18 at 200 kt
+						minSpacing := time.Duration(mit * secondsPerNM * float32(time.Second))
+						minNext := last.Add(minSpacing)
+						if minNext.After(nextScheduled) {
+							nextScheduled = minNext
+						}
+					}
+				}
+				s.NextInboundSpawn[group] = nextScheduled
 			}
 		}
 	}

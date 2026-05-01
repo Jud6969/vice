@@ -50,6 +50,11 @@ type RunwayLaunchState struct {
 	LastArrivalLandingTime Time           // when the last arrival landed on this runway
 	LastArrivalFlightRules av.FlightRules // flight rules of the last arrival that landed
 
+	// LastIFRSpawn is the sim time when the most recent IFR departure was
+	// spawned on this runway. Used by MINIT enforcement to floor the
+	// next-spawn interval.
+	LastIFRSpawn Time
+
 	// GoAroundHoldUntil is the time until which departures should be held
 	// after a go-around. Departures auto-resume after this time.
 	GoAroundHoldUntil Time
@@ -116,6 +121,16 @@ type LaunchConfig struct {
 	// of the static DepartureRates / InboundFlowRates above. Skipped from
 	// JSON because it's a runtime-derived pointer.
 	Schedule *schedule.Schedule `json:"-"`
+
+	// ArrivalMIT keyed by inbound-flow group name; value is nautical miles
+	// minimum spacing. 0 / missing = no restriction. Acts as a floor on
+	// the inter-spawn interval for that flow.
+	ArrivalMIT map[string]float32 `json:"arrival_mit,omitempty"`
+
+	// DepartureMINIT keyed by "AIRPORT/RUNWAY"; value is minutes minimum
+	// spacing. 0 / missing = no restriction. Acts as a floor on the
+	// inter-spawn interval for that (airport, runway).
+	DepartureMINIT map[string]float32 `json:"departure_minit,omitempty"`
 }
 
 func MakeLaunchConfig(dep []DepartureRunway, vfrRateScale float32, vfrAirports map[string]*av.Airport,

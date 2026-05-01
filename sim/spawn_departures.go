@@ -81,7 +81,8 @@ func (s *Sim) spawnDepartures() {
 			if now.After(depState.NextIFRSpawn) {
 				if ac, err := s.makeNewIFRDeparture(airport, runway); ac != nil && err == nil {
 					s.addDepartureToPool(ac, runway, false /* not manual launch */)
-					depState.NextIFRSpawn = now.Add(randomWait(depState.IFRSpawnRate, false, s.Rand))
+					depState.LastIFRSpawn = now
+					depState.NextIFRSpawn = s.nextDepartureSpawn(now, airport, runway, depState)
 				}
 			}
 			if now.After(depState.NextVFRSpawn) {
@@ -358,6 +359,20 @@ func (s *Sim) launchInterval(prev, cur DepartureAircraft, considerExit bool) tim
 	}
 
 	return wait
+}
+
+// nextDepartureSpawn returns the appropriate NextIFRSpawn time for
+// (airport, runway), respecting any DepartureMINIT floor.
+func (s *Sim) nextDepartureSpawn(now Time, airport string, runway av.RunwayID, depState *RunwayLaunchState) Time {
+	nextScheduled := now.Add(randomWait(depState.IFRSpawnRate, false, s.Rand))
+	key := airport + "/" + string(runway)
+	if minit := s.State.LaunchConfig.DepartureMINIT[key]; minit > 0 && !depState.LastIFRSpawn.IsZero() {
+		minNext := depState.LastIFRSpawn.Add(time.Duration(minit * float32(time.Minute)))
+		if minNext.After(nextScheduled) {
+			return minNext
+		}
+	}
+	return nextScheduled
 }
 
 func (s *Sim) makeNewIFRDeparture(airport string, runway av.RunwayID) (ac *Aircraft, err error) {
