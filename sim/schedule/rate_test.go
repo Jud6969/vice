@@ -113,6 +113,40 @@ func TestAggregateForBuckets(t *testing.T) {
 	}
 }
 
+func TestOverflightScaleForFlow(t *testing.T) {
+	s := mkSched()
+	s.OverflightOrigins = map[string]string{
+		"EWR_EAST_DEPS": "KLGA", // mkSched only knows about KLGA, so use it as a stand-in
+	}
+	// At MON 07:00, KLGA's scheduled dep is 28; suppose the static dep
+	// total for KLGA is 56. Then scale should be 28/56 = 0.5.
+	staticTotal := func(airport string) float32 {
+		if airport == "KLGA" {
+			return 56
+		}
+		return 0
+	}
+	mon0700 := time.Date(2026, 5, 4, 7, 0, 0, 0, time.UTC)
+	scale, ok := s.OverflightScaleForFlow(mon0700, "EWR_EAST_DEPS", staticTotal)
+	if !ok {
+		t.Fatal("expected ok")
+	}
+	if scale != 0.5 {
+		t.Fatalf("scale: %v", scale)
+	}
+
+	// Unmapped flow → not ok.
+	if _, ok := s.OverflightScaleForFlow(mon0700, "UNMAPPED", staticTotal); ok {
+		t.Fatal("expected not ok for unmapped flow")
+	}
+
+	// Origin airport with zero static total → not ok (caller falls back).
+	staticTotalZero := func(airport string) float32 { return 0 }
+	if _, ok := s.OverflightScaleForFlow(mon0700, "EWR_EAST_DEPS", staticTotalZero); ok {
+		t.Fatal("expected not ok when static total is zero")
+	}
+}
+
 func TestPeakAndCurrentTotal(t *testing.T) {
 	s := mkSched()
 	day := time.Date(2026, 5, 4, 0, 0, 0, 0, time.UTC) // Monday

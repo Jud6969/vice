@@ -751,7 +751,11 @@ func (s *Sim) applyScheduledRates() {
 		for airport, staticRate := range groupRates {
 			staticSum += staticRate
 			if airport == "overflights" {
-				scaled := staticRate * s.scheduleBusyness
+				scale := s.scheduleBusyness // default: global busyness
+				if perFlowScale, ok := lc.Schedule.OverflightScaleForFlow(simTime, group, lc.staticDepartureTotal); ok {
+					scale = perFlowScale
+				}
+				scaled := staticRate * scale
 				override[airport] = scaled
 				newSum += scaled
 				continue

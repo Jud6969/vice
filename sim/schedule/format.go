@@ -11,6 +11,10 @@ package schedule
 type Schedule struct {
 	// Airports is keyed by ICAO (e.g., "KLGA").
 	Airports map[string]*AirportSchedule
+
+	// OverflightOrigins is the parsed flow → origin-airport mapping. Empty
+	// when the manifest doesn't specify one.
+	OverflightOrigins map[string]string
 }
 
 // AirportSchedule is one airport's schedule.
@@ -35,6 +39,12 @@ type Bucket struct {
 // airport plus monthly multipliers).
 type scheduleManifest struct {
 	Airports map[string]airportManifest `json:"airports"`
+
+	// OverflightOrigins maps an inbound-flow name to the airport ICAO whose
+	// scheduled departure rate this flow's "overflights" entry should track.
+	// Optional. Flows absent from the map fall back to the global busyness
+	// factor.
+	OverflightOrigins map[string]string `json:"overflightOrigins,omitempty"`
 }
 
 type airportManifest struct {

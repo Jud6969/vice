@@ -66,6 +66,14 @@ func LoadARTCCFromFS(fsys fs.FS, dir string, lg *log.Logger) (*Schedule, error) 
 			Buckets:           buckets,
 		}
 	}
+
+	// Copy the overflight origin map verbatim (uppercased and validated).
+	if len(m.OverflightOrigins) > 0 {
+		out.OverflightOrigins = make(map[string]string, len(m.OverflightOrigins))
+		for flow, icao := range m.OverflightOrigins {
+			out.OverflightOrigins[flow] = icao
+		}
+	}
 	return out, nil
 }
 

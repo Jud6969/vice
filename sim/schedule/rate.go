@@ -111,6 +111,32 @@ func (s *Schedule) ScheduleAirports() []string {
 	return out
 }
 
+// OverflightScaleForFlow returns the scale factor an overflight rate
+// for the given inbound-flow group should use, based on the origin
+// airport's scheduled-vs-static departure ratio. Returns (0, false) if
+// the flow isn't mapped to an origin or the origin's static dep total
+// is zero (callers should fall back to the global busyness factor in
+// that case).
+func (s *Schedule) OverflightScaleForFlow(simTime time.Time, flow string,
+	staticDepTotal func(airport string) float32) (float32, bool) {
+	if s == nil {
+		return 0, false
+	}
+	icao, ok := s.OverflightOrigins[flow]
+	if !ok {
+		return 0, false
+	}
+	if !s.HasAirport(icao) {
+		return 0, false
+	}
+	staticTotal := staticDepTotal(icao)
+	if staticTotal <= 0 {
+		return 0, false
+	}
+	scheduledDep, _ := s.RateAt(simTime, icao)
+	return scheduledDep / staticTotal, true
+}
+
 func weekdayKey(d time.Weekday) string {
 	switch d {
 	case time.Monday:
