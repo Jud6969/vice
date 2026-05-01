@@ -336,6 +336,44 @@ Stored on `Sim` as `scheduleBusyness float32`.
 Day/night cycle emerges naturally from the IFR schedule's overnight-trough
 shape — no separate VFR curve required for v1.
 
+### Per-flow overflight origin mapping
+
+The default behavior (overflights scale by a global busyness factor) treats
+all overflights as a single pool. In real airspace, overflights are usually
+flights climbing out of a *specific* nearby airport — N90's LGA scope sees
+EWR's east departures as "overflights." When EWR is at a dead period in
+its schedule, those overflights should disappear too — not just attenuate
+to the global 5% floor.
+
+`schedules.json` gains an optional `overflightOrigins` map:
+
+```json
+{
+  "airports": { ... },
+  "overflightOrigins": {
+    "EWR_EAST_DEPS":   "KEWR",
+    "JFK_SOUTH_OVR":   "KJFK",
+    "LGA_NORTH_OVR":   "KLGA"
+  }
+}
+```
+
+For each `"overflights"` entry inside a flow, `applyScheduledRates` looks
+up the flow name in this map:
+
+- **Flow listed** with airport `X` and `X` is in the schedule: scale =
+  `currentScheduledDep(X) / staticDepTotal(X)`. Overflight rate =
+  `staticOverflightRate × scale`. When `X` is in a dead bucket
+  (`currentScheduledDep(X) == 0`), the scaled overflight rate is exactly 0.
+- **Flow listed** but `staticDepTotal(X) == 0` (degenerate authoring): fall
+  back to the global busyness factor.
+- **Flow not listed**: fall back to the global busyness factor (current
+  behavior). No retroactive break for scenarios that don't author a mapping.
+
+For center scenarios that cover many authored airports, this is the most
+realistic option without per-flow time-of-day CSVs — overflight flows
+inherit their origin airport's scheduled curve directly.
+
 ### Restored custom histogram
 
 The temporary switch to `imgui.PlotHistogramFloatPtrV` was a workaround for
