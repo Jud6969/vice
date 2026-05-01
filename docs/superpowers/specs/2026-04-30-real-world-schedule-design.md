@@ -437,6 +437,95 @@ Bounded memory: at typical N90 rates (~50 ops/hr) the slice peaks at
   as today.
 - Per-row sparklines (Option C from brainstorming).
 
+## MIT / MINIT metering (Traffic Management follow-up)
+
+Adds per-flow MIT (Miles-in-Trail, NM) restrictions for arrivals/overflights
+and per-(airport, runway) MINIT (Minutes-in-Trail, min) restrictions for
+departures. Each is a rate cap that floors the spawn interval — the schedule
+is the upper bound, the restriction clamps it down. No queueing.
+
+### Data shape
+
+`sim.LaunchConfig` gains two persisted maps:
+
+```go
+// ArrivalMIT keyed by inbound-flow name; value is NM. 0 / missing =
+// no restriction.
+ArrivalMIT map[string]float32 `json:",omitempty"`
+
+// DepartureMINIT keyed by "AIRPORT/RUNWAY"; value is minutes. 0 /
+// missing = no restriction.
+DepartureMINIT map[string]float32 `json:",omitempty"`
+```
+
+`Sim.RunwayLaunchState` gains a `LastIFRSpawn time.Time` so the MINIT floor
+uses real elapsed time. The arrival path tracks `Sim.LastInboundSpawn
+map[string]time.Time` per flow group.
+
+### Spawn-engine enforcement
+
+**Departures.** Wherever `NextIFRSpawn` is set:
+
+```go
+nextScheduled := now.Add(randomWait(rate, pushActive, s.Rand))
+if minit := lc.DepartureMINIT[airport + "/" + string(runway)]; minit > 0 {
+    minNext := depState.LastIFRSpawn.Add(time.Duration(minit * float32(time.Minute)))
+    if minNext.After(nextScheduled) {
+        nextScheduled = minNext
+    }
+}
+depState.NextIFRSpawn = nextScheduled
+```
+
+`LastIFRSpawn` updates each time a departure successfully spawns.
+
+**Arrivals.** Same pattern in `spawnArrivalsAndOverflights`. MIT (NM) is
+converted to seconds at a representative groundspeed (constant 200 kt for
+v1; ≈18 sec/NM):
+
+```go
+const typicalGroundspeed = 200.0 // kt; v1 approximation
+seconds_per_NM := 3600.0 / typicalGroundspeed
+minSpacing := time.Duration(mit * float32(seconds_per_NM) * float32(time.Second))
+```
+
+If `now.Sub(s.LastInboundSpawn[group]) < minSpacing`, push `NextInboundSpawn[group]`
+out to `LastInboundSpawn[group] + minSpacing`.
+
+### UI
+
+In `drawDepartureUI` and `drawArrivalUI` (the existing rate-table builders
+shared by both Launch Control and Traffic Management modes), add one column:
+
+- Departures table: a "MINIT" column with `InputFloat` (minutes, step 0.5,
+  range 0–30) per (airport, runway) row.
+- Arrivals/overflights table: a "MIT" column with `InputFloat` (NM, step 1,
+  range 0–30) per flow row.
+
+`0` means "no restriction" (the default and most common case). The MIT/MINIT
+columns are editable even when schedule is on — they're a real-time
+controller-action input, distinct from the read-only rate cells.
+
+Changes immediately mutate `LaunchConfig.{ArrivalMIT,DepartureMINIT}` and
+call `client.SetLaunchConfig` to push to the server.
+
+### Testing
+
+- **Unit:** the floor computation in isolation. Given (`now`, `lastSpawn`,
+  `randomWaitResult`, `minit`), assert the returned `nextSpawn` is the max
+  of the random-wait result and `lastSpawn + minit`.
+- **Manual:** set MINIT 5 on KLGA/4L; verify departures off that runway land
+  ≥ 5 min apart even when the schedule wants 30/hr. Set MIT 10 NM on a
+  busy arrival flow; verify spawns space ≈ 3 min apart at 200 kt.
+
+### Out of scope
+
+- Per-fix MIT (would need a fix-arrival-time queue).
+- Per-aircraft-type spacing — wake turbulence handling already lives
+  elsewhere; we don't conflict.
+- Catch-up queueing when a restriction is lifted (Option B from
+  brainstorming).
+
 ## Open items / risks
 
 - **Authoring effort.** A full week × 96 buckets × ~5 airports = ~3360
