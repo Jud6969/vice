@@ -20,6 +20,7 @@ import (
 	"github.com/mmp/vice/renderer"
 	"github.com/mmp/vice/server"
 	"github.com/mmp/vice/sim"
+	"github.com/mmp/vice/sim/schedule"
 	"github.com/mmp/vice/util"
 
 	"github.com/AllenDang/cimgui-go/imgui"
@@ -281,10 +282,20 @@ func (lc *LaunchControlWindow) cleanupAllAircraft() {
 
 func (lc *LaunchControlWindow) Draw(eventStream *sim.EventStream, p platform.Platform, config *Config) {
 	showLaunchControls := true
+	scheduleActive := lc.client != nil && lc.client.State.LaunchConfig.Schedule != nil
+	title := "Launch Control"
+	if scheduleActive {
+		title = "Traffic Management"
+	}
 	imgui.SetNextWindowSizeConstraints(imgui.Vec2{300, 100}, imgui.Vec2{-1, float32(p.WindowSize()[1]) * 19 / 20})
-	applyPinWindowClass("Launch Control", config, p)
-	imgui.BeginV("Launch Control", &showLaunchControls, imgui.WindowFlagsAlwaysAutoResize)
-	drawPinButton("Launch Control", config, p)
+	applyPinWindowClass(title, config, p)
+	imgui.BeginV(title+"##launchcontrol", &showLaunchControls, imgui.WindowFlagsAlwaysAutoResize)
+	drawPinButton(title, config, p)
+
+	if scheduleActive {
+		drawTrafficManagementContext(lc.client, lc.client.State.LaunchConfig.Schedule)
+		imgui.Separator()
+	}
 
 	ctrl := lc.client.State.LaunchConfig.Controller
 
@@ -388,6 +399,9 @@ func (lc *LaunchControlWindow) Draw(eventStream *sim.EventStream, p platform.Pla
 		if imgui.CollapsingHeaderBoolPtr("Departures", nil) {
 			imgui.Text("Aircraft spawn:")
 			imgui.SameLine()
+			if scheduleActive {
+				imgui.BeginDisabled()
+			}
 			if imgui.RadioButtonIntPtr("Manual##dep", &lc.client.State.LaunchConfig.DepartureMode, sim.LaunchManual) {
 				lc.client.SetLaunchConfig(lc.client.State.LaunchConfig)
 				lc.spawnDepartures()
@@ -396,6 +410,9 @@ func (lc *LaunchControlWindow) Draw(eventStream *sim.EventStream, p platform.Pla
 			if imgui.RadioButtonIntPtr("Automatic##dep", &lc.client.State.LaunchConfig.DepartureMode, sim.LaunchAutomatic) {
 				lc.client.SetLaunchConfig(lc.client.State.LaunchConfig)
 				lc.cleanupDepartures()
+			}
+			if scheduleActive {
+				imgui.EndDisabled()
 			}
 
 			if lc.client.State.LaunchConfig.DepartureMode == sim.LaunchManual {
@@ -508,7 +525,13 @@ func (lc *LaunchControlWindow) Draw(eventStream *sim.EventStream, p platform.Pla
 					imgui.EndTable()
 				}
 			} else {
+				if scheduleActive {
+					imgui.BeginDisabled()
+				}
 				changed = drawDepartureUI(&lc.client.State.LaunchConfig, p) || changed
+				if scheduleActive {
+					imgui.EndDisabled()
+				}
 			}
 		}
 
@@ -516,6 +539,9 @@ func (lc *LaunchControlWindow) Draw(eventStream *sim.EventStream, p platform.Pla
 		if len(lc.vfrDepartures) > 0 && imgui.CollapsingHeaderBoolPtr("VFR Departures", nil) {
 			imgui.Text("Aircraft spawn:")
 			imgui.SameLine()
+			if scheduleActive {
+				imgui.BeginDisabled()
+			}
 			if imgui.RadioButtonIntPtr("Manual##vfrdep", &lc.client.State.LaunchConfig.DepartureMode, sim.LaunchManual) {
 				lc.client.SetLaunchConfig(lc.client.State.LaunchConfig)
 				lc.spawnDepartures()
@@ -524,6 +550,9 @@ func (lc *LaunchControlWindow) Draw(eventStream *sim.EventStream, p platform.Pla
 			if imgui.RadioButtonIntPtr("Automatic##vfrdep", &lc.client.State.LaunchConfig.DepartureMode, sim.LaunchAutomatic) {
 				lc.client.SetLaunchConfig(lc.client.State.LaunchConfig)
 				lc.cleanupDepartures()
+			}
+			if scheduleActive {
+				imgui.EndDisabled()
 			}
 
 			if lc.client.State.LaunchConfig.DepartureMode == sim.LaunchManual {
@@ -620,7 +649,13 @@ func (lc *LaunchControlWindow) Draw(eventStream *sim.EventStream, p platform.Pla
 					imgui.EndTable()
 				}
 			} else {
+				if scheduleActive {
+					imgui.BeginDisabled()
+				}
 				changed = drawVFRDepartureUI(&lc.client.State.LaunchConfig, p) || changed
+				if scheduleActive {
+					imgui.EndDisabled()
+				}
 			}
 		}
 
@@ -628,6 +663,9 @@ func (lc *LaunchControlWindow) Draw(eventStream *sim.EventStream, p platform.Pla
 		if imgui.CollapsingHeaderBoolPtr("Arrivals", nil) {
 			imgui.Text("Aircraft spawn:")
 			imgui.SameLine()
+			if scheduleActive {
+				imgui.BeginDisabled()
+			}
 			if imgui.RadioButtonIntPtr("Manual##arr", &lc.client.State.LaunchConfig.ArrivalMode, sim.LaunchManual) {
 				lc.client.SetLaunchConfig(lc.client.State.LaunchConfig)
 				lc.spawnArrivals()
@@ -636,6 +674,9 @@ func (lc *LaunchControlWindow) Draw(eventStream *sim.EventStream, p platform.Pla
 			if imgui.RadioButtonIntPtr("Automatic##arr", &lc.client.State.LaunchConfig.ArrivalMode, sim.LaunchAutomatic) {
 				lc.client.SetLaunchConfig(lc.client.State.LaunchConfig)
 				lc.cleanupArrivals()
+			}
+			if scheduleActive {
+				imgui.EndDisabled()
 			}
 
 			if lc.client.State.LaunchConfig.ArrivalMode == sim.LaunchManual {
@@ -742,7 +783,13 @@ func (lc *LaunchControlWindow) Draw(eventStream *sim.EventStream, p platform.Pla
 					imgui.EndTable()
 				}
 			} else {
+				if scheduleActive {
+					imgui.BeginDisabled()
+				}
 				changed = drawArrivalUI(&lc.client.State.LaunchConfig, p) || changed
+				if scheduleActive {
+					imgui.EndDisabled()
+				}
 			}
 		}
 
@@ -750,6 +797,9 @@ func (lc *LaunchControlWindow) Draw(eventStream *sim.EventStream, p platform.Pla
 		if imgui.CollapsingHeaderBoolPtr("Overflights", nil) {
 			imgui.Text("Aircraft spawn:")
 			imgui.SameLine()
+			if scheduleActive {
+				imgui.BeginDisabled()
+			}
 			if imgui.RadioButtonIntPtr("Manual##of", &lc.client.State.LaunchConfig.OverflightMode, sim.LaunchManual) {
 				lc.client.SetLaunchConfig(lc.client.State.LaunchConfig)
 				lc.spawnOverflights()
@@ -758,6 +808,9 @@ func (lc *LaunchControlWindow) Draw(eventStream *sim.EventStream, p platform.Pla
 			if imgui.RadioButtonIntPtr("Automatic##of", &lc.client.State.LaunchConfig.OverflightMode, sim.LaunchAutomatic) {
 				lc.client.SetLaunchConfig(lc.client.State.LaunchConfig)
 				lc.cleanupOverflights()
+			}
+			if scheduleActive {
+				imgui.EndDisabled()
 			}
 
 			if lc.client.State.LaunchConfig.OverflightMode == sim.LaunchManual {
@@ -832,7 +885,13 @@ func (lc *LaunchControlWindow) Draw(eventStream *sim.EventStream, p platform.Pla
 					imgui.EndTable()
 				}
 			} else {
+				if scheduleActive {
+					imgui.BeginDisabled()
+				}
 				changed = drawOverflightUI(&lc.client.State.LaunchConfig, p) || changed
+				if scheduleActive {
+					imgui.EndDisabled()
+				}
 			}
 		}
 
@@ -899,4 +958,50 @@ func (lc *LaunchControlWindow) Draw(eventStream *sim.EventStream, p platform.Pla
 		lc.cleanupAllAircraft()
 		ui.showLaunchControl = false
 	}
+}
+
+// drawTrafficManagementContext renders the schedule-mode context block at
+// the top of the Traffic Management window: current bucket label, busyness
+// factor, countdown to the next 15-min boundary, and session totals.
+func drawTrafficManagementContext(c *client.ControlClient, sch *schedule.Schedule) {
+	if c == nil || sch == nil {
+		return
+	}
+	now := c.State.SimTime.Time()
+	weekday := weekdayShort(now.Weekday())
+	hh := now.Hour()
+	mm := (now.Minute() / 15) * 15
+	imgui.Text(fmt.Sprintf("%s %02d:%02d", weekday, hh, mm))
+
+	// Busyness factor: current bucket total / peak total for the day.
+	covered := sch.ScheduleAirports()
+	if len(covered) > 0 {
+		peak := sch.PeakTotalForDay(now, covered)
+		current := sch.CurrentTotalForAirports(now, covered)
+		factor := float32(0.05)
+		if peak > 0 {
+			factor = current / peak
+			if factor < 0.05 {
+				factor = 0.05
+			}
+			if factor > 1.0 {
+				factor = 1.0
+			}
+		}
+		imgui.SameLine()
+		imgui.Text(fmt.Sprintf("  Busyness %.2f of peak", factor))
+	}
+
+	// Countdown to next 15-min bucket boundary.
+	nextMin := (now.Minute()/15 + 1) * 15
+	nextBoundary := time.Date(now.Year(), now.Month(), now.Day(),
+		now.Hour()+nextMin/60, nextMin%60, 0, 0, now.Location())
+	until := nextBoundary.Sub(now)
+	imgui.SameLine()
+	imgui.Text(fmt.Sprintf("  Next bucket in %dm %ds", int(until.Minutes()), int(until.Seconds())%60))
+
+	// Session totals from SessionStats.
+	stats := c.SessionStats
+	imgui.Text(fmt.Sprintf("This session: %d dep / %d arr / %d overflights",
+		stats.Departures, stats.Arrivals, stats.Overflights))
 }
