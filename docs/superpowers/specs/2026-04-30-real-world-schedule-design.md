@@ -382,6 +382,61 @@ non-Monday weekday with no authored buckets). The custom dual-color stacked
 histogram (`drawScheduleHistogram` with `AddRectFilled` per bar) is
 restored — same shape as originally specified.
 
+## Traffic Management mode (renames Launch Control when schedule is on)
+
+When `LaunchConfig.Schedule != nil` the existing Launch Control window is
+re-presented as a read-only "Traffic Management" panel. Hold-for-release
+stays fully usable; rate inputs and mode radios go read-only.
+
+### Toolbar button
+
+`cmd/vice/ui.go`'s departing-plane icon is currently disabled when a
+schedule is active. New behavior: ENABLED at all times. The tooltip
+changes:
+
+- Schedule off → "Control spawning new aircraft and grant departure releases" (current).
+- Schedule on → "Traffic Management — schedule-driven traffic".
+
+### Window changes (`cmd/vice/launchcontrol.go`)
+
+Same `LaunchControlWindow` type. Conditional rendering based on
+`s.client.State.LaunchConfig.Schedule != nil`:
+
+- **Title:** "Traffic Management" instead of "Launch Control".
+- **New context block at top:**
+  - `MON 09:15` — current sim weekday + bucket key.
+  - `Busyness 0.86 of peak`.
+  - `Next bucket in 4m 23s` — countdown to the next 15-min boundary.
+  - `Last hour: 28 dep / 24 arr / 6 overflights` — rolling-hour counts
+    fed from EventStream subscriptions on aircraft-creation events.
+- **Per-(airport, runway, category) IFR rate inputs:** become static
+  text (e.g., `28`), not editable.
+- **Per-(flow, airport) arrival rate inputs:** static text.
+- **VFR rate inputs:** static text.
+- **Departure / Arrival / Overflight Mode radios:** disabled, force
+  Automatic. Manual launch is incompatible with the schedule's spawn
+  loop.
+- **Rate Scale sliders:** disabled. The schedule already drives rates;
+  a user-applied scale would compound oddly.
+- **Hold-for-release controls: unchanged, fully interactive.**
+
+### Rolling-hour stats accumulator
+
+`LaunchControlWindow` gains an EventStream subscription for aircraft-
+creation events. Each event is appended to a time-stamped slice
+(`{time, kind}`). When the context block reads the counts, it drops
+entries older than 1 hour and tallies by kind.
+
+Bounded memory: at typical N90 rates (~50 ops/hr) the slice peaks at
+~50 entries.
+
+### What stays out of scope (deferred to the MIT follow-up)
+
+- MIT (Miles-in-Trail) input controls.
+- Any spawn-engine changes — rates still drive Poisson timing exactly
+  as today.
+- Per-row sparklines (Option C from brainstorming).
+
 ## Open items / risks
 
 - **Authoring effort.** A full week × 96 buckets × ~5 airports = ~3360
