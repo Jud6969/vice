@@ -1677,6 +1677,7 @@ func drawDepartureUI(lc *sim.LaunchConfig, p platform.Platform, scheduleActive b
 			for runway := range util.SortedMap(lc.DepartureRates[airport]) {
 				imgui.PushIDStr(string(runway))
 
+				firstCategoryOfRunway := true
 				for category := range util.SortedMap(lc.DepartureRates[airport][runway]) {
 					imgui.TableNextColumn()
 					rshort := runway.Base() // don't include extras in the UI
@@ -1704,19 +1705,25 @@ func drawDepartureUI(lc *sim.LaunchConfig, p platform.Platform, scheduleActive b
 						imgui.EndDisabled()
 					}
 
-					// MINIT column — always editable even when schedule is active
+					// MINIT column — always editable even when schedule is active.
+					// Render only on the first category of each runway so we don't
+					// have multiple widgets fighting over the same per-runway key.
 					imgui.TableNextColumn()
-					key := airport + "/" + string(runway)
-					v := lc.DepartureMINIT[key]
-					if imgui.InputFloatV("##minit", &v, 0.5, 1.0, "%.1f", 0) {
-						if lc.DepartureMINIT == nil {
-							lc.DepartureMINIT = map[string]float32{}
+					if firstCategoryOfRunway {
+						key := airport + "/" + string(runway)
+						v := lc.DepartureMINIT[key]
+						imgui.SetNextItemWidth(80)
+						if imgui.InputFloatV("##minit", &v, 0, 0, "%.1f", 0) {
+							if lc.DepartureMINIT == nil {
+								lc.DepartureMINIT = map[string]float32{}
+							}
+							if v < 0 {
+								v = 0
+							}
+							lc.DepartureMINIT[key] = v
+							changed = true
 						}
-						if v < 0 {
-							v = 0
-						}
-						lc.DepartureMINIT[key] = v
-						changed = true
+						firstCategoryOfRunway = false
 					}
 
 					adrColumn++
@@ -1820,6 +1827,12 @@ func drawArrivalUI(lc *sim.LaunchConfig, p platform.Platform, scheduleActive boo
 		}
 		imgui.TableHeadersRow()
 
+		// Track which flows already had their MIT widget rendered. Each flow
+		// is keyed once but may appear in multiple airport rows; we only
+		// render MIT on the first appearance to avoid duplicate widgets
+		// fighting over the same map entry.
+		mitRendered := map[string]bool{}
+
 		for ap := range util.SortedMap(numAirportFlows) {
 			imgui.PushIDStr(ap)
 			imgui.TableNextRow()
@@ -1851,18 +1864,24 @@ func drawArrivalUI(lc *sim.LaunchConfig, p platform.Platform, scheduleActive boo
 						imgui.EndDisabled()
 					}
 
-					// MIT column — always editable even when schedule is active
+					// MIT column — always editable even when schedule is active.
+					// Render only on the first appearance of each flow so we don't
+					// have multiple widgets writing to the same per-flow key.
 					imgui.TableNextColumn()
-					v := lc.ArrivalMIT[group]
-					if imgui.InputFloatV("##mit-"+ap+"-"+group, &v, 1.0, 5.0, "%.0f", 0) {
-						if lc.ArrivalMIT == nil {
-							lc.ArrivalMIT = map[string]float32{}
+					if !mitRendered[group] {
+						v := lc.ArrivalMIT[group]
+						imgui.SetNextItemWidth(80)
+						if imgui.InputFloatV("##mit-"+group, &v, 0, 0, "%.0f", 0) {
+							if lc.ArrivalMIT == nil {
+								lc.ArrivalMIT = map[string]float32{}
+							}
+							if v < 0 {
+								v = 0
+							}
+							lc.ArrivalMIT[group] = v
+							changed = true
 						}
-						if v < 0 {
-							v = 0
-						}
-						lc.ArrivalMIT[group] = v
-						changed = true
+						mitRendered[group] = true
 					}
 					aarCol++
 
