@@ -60,8 +60,11 @@ type TCWDisplayState struct {
 	// blob every frame.
 	ScopePrefsRev uint64
 
-	// Deprecated: sync is now automatic; kept for gob compat until a later cleanup.
-	ScopeSyncEnabled bool
+	// RadioHoldUntil is the sim-time before which the TCW radio is busy
+	// or in post-event quiet. All TransmissionManagers at this TCW pause
+	// playback while SimTime < RadioHoldUntil. Source-agnostic: pilot
+	// transmissions, controller PTTs, and post-event holds all write here.
+	RadioHoldUntil Time
 
 	// Monotonic revision, bumped on every mutation. Clients can send
 	// last-seen rev to the server for diff detection in future plans.
