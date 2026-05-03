@@ -15,7 +15,7 @@ import (
 // unexported field).
 func TestAircraft_PracticeFieldsRoundTrip(t *testing.T) {
 	ac := &Aircraft{
-		ADSBCallsign:               "AAL123",
+		ADSBCallsign:               av.ADSBCallsign("AAL123"),
 		MissedApproachesRemaining:  3,
 		PracticeApproachID:         "I22L",
 		PracticeApproachController: "1A",
@@ -44,5 +44,4 @@ func TestAircraft_PracticeFieldsRoundTrip(t *testing.T) {
 	if !got.PendingPracticeRequest {
 		t.Errorf("PendingPracticeRequest: want true, got false")
 	}
-	_ = av.ADSBCallsign("") // keep import even if unused
 }
