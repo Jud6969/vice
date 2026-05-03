@@ -1074,36 +1074,7 @@ func (s *Sim) updateState() {
 				}
 
 				if passedWaypoint.Land() {
-					// There should be an altitude restriction at the final approach waypoint, but
-					// be careful.
-					alt := passedWaypoint.AltitudeRestriction()
-					// If we're more than 200 feet AGL, go around.
-					lowEnough := alt == nil || ac.Altitude() <= alt.TargetAltitude(ac.Altitude())+200
-					if lowEnough {
-						// Determine the runway for sequencing records.
-						var runway string
-						if ac.Nav.Approach.Assigned != nil {
-							runway = ac.Nav.Approach.Assigned.Runway
-						} else {
-							runway = s.bestRunwayForWind(ac.FlightPlan.ArrivalAirport)
-						}
-
-						s.lg.Debug("landing at waypoint", slog.Any("waypoint", passedWaypoint))
-
-						// Record the landing for scheduling departures.
-						if depState, ok := s.DepartureState[ac.FlightPlan.ArrivalAirport]; ok {
-							for rwyID, rwyState := range depState {
-								if rwyID.Base() == runway {
-									rwyState.LastArrivalLandingTime = s.State.SimTime
-									rwyState.LastArrivalFlightRules = ac.FlightPlan.Rules
-								}
-							}
-						}
-
-						s.deleteAircraft(ac)
-					} else {
-						s.goAround(ac)
-					}
+					s.handleLandWaypoint(ac, *passedWaypoint)
 				}
 
 				if passedWaypoint.SequenceVFRLanding() {
@@ -1216,6 +1187,51 @@ func (s *Sim) updateState() {
 				s.State.METAR[ap] = metar[0]
 			}
 		}
+	}
+}
+
+// handleLandWaypoint runs when an aircraft passes a waypoint flagged
+// WaypointFlagLand (the runway threshold). For IFR practice aircraft
+// (MissedApproachesRemaining > 0) it routes to goAround() so the
+// practice-loop branch fires; otherwise the existing landing-recording
+// path runs. If the aircraft is not low enough at the threshold, it
+// goes around (existing behavior preserved).
+func (s *Sim) handleLandWaypoint(ac *Aircraft, passedWaypoint av.Waypoint) {
+	if ac.MissedApproachesRemaining > 0 {
+		// IFR practice aircraft: fly the miss instead of landing.
+		s.goAround(ac)
+		return
+	}
+
+	// There should be an altitude restriction at the final approach waypoint, but
+	// be careful.
+	alt := passedWaypoint.AltitudeRestriction()
+	// If we're more than 200 feet AGL, go around.
+	lowEnough := alt == nil || ac.Altitude() <= alt.TargetAltitude(ac.Altitude())+200
+	if lowEnough {
+		// Determine the runway for sequencing records.
+		var runway string
+		if ac.Nav.Approach.Assigned != nil {
+			runway = ac.Nav.Approach.Assigned.Runway
+		} else {
+			runway = s.bestRunwayForWind(ac.FlightPlan.ArrivalAirport)
+		}
+
+		s.lg.Debug("landing at waypoint", slog.Any("waypoint", passedWaypoint))
+
+		// Record the landing for scheduling departures.
+		if depState, ok := s.DepartureState[ac.FlightPlan.ArrivalAirport]; ok {
+			for rwyID, rwyState := range depState {
+				if rwyID.Base() == runway {
+					rwyState.LastArrivalLandingTime = s.State.SimTime
+					rwyState.LastArrivalFlightRules = ac.FlightPlan.Rules
+				}
+			}
+		}
+
+		s.deleteAircraft(ac)
+	} else {
+		s.goAround(ac)
 	}
 }
 

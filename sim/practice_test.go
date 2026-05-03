@@ -266,3 +266,33 @@ func TestGoAround_PracticeAircraftWithCounterZeroFallsThrough(t *testing.T) {
 		t.Errorf("WentAround should be true for non-practice goAround path")
 	}
 }
+
+// TestLandHandler_PracticeAircraftGoesAroundInsteadOfLanding verifies that
+// when a practice aircraft passes the runway-threshold "Land" waypoint and
+// MissedApproachesRemaining > 0, the Land-waypoint handler routes to
+// goAround() (which in turn enters practiceMissedApproach) rather than
+// recording a landing and deleting the aircraft.
+func TestLandHandler_PracticeAircraftGoesAroundInsteadOfLanding(t *testing.T) {
+	airportLoc := math.Point2LL{0, 0}
+	setupTestRunway(t, "KJFK", av.Runway{Id: "13L", Heading: 130, Threshold: airportLoc, Elevation: 13})
+
+	vs := NewVisualScenario(t, airportLoc, "13L", math.Point2LL{0, 5.0 / 60}, 180)
+	ac := vs.AC
+	ac.PracticeApproachID = "I13L"
+	ac.MissedApproachesRemaining = 1
+	ac.PracticeApproachController = "1A"
+	ac.Nav.Approach.Cleared = true
+	ac.Nav.Approach.InterceptState = nav.OnApproachCourse
+
+	// Simulate the aircraft passing the Land waypoint by directly calling
+	// the handler the per-tick loop uses.
+	wp := av.Waypoint{Flags: av.WaypointFlagLand}
+	vs.Sim.handleLandWaypoint(ac, wp)
+
+	if _, ok := vs.Sim.Aircraft[ac.ADSBCallsign]; !ok {
+		t.Errorf("aircraft was deleted; expected go-around path instead")
+	}
+	if ac.MissedApproachesRemaining != 0 {
+		t.Errorf("counter should have decremented to 0; got %d", ac.MissedApproachesRemaining)
+	}
+}
