@@ -661,6 +661,15 @@ type AircraftCommandsResult struct {
 	ReadbackText      string          // Text for client to synthesize
 	ReadbackVoiceName string          // Voice name for synthesis (e.g., "am_adam")
 	ReadbackCallsign  av.ADSBCallsign // Callsign for the readback
+	// ReadbackPlayAt is the sim-time at which the requester should start
+	// TTS playback. Mirrors the PlayAt stamped on the corresponding
+	// RadioTransmissionEvent so requester and observers play at the same
+	// moment.
+	ReadbackPlayAt sim.Time
+	// ReadbackRequesterToken is the controllerToken of the client whose
+	// RPC produced the readback. Echoed verbatim from the request so the
+	// client can correlate its own RPC results with stamped events.
+	ReadbackRequesterToken string
 }
 
 const RunAircraftCommandsRPC = "Sim.RunAircraftCommands"
@@ -683,31 +692,33 @@ func (sd *dispatcher) RunAircraftCommands(cmds *AircraftCommandsArgs, result *Ai
 	}
 
 	// Helper to populate readback fields for client-side TTS synthesis.
-	setReadback := func(spokenText string) {
+	setReadback := func(spokenText string, playAt sim.Time) {
 		if cmds.EnableTTS && spokenText != "" {
 			result.ReadbackText = spokenText
 			result.ReadbackVoiceName = c.sim.VoiceAssigner.GetVoice(callsign, c.sim.Rand)
 			result.ReadbackCallsign = callsign
+			result.ReadbackPlayAt = playAt
+			result.ReadbackRequesterToken = cmds.ControllerToken
 		}
 	}
 
 	if cmds.Multiple {
-		spokenText, err := c.sim.PilotMixUp(c.tcw, callsign)
+		spokenText, playAt, err := c.sim.PilotMixUp(c.tcw, callsign, cmds.ControllerToken)
 		if err != nil {
 			rewriteError(err)
 		}
-		setReadback(spokenText)
+		setReadback(spokenText, playAt)
 		return nil // don't continue with the commands
 	} else if !cmds.ClickedTrack && c.sim.ShouldTriggerPilotMixUp(callsign) {
-		spokenText, err := c.sim.PilotMixUp(c.tcw, callsign)
+		spokenText, playAt, err := c.sim.PilotMixUp(c.tcw, callsign, cmds.ControllerToken)
 		if err != nil {
 			rewriteError(err)
 		}
-		setReadback(spokenText)
+		setReadback(spokenText, playAt)
 		return nil // don't continue with the commands
 	}
 
-	execResult := c.sim.RunAircraftControlCommands(c.tcw, cmds.Callsign, cmds.Commands, cmds.AudioDuration)
+	execResult := c.sim.RunAircraftControlCommands(c.tcw, cmds.Callsign, cmds.Commands, cmds.AudioDuration, cmds.ControllerToken)
 	result.RemainingInput = execResult.RemainingInput
 	if execResult.Error != nil {
 		result.ErrorMessage = execResult.Error.Error()
@@ -718,6 +729,8 @@ func (sd *dispatcher) RunAircraftCommands(cmds *AircraftCommandsArgs, result *Ai
 		result.ReadbackText = execResult.ReadbackSpokenText
 		result.ReadbackVoiceName = c.sim.VoiceAssigner.GetVoice(cs, c.sim.Rand)
 		result.ReadbackCallsign = cs
+		result.ReadbackPlayAt = execResult.ReadbackPlayAt
+		result.ReadbackRequesterToken = cmds.ControllerToken
 	}
 
 	// Log whisper STT commands (WhisperDuration is non-zero for voice commands)
@@ -1050,6 +1063,12 @@ type RequestContactResult struct {
 	ContactVoiceName string          // Voice name for synthesis (e.g., "am_adam")
 	ContactCallsign  av.ADSBCallsign // Callsign of the aircraft
 	ContactType      av.RadioTransmissionType
+	// ContactPlayAt is the sim-time at which the requester should start
+	// TTS playback for the generated contact transmission.
+	ContactPlayAt sim.Time
+	// ContactRequesterToken is the controllerToken of the client whose
+	// RPC produced the contact transmission, echoed verbatim.
+	ContactRequesterToken string
 }
 
 const RequestContactTransmissionRPC = "Sim.RequestContactTransmission"
@@ -1062,8 +1081,16 @@ func (sd *dispatcher) RequestContactTransmission(args *RequestContactArgs, resul
 		return ErrNoSimForControllerToken
 	}
 
-	// Request a contact from the session - returns text and voice name for client-side synthesis
-	result.ContactText, result.ContactVoiceName, result.ContactCallsign, result.ContactType = c.session.RequestContact(c.tcw)
+	// Request a contact from the session - returns text, voice name, and
+	// PlayAt for client-side synthesis. ContactRequesterToken is echoed
+	// from the args so the client can correlate.
+	text, voice, callsign, ty, playAt := c.session.RequestContact(c.tcw, args.ControllerToken)
+	result.ContactText = text
+	result.ContactVoiceName = voice
+	result.ContactCallsign = callsign
+	result.ContactType = ty
+	result.ContactPlayAt = playAt
+	result.ContactRequesterToken = args.ControllerToken
 	return nil
 }
 

@@ -214,18 +214,7 @@ func (sp *STARSPane) processKeyboardInput(ctx *panes.Context) {
 
 	if len(input) > 0 && input[0] == sp.TgtGenKey { // [TGT GEN]
 		sp.setCommandMode(ctx, CommandModeTargetGen)
-		if !ctx.TCWIsPrivileged(ctx.UserTCW) {
-			ctx.Client.HoldRadioTransmissions()
-		}
 		input = input[1:]
-	}
-
-	if sp.commandMode == CommandModeTargetGen || sp.commandMode == CommandModeTargetGenLock {
-		if !ctx.TCWIsPrivileged(ctx.UserTCW) && (input != "" || len(ctx.Keyboard.Pressed) > 0) {
-			// As long as text is being entered, hold radio transmissions
-			// for the coming few seconds.
-			ctx.Client.HoldRadioTransmissions()
-		}
 	}
 
 	// Enforce the 32-character-per-line limit
@@ -801,10 +790,6 @@ func (sp *STARSPane) consumeMouseEvents(ctx *panes.Context, ghosts []*av.GhostTr
 func (sp *STARSPane) setCommandMode(ctx *panes.Context, mode CommandMode) {
 	sp.resetInputState(ctx.Platform)
 	sp.commandMode = mode
-
-	if mode == CommandModeTargetGen || mode == CommandModeTargetGenLock {
-		ctx.Client.HoldRadioTransmissions()
-	}
 }
 
 func (sp *STARSPane) resetInputState(pl platform.Platform) {

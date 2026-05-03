@@ -475,7 +475,7 @@ func (c *ControlClient) RunAircraftCommands(req AircraftCommandRequest,
 
 			// Synthesize readback locally if text was returned
 			if enableTTS && result.ReadbackText != "" {
-				go c.synthesizeAndEnqueueReadback(result.ReadbackCallsign, result.ReadbackText, result.ReadbackVoiceName)
+				go c.synthesizeAndEnqueueReadback(result.ReadbackCallsign, result.ReadbackText, result.ReadbackVoiceName, result.ReadbackPlayAt)
 			} else if enableTTS {
 				// No readback text - release hold
 				c.transmissions.Unhold()
@@ -513,9 +513,10 @@ func (c *ControlClient) RequestContactTransmission() {
 
 			if *c.disableTTSPtr {
 				c.transmissions.SetContactRequested(false)
-				// Contact was processed on server (pilot joins frequency, text event posted)
-				// but user doesn't want audio. Set a hold to maintain pacing.
-				c.transmissions.HoldAfterSilentContact(result.ContactCallsign)
+				// Contact was processed on server (pilot joins frequency, text
+				// event posted) but user doesn't want audio. The shared TCW
+				// RadioHoldUntil already advanced when the server posted the
+				// event, so contact pacing is preserved without a local hold.
 				return
 			}
 
@@ -523,7 +524,7 @@ func (c *ControlClient) RequestContactTransmission() {
 			// completes, preventing additional contacts from being requested
 			// during synthesis.
 			go c.synthesizeAndEnqueueContact(result.ContactCallsign, result.ContactType,
-				result.ContactText, result.ContactVoiceName)
+				result.ContactText, result.ContactVoiceName, result.ContactPlayAt)
 		}))
 }
 
