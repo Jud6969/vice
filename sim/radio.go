@@ -12,11 +12,98 @@ import (
 	"github.com/mmp/vice/util"
 )
 
+// Pilot-transmission timing constants used to compute PlayAt and
+// RadioHoldUntil for events posted to the TCW radio bus. These live
+// here (single source of truth) instead of duplicated in the client
+// TransmissionManager.
+const (
+	// playAtForwardBuffer is added to SimTime when stamping PlayAt so
+	// listening peers reliably receive the event before its scheduled
+	// start. ~200ms is comfortably above typical poll cadence on LAN
+	// and Tailscale; well below the threshold of feeling delayed.
+	playAtForwardBuffer = 200 * time.Millisecond
+
+	// msPerChar approximates ATC speech rate: ~150 wpm × ~6 chars/word
+	// ÷ 60 sec ≈ 15 chars/sec ≈ 67 ms/char. Rounded up to 70 ms/char
+	// for a small safety margin.
+	msPerChar = 70 * time.Millisecond
+
+	// postReadbackPad is the silence window after a pilot readback,
+	// giving the controller time to issue the next instruction.
+	postReadbackPad = 3 * time.Second
+
+	// postContactPad is the silence window after a pilot contact (initial
+	// check-in), giving the controller longer to respond.
+	postContactPad = 8 * time.Second
+)
+
+// postEventPadFor returns the post-event silence window for the given
+// transmission type.
+func postEventPadFor(t av.RadioTransmissionType) time.Duration {
+	if t == av.RadioTransmissionContact {
+		return postContactPad
+	}
+	return postReadbackPad
+}
+
+// pilotTransmissionDurationEstimate approximates how long it takes a
+// TTS engine to render the given spoken text, based on text length.
+func pilotTransmissionDurationEstimate(spoken string) time.Duration {
+	return time.Duration(len(spoken)) * msPerChar
+}
+
+// postRadioTransmission stamps PlayAt on the event, advances the
+// destination TCW's RadioHoldUntil, and posts the event. Caller fills
+// in everything except PlayAt before calling. Acquires s.mu.
+//
+// PlayAt is anchored to max(SimTime + buffer, current RadioHoldUntil)
+// so back-to-back transmissions queue cleanly. RadioHoldUntil advances
+// monotonically -- never shrinks here -- to PlayAt + spoken-duration
+// estimate + post-event pad. Returns the stamped PlayAt so callers
+// (RPC handlers) can plumb it back to the requester.
+func (s *Sim) postRadioTransmission(e Event) Time {
+	s.mu.Lock(s.lg)
+	defer s.mu.Unlock(s.lg)
+
+	return s.postRadioTransmissionLocked(e)
+}
+
+// postRadioTransmissionLocked is the lock-free variant for callers
+// that already hold s.mu (e.g. SayAgain, SayNotCleared, PilotMixUp,
+// GenerateContactTransmission). Caller must hold s.mu.
+func (s *Sim) postRadioTransmissionLocked(e Event) Time {
+	d := s.EnsureTCWDisplay(e.DestinationTCW)
+	playAtFloor := s.State.SimTime.Add(playAtForwardBuffer)
+	playAt := playAtFloor
+	if d.RadioHoldUntil.After(playAt) {
+		playAt = d.RadioHoldUntil
+	}
+	e.PlayAt = playAt
+
+	endTime := playAt.Add(pilotTransmissionDurationEstimate(e.SpokenText)).Add(postEventPadFor(e.RadioTransmissionType))
+	if endTime.After(d.RadioHoldUntil) {
+		d.RadioHoldUntil = endTime
+		d.Rev++
+	}
+
+	s.eventStream.Post(e)
+	return playAt
+}
+
 // postReadbackTransmission posts a radio event for a pilot responding to a command.
 // DestinationTCW is the specific TCW that issued the command.
 // Use this for readbacks, where the response must go to the issuing controller
-// regardless of any consolidation changes.
-func (s *Sim) postReadbackTransmission(from av.ADSBCallsign, tr av.RadioTransmission, tcw TCW) {
+// regardless of any consolidation changes. Acquires s.mu.
+func (s *Sim) postReadbackTransmission(from av.ADSBCallsign, tr av.RadioTransmission, tcw TCW) Time {
+	s.mu.Lock(s.lg)
+	defer s.mu.Unlock(s.lg)
+
+	return s.postReadbackTransmissionLocked(from, tr, tcw)
+}
+
+// postReadbackTransmissionLocked is the lock-free variant of
+// postReadbackTransmission. Caller must hold s.mu.
+func (s *Sim) postReadbackTransmissionLocked(from av.ADSBCallsign, tr av.RadioTransmission, tcw TCW) Time {
 	tr.Validate(s.lg)
 
 	if ac, ok := s.Aircraft[from]; ok {
@@ -24,7 +111,7 @@ func (s *Sim) postReadbackTransmission(from av.ADSBCallsign, tr av.RadioTransmis
 	}
 
 	tcp := s.State.PrimaryPositionForTCW(tcw)
-	s.eventStream.Post(Event{
+	return s.postRadioTransmissionLocked(Event{
 		Type:                  RadioTransmissionEvent,
 		ADSBCallsign:          from,
 		ToController:          tcp,
@@ -500,8 +587,11 @@ func (s *Sim) GenerateContactTransmission(pc *PendingContact) (spokenText, writt
 	baseSpoken := rt.Spoken(s.Rand)
 	baseWritten := rt.Written(s.Rand)
 
-	// Post the radio event with unprefixed text
-	s.eventStream.Post(Event{
+	// Post the radio event with unprefixed text. PlayAt is stamped and
+	// the destination TCW's RadioHoldUntil is advanced inside
+	// postRadioTransmissionLocked. We hold s.mu (acquired at function
+	// entry), so use the Locked variant to avoid double-locking.
+	playAt := s.postRadioTransmissionLocked(Event{
 		Type:                  RadioTransmissionEvent,
 		ADSBCallsign:          pc.ADSBCallsign,
 		ToController:          pc.TCP,
@@ -510,6 +600,7 @@ func (s *Sim) GenerateContactTransmission(pc *PendingContact) (spokenText, writt
 		SpokenText:            baseSpoken,
 		RadioTransmissionType: rt.Type,
 	})
+	_ = playAt // TODO(Task 8): plumb through GenerateContactTransmission return.
 
 	// Generate prefixed text for the TTS return value (not going through event stream)
 	ctrl := s.State.Controllers[pc.TCP]

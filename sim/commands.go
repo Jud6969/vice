@@ -699,7 +699,7 @@ func (s *Sim) SayAgain(tcw TCW, callsign av.ADSBCallsign) (av.ADSBCallsign, stri
 	defer s.mu.Unlock(s.lg)
 
 	tr := av.MakeReadbackTransmission("say again for")
-	s.postReadbackTransmission(callsign, *tr, tcw)
+	s.postReadbackTransmissionLocked(callsign, *tr, tcw)
 
 	// Return spoken text with callsign suffix for TTS synthesis
 	if suffix := s.readbackCallsignSuffix(callsign, tcw); suffix != nil {
@@ -716,7 +716,7 @@ func (s *Sim) SayNotCleared(tcw TCW, callsign av.ADSBCallsign) (av.ADSBCallsign,
 	defer s.mu.Unlock(s.lg)
 
 	tr := av.MakeReadbackTransmission("we haven't been cleared for an approach")
-	s.postReadbackTransmission(callsign, *tr, tcw)
+	s.postReadbackTransmissionLocked(callsign, *tr, tcw)
 
 	// Return spoken text with callsign suffix for TTS synthesis
 	if suffix := s.readbackCallsignSuffix(callsign, tcw); suffix != nil {

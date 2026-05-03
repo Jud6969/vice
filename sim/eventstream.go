@@ -284,8 +284,11 @@ type Event struct {
 	RadioTransmissionType av.RadioTransmissionType // For radio transmissions only
 	// PlayAt is the sim-time when listening clients should start audio
 	// playback for a RadioTransmissionEvent. Server stamps this when the
-	// event is queued. Late-arriving clients (SimTime > PlayAt) play
-	// immediately without drop. Zero on non-radio events.
+	// event is queued via postRadioTransmission. Late-arriving clients
+	// (SimTime > PlayAt) play immediately without drop. Zero when not
+	// stamped -- including non-radio events and any RadioTransmissionEvent
+	// posted by a path that has not been migrated to postRadioTransmission.
+	// Consumers must gate on Type before reading PlayAt.
 	PlayAt              Time
 	LeaderLineDirection *math.CardinalOrdinalDirection // SetGlobalLeaderLineEvent, FDAMLeaderLineEvent
 	WaypointInfo          []math.Point2LL

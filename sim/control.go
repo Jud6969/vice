@@ -340,7 +340,7 @@ func (s *Sim) PilotMixUp(tcw TCW, callsign av.ADSBCallsign) (string, error) {
 			return ac.PilotMixUp()
 		})
 	if err == nil && intent != nil {
-		spokenText := s.renderAndPostReadback(callsign, tcw, []av.CommandIntent{intent})
+		spokenText := s.renderAndPostReadbackLocked(callsign, tcw, []av.CommandIntent{intent})
 		return spokenText, nil
 	}
 	return "", err

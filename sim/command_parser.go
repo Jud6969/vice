@@ -172,9 +172,26 @@ func (s *Sim) rollbackLastCommand() error {
 // The tcw ensures the readback goes to the controller who issued the command,
 // regardless of any consolidation changes.
 // Returns the spoken text for TTS synthesis, including the callsign suffix.
+// Acquires s.mu via postReadbackTransmission. Caller must NOT hold s.mu.
 func (s *Sim) renderAndPostReadback(callsign av.ADSBCallsign, tcw TCW, intents []av.CommandIntent) string {
 	if rt := av.RenderIntents(intents, s.Rand); rt != nil {
 		s.postReadbackTransmission(callsign, *rt, tcw)
+		// MixUp transmissions already include the callsign in the message
+		if rt.Type != av.RadioTransmissionMixUp {
+			if suffix := s.readbackCallsignSuffix(callsign, tcw); suffix != nil {
+				rt.Merge(suffix)
+			}
+		}
+		return rt.Spoken(s.Rand)
+	}
+	return ""
+}
+
+// renderAndPostReadbackLocked is the lock-free variant for callers
+// that already hold s.mu (e.g. PilotMixUp).
+func (s *Sim) renderAndPostReadbackLocked(callsign av.ADSBCallsign, tcw TCW, intents []av.CommandIntent) string {
+	if rt := av.RenderIntents(intents, s.Rand); rt != nil {
+		s.postReadbackTransmissionLocked(callsign, *rt, tcw)
 		// MixUp transmissions already include the callsign in the message
 		if rt.Type != av.RadioTransmissionMixUp {
 			if suffix := s.readbackCallsignSuffix(callsign, tcw); suffix != nil {
