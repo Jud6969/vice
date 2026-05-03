@@ -145,6 +145,22 @@ type Aircraft struct {
 	VisualApproachRequestDistance float32
 
 	TouchAndGosRemaining int // >0 means pattern aircraft; decremented each lap
+
+	// IFR practice approaches.
+	// MissedApproachesRemaining > 0 means this aircraft will go missed instead of
+	// landing on its next N approaches; it lands normally on approach N+1.
+	// Decremented inside practiceMissedApproach() (sim/practice.go).
+	MissedApproachesRemaining int
+	// PracticeApproachID is the av.Approach.Id the AI requests on initial contact
+	// and after every miss. Empty for non-practice aircraft.
+	PracticeApproachID string
+	// PracticeApproachController is the TCP of the approach controller to hand
+	// the aircraft back to on miss. Refreshed on every C<approach>.
+	PracticeApproachController TCP
+	// PendingPracticeRequest is set true when the AI owes a practice-approach
+	// request transmission (initial contact or post-miss level-off). Cleared
+	// when the transmission is queued.
+	PendingPracticeRequest bool
 }
 
 func (ac *Aircraft) GetRadarTrack(now Time) av.RadarTrack {
