@@ -7,6 +7,7 @@ package client
 import (
 	"sync"
 
+	av "github.com/mmp/vice/aviation"
 	"github.com/mmp/vice/log"
 	"github.com/mmp/vice/server"
 	"github.com/mmp/vice/sim"
@@ -170,5 +171,79 @@ func (p *PeerVoicePlayback) Update(plat PlaybackSink) {
 	}
 	if chunkCount > 0 && p.lg != nil {
 		p.lg.Warnf("DBG_VOICE: PeerVoicePlayback drained chunks=%d samples=%d", chunkCount, sampleCount)
+	}
+}
+
+// PilotVoicePlayback synthesizes pilot TTS for RadioTransmissionEvents
+// observed on the local event stream that did NOT originate from this
+// controller (the observer-side counterpart to the RPC-result-driven
+// requester synthesis in ControlClient.synthesizeAndEnqueue*). One per
+// ControlClient; subscribed lazily to the same EventStream as
+// TransmissionManager and PeerVoicePlayback.
+//
+// The actual TTS call is held behind a function pointer (`synthesize`)
+// so tests can substitute a stub.
+type PilotVoicePlayback struct {
+	mu         sync.Mutex
+	events     *sim.EventsSubscription
+	myToken    string
+	lg         *log.Logger
+	synthesize func(callsign av.ADSBCallsign, ty av.RadioTransmissionType, text, voice string, playAt sim.Time)
+}
+
+// NewPilotVoicePlayback creates an observer-side synthesizer.
+// myToken is the local controller's RPC token, used to skip events
+// whose RPC-result path already produced audio on this client.
+// (Pass an empty string before sign-on; SetMyToken updates it later.)
+func NewPilotVoicePlayback(lg *log.Logger, myToken string) *PilotVoicePlayback {
+	return &PilotVoicePlayback{
+		lg:      lg,
+		myToken: myToken,
+	}
+}
+
+// SetEventStream binds the playback to the local event stream.
+func (p *PilotVoicePlayback) SetEventStream(es *sim.EventStream) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.events != nil {
+		p.events.Unsubscribe()
+	}
+	p.events = es.Subscribe()
+}
+
+// SetMyToken updates the local controller's RPC token. Called after
+// sign-on once the token is known.
+func (p *PilotVoicePlayback) SetMyToken(token string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.myToken = token
+}
+
+// Update drains pending RadioTransmissionEvents and asks the
+// synthesize callback to render audio for each one whose
+// RequesterToken does not match the local controller's token. Call
+// once per frame.
+func (p *PilotVoicePlayback) Update() {
+	p.mu.Lock()
+	sub := p.events
+	myToken := p.myToken
+	syn := p.synthesize
+	p.mu.Unlock()
+
+	if sub == nil || syn == nil {
+		return
+	}
+	for _, e := range sub.Get() {
+		if e.Type != sim.RadioTransmissionEvent {
+			continue
+		}
+		// Skip events the local RPC-result path will synthesize.
+		// Empty RequesterToken means a server-internal event with no
+		// originating client — every observer should synthesize it.
+		if e.RequesterToken != "" && e.RequesterToken == myToken {
+			continue
+		}
+		syn(e.ADSBCallsign, e.RadioTransmissionType, e.SpokenText, "", e.PlayAt)
 	}
 }

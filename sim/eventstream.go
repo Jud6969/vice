@@ -289,7 +289,14 @@ type Event struct {
 	// stamped -- including non-radio events and any RadioTransmissionEvent
 	// posted by a path that has not been migrated to postRadioTransmission.
 	// Consumers must gate on Type before reading PlayAt.
-	PlayAt              Time
+	PlayAt Time
+	// RequesterToken is the controllerToken of the client whose RPC
+	// produced this RadioTransmissionEvent (e.g., the caller of
+	// RunAircraftCommands). Empty for server-internal transmissions
+	// that have no human originator (e.g., spontaneous pilot events).
+	// Observer-side synthesizers use this to skip events whose RPC-
+	// result handler will already produce audio on the requester.
+	RequesterToken      string
 	LeaderLineDirection *math.CardinalOrdinalDirection // SetGlobalLeaderLineEvent, FDAMLeaderLineEvent
 	WaypointInfo          []math.Point2LL
 	STTTranscript         string
