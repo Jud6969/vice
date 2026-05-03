@@ -148,3 +148,48 @@ func TestEnqueueControllerContact_QueuesPracticeRequestForPracticeAircraft(t *te
 		t.Errorf("expected PendingPracticeRequest cleared after queue, still true")
 	}
 }
+
+// TestClearedApproach_StashesPracticeController verifies that issuing a
+// C<approach> clearance to a practice aircraft stashes the issuing
+// controller's TCP onto ac.PracticeApproachController. That's the
+// controller the aircraft will be handed back to on miss.
+func TestClearedApproach_StashesPracticeController(t *testing.T) {
+	airportLoc := math.Point2LL{0, 0}
+	setupTestRunway(t, "KJFK", av.Runway{Id: "13L", Heading: 130, Threshold: airportLoc, Elevation: 13})
+
+	vs := NewVisualScenario(t, airportLoc, "13L", math.Point2LL{0, 5.0 / 60}, 180)
+	ac := vs.AC
+	ac.PracticeApproachID = "I13L"
+	ac.MissedApproachesRemaining = 1
+	ac.ControllerFrequency = ControlPosition("1A")
+
+	if _, err := vs.Sim.ClearedApproach(vs.tcw, ac.ADSBCallsign, "I13L", false); err != nil {
+		t.Fatalf("ClearedApproach: %v", err)
+	}
+
+	if ac.PracticeApproachController != "1A" {
+		t.Errorf("PracticeApproachController: want %q, got %q", "1A", ac.PracticeApproachController)
+	}
+}
+
+// TestClearedApproach_NonPracticeAircraftLeavesControllerEmpty verifies
+// that aircraft without PracticeApproachID get an empty
+// PracticeApproachController after clearance — i.e., the stash logic is
+// gated on practice aircraft.
+func TestClearedApproach_NonPracticeAircraftLeavesControllerEmpty(t *testing.T) {
+	airportLoc := math.Point2LL{0, 0}
+	setupTestRunway(t, "KJFK", av.Runway{Id: "13L", Heading: 130, Threshold: airportLoc, Elevation: 13})
+
+	vs := NewVisualScenario(t, airportLoc, "13L", math.Point2LL{0, 5.0 / 60}, 180)
+	ac := vs.AC
+	ac.ControllerFrequency = ControlPosition("1A")
+
+	if _, err := vs.Sim.ClearedApproach(vs.tcw, ac.ADSBCallsign, "I13L", false); err != nil {
+		t.Fatalf("ClearedApproach: %v", err)
+	}
+
+	if ac.PracticeApproachController != "" {
+		t.Errorf("PracticeApproachController for non-practice aircraft: want empty, got %q",
+			ac.PracticeApproachController)
+	}
+}

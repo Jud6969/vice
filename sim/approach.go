@@ -254,6 +254,9 @@ func (s *Sim) ClearedApproach(tcw TCW, callsign av.ADSBCallsign, approach string
 
 	return s.dispatchControlledAircraftCommand(tcw, callsign,
 		func(tcw TCW, ac *Aircraft) av.CommandIntent {
+			if ac.PracticeApproachID != "" {
+				ac.PracticeApproachController = TCP(ac.ControllerFrequency)
+			}
 			if straightIn {
 				return ac.ClearedStraightInApproach(approach, s.State.SimTime, s.lg)
 			} else {
