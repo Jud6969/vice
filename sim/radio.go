@@ -211,6 +211,22 @@ func (s *Sim) enqueueControllerContact(ac *Aircraft, tcp TCP, fromPos ControlPos
 		Type:            util.Select(ac.IsDeparture(), PendingTransmissionDeparture, PendingTransmissionArrival),
 		FirstInFacility: s.isFirstFacilityContact(fromPos, tcp),
 	})
+
+	// For IFR practice-approach traffic, queue the pilot request immediately
+	// after the check-in. Same TCP, same ReadyTime + a small spread so the
+	// transmissions don't collide on the audio bus.
+	if ac.PracticeApproachID != "" {
+		readyDelay := s.Rand.DurationRange(2*time.Second, 4*time.Second)
+		s.addPendingContact(PendingContact{
+			ADSBCallsign:             ac.ADSBCallsign,
+			TCP:                      tcp,
+			ReadyTime:                s.State.SimTime.Add(switchDelay + listenDelay + readyDelay),
+			Type:                     PendingTransmissionPracticeApproachReq,
+			PracticeApproachID:       ac.PracticeApproachID,
+			PracticeApproachFullStop: ac.MissedApproachesRemaining == 0,
+		})
+		ac.PendingPracticeRequest = false // we've queued it; no other firing point should fire one too
+	}
 }
 
 // isFirstFacilityContact returns true if transitioning from fromPos to
@@ -491,6 +507,10 @@ func (s *Sim) GenerateContactTransmission(pc *PendingContact) (spokenText, writt
 		rt = av.MakeContactTransmission(
 			"[field in sight|we have the airport in sight], [request visual|requesting the visual|can we get the visual] [approach |]runway {rwy}",
 			runway)
+
+	case PendingTransmissionPracticeApproachReq:
+		ap := s.lookupApproach(ac, pc.PracticeApproachID)
+		rt = buildPracticeApproachRequest(ac.ADSBCallsign, ap, pc.PracticeApproachFullStop)
 
 	default:
 		return "", ""

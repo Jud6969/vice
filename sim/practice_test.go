@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	av "github.com/mmp/vice/aviation"
+	"github.com/mmp/vice/math"
 	"github.com/mmp/vice/rand"
 	"github.com/vmihailenco/msgpack/v5"
 )
@@ -104,5 +105,46 @@ func TestBuildPracticeApproachRequest_FullStop(t *testing.T) {
 	written := rt.Written(nil)
 	if !strings.Contains(strings.ToLower(written), "full stop") {
 		t.Errorf("full-stop variant should say 'full stop'; got %q", written)
+	}
+}
+
+// TestEnqueueControllerContact_QueuesPracticeRequestForPracticeAircraft
+// verifies that handing a practice-approach arrival to a controller queues
+// BOTH the standard arrival check-in and a follow-on practice-approach
+// request. Uses NewVisualScenario for the Sim/Aircraft scaffolding.
+func TestEnqueueControllerContact_QueuesPracticeRequestForPracticeAircraft(t *testing.T) {
+	airportLoc := math.Point2LL{0, 0}
+	setupTestRunway(t, "KJFK", av.Runway{Id: "13L", Heading: 130, Threshold: airportLoc, Elevation: 13})
+
+	vs := NewVisualScenario(t, airportLoc, "13L", math.Point2LL{0, 5.0 / 60}, 180)
+	ac := vs.AC
+	ac.PracticeApproachID = "I13L"
+	ac.MissedApproachesRemaining = 2
+	ac.PendingPracticeRequest = true
+
+	tcp := TCP(ac.ControllerFrequency)
+	vs.Sim.enqueueControllerContact(ac, tcp, ac.ControllerFrequency)
+
+	// After the contact + practice request are queued, the queue should hold
+	// at least one PendingTransmissionPracticeApproachReq entry.
+	var sawPractice bool
+	for _, q := range vs.Sim.PendingContacts {
+		for _, pc := range q {
+			if pc.ADSBCallsign == ac.ADSBCallsign && pc.Type == PendingTransmissionPracticeApproachReq {
+				sawPractice = true
+				if pc.PracticeApproachID != "I13L" {
+					t.Errorf("PracticeApproachID: want I13L, got %q", pc.PracticeApproachID)
+				}
+				if pc.PracticeApproachFullStop {
+					t.Errorf("PracticeApproachFullStop: want false (counter > 0), got true")
+				}
+			}
+		}
+	}
+	if !sawPractice {
+		t.Errorf("expected a PendingTransmissionPracticeApproachReq queued; got none")
+	}
+	if ac.PendingPracticeRequest {
+		t.Errorf("expected PendingPracticeRequest cleared after queue, still true")
 	}
 }

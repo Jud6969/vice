@@ -67,3 +67,19 @@ func buildPracticeApproachRequest(callsign av.ADSBCallsign, ap *av.Approach, ful
 	}
 	return av.MakeContactTransmission(text)
 }
+
+// lookupApproach finds the approach struct on the aircraft's arrival airport
+// matching the given Id. Returns nil if not found.
+//
+// Uses s.State.Airports (map[string]*av.Airport whose Approaches is
+// map[string]*av.Approach) — the right pointer-keyed map for this purpose.
+// av.DB.Airports holds FAAAirport values whose Approaches is a value map,
+// which is not what callers expect here.
+func (s *Sim) lookupApproach(ac *Aircraft, id string) *av.Approach {
+	if airport, ok := s.State.Airports[ac.FlightPlan.ArrivalAirport]; ok && airport != nil {
+		if ap, ok := airport.Approaches[id]; ok {
+			return ap
+		}
+	}
+	return nil
+}
