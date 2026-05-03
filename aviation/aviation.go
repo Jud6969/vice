@@ -92,9 +92,39 @@ type ReportingPoint struct {
 	Location math.Point2LL
 }
 
+// PracticeApproachConfig opts an inbound flow into producing IFR
+// practice-approach traffic. Each spawned aircraft from the flow has
+// the configured Probability of being a practice aircraft; if so, it
+// is born with a random MissedApproachesRemaining in [Min, Max] and a
+// preferred approach picked from the scenario's active arrival runways.
+type PracticeApproachConfig struct {
+	Probability         float32 `json:"probability"`           // [0, 1]
+	MinMissedApproaches int     `json:"min_missed_approaches"` // inclusive lower bound
+	MaxMissedApproaches int     `json:"max_missed_approaches"` // inclusive upper bound
+}
+
+// Validate appends a load error to e for each invalid field.
+func (c PracticeApproachConfig) Validate(e *util.ErrorLogger) {
+	if c.Probability < 0 || c.Probability > 1 {
+		e.ErrorString("practice_approaches: probability %f out of range [0, 1]", c.Probability)
+	}
+	if c.MinMissedApproaches < 0 || c.MaxMissedApproaches < 0 {
+		e.ErrorString("practice_approaches: min/max missed approaches must be >= 0 (got %d, %d)",
+			c.MinMissedApproaches, c.MaxMissedApproaches)
+	}
+	if c.MinMissedApproaches > c.MaxMissedApproaches {
+		e.ErrorString("practice_approaches: min_missed_approaches (%d) > max_missed_approaches (%d)",
+			c.MinMissedApproaches, c.MaxMissedApproaches)
+	}
+}
+
 type InboundFlow struct {
 	Arrivals    []Arrival    `json:"arrivals"`
 	Overflights []Overflight `json:"overflights"`
+
+	// PracticeApproaches, if non-nil, opts this flow into producing
+	// IFR practice-approach traffic. See PracticeApproachConfig.
+	PracticeApproaches *PracticeApproachConfig `json:"practice_approaches,omitempty"`
 }
 
 // HasHumanHandoff returns true if any arrival or overflight in the flow

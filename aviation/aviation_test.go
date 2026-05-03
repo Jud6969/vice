@@ -5,11 +5,40 @@
 package aviation
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/mmp/vice/rand"
 	"github.com/mmp/vice/util"
 )
+
+func TestPracticeApproachConfig_Validate(t *testing.T) {
+	cases := []struct {
+		name    string
+		cfg     PracticeApproachConfig
+		wantErr string
+	}{
+		{"valid", PracticeApproachConfig{Probability: 0.5, MinMissedApproaches: 1, MaxMissedApproaches: 3}, ""},
+		{"prob negative", PracticeApproachConfig{Probability: -0.1, MinMissedApproaches: 1, MaxMissedApproaches: 1}, "probability"},
+		{"prob over 1", PracticeApproachConfig{Probability: 1.5, MinMissedApproaches: 1, MaxMissedApproaches: 1}, "probability"},
+		{"min > max", PracticeApproachConfig{Probability: 0.5, MinMissedApproaches: 5, MaxMissedApproaches: 3}, "min"},
+		{"min negative", PracticeApproachConfig{Probability: 0.5, MinMissedApproaches: -1, MaxMissedApproaches: 3}, "min"},
+		{"max negative", PracticeApproachConfig{Probability: 0.5, MinMissedApproaches: 0, MaxMissedApproaches: -1}, "min"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			e := &util.ErrorLogger{}
+			c.cfg.Validate(e)
+			err := e.String()
+			if c.wantErr == "" && err != "" {
+				t.Errorf("unexpected error: %s", err)
+			}
+			if c.wantErr != "" && !strings.Contains(strings.ToLower(err), c.wantErr) {
+				t.Errorf("want error containing %q, got %q", c.wantErr, err)
+			}
+		})
+	}
+}
 
 func TestFrequencyFormat(t *testing.T) {
 	type FS struct {
