@@ -281,8 +281,13 @@ type Event struct {
 	DestinationTCW        TCW             // The TCW that should receive this transmission's TTS
 	WrittenText           string
 	SpokenText            string
-	RadioTransmissionType av.RadioTransmissionType       // For radio transmissions only
-	LeaderLineDirection   *math.CardinalOrdinalDirection // SetGlobalLeaderLineEvent, FDAMLeaderLineEvent
+	RadioTransmissionType av.RadioTransmissionType // For radio transmissions only
+	// PlayAt is the sim-time when listening clients should start audio
+	// playback for a RadioTransmissionEvent. Server stamps this when the
+	// event is queued. Late-arriving clients (SimTime > PlayAt) play
+	// immediately without drop. Zero on non-radio events.
+	PlayAt              Time
+	LeaderLineDirection *math.CardinalOrdinalDirection // SetGlobalLeaderLineEvent, FDAMLeaderLineEvent
 	WaypointInfo          []math.Point2LL
 	STTTranscript         string
 	STTCommand            string

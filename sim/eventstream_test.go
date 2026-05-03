@@ -6,6 +6,7 @@ package sim
 
 import (
 	"testing"
+	"time"
 
 	"github.com/mmp/vice/rand"
 )
@@ -123,5 +124,17 @@ func TestPeerVoiceEventRoundTrip(t *testing.T) {
 	}
 	if PeerVoiceEvent.String() != "PeerVoice" {
 		t.Errorf("PeerVoiceEvent.String() = %q, want %q", PeerVoiceEvent.String(), "PeerVoice")
+	}
+}
+
+func TestEvent_PlayAtRoundTrip(t *testing.T) {
+	target := NewSimTime(time.Date(2026, 5, 2, 12, 0, 0, 0, time.UTC))
+	e := Event{
+		Type:           RadioTransmissionEvent,
+		DestinationTCW: "TCW-1",
+		PlayAt:         target,
+	}
+	if !e.PlayAt.Equal(target) {
+		t.Errorf("PlayAt not preserved; want %v got %v", target, e.PlayAt)
 	}
 }
