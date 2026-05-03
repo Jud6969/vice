@@ -267,6 +267,76 @@ func TestGoAround_PracticeAircraftWithCounterZeroFallsThrough(t *testing.T) {
 	}
 }
 
+// TestProcessPendingPracticeRequests_FiresOnLevelOff verifies that the
+// per-tick scan queues a PendingTransmissionPracticeApproachReq once the
+// aircraft has stabilized at the missed-approach altitude (|AltitudeRate|
+// under 100 fpm) and clears PendingPracticeRequest so the request fires
+// only once per miss.
+func TestProcessPendingPracticeRequests_FiresOnLevelOff(t *testing.T) {
+	airportLoc := math.Point2LL{0, 0}
+	setupTestRunway(t, "KJFK", av.Runway{Id: "13L", Heading: 130, Threshold: airportLoc, Elevation: 13})
+
+	vs := NewVisualScenario(t, airportLoc, "13L", math.Point2LL{0, 5.0 / 60}, 180)
+	ac := vs.AC
+	ac.PracticeApproachID = "I13L"
+	ac.MissedApproachesRemaining = 1
+	ac.PracticeApproachController = "1A"
+	ac.PendingPracticeRequest = true
+	ac.ControllerFrequency = ControlPosition("1A")
+	// Level-off: AltitudeRate within tolerance of zero.
+	ac.Nav.FlightState.AltitudeRate = 0
+
+	vs.Sim.processPendingPracticeRequests()
+
+	if ac.PendingPracticeRequest {
+		t.Errorf("PendingPracticeRequest should be cleared once the request is queued")
+	}
+	var sawPractice bool
+	for _, q := range vs.Sim.PendingContacts {
+		for _, pc := range q {
+			if pc.ADSBCallsign == ac.ADSBCallsign && pc.Type == PendingTransmissionPracticeApproachReq {
+				sawPractice = true
+				if pc.PracticeApproachFullStop {
+					t.Errorf("FullStop should be false when MissedApproachesRemaining > 0")
+				}
+			}
+		}
+	}
+	if !sawPractice {
+		t.Errorf("expected post-miss practice request to be queued")
+	}
+}
+
+// TestProcessPendingPracticeRequests_DoesNotFireWhenStillClimbing verifies
+// that the scan leaves PendingPracticeRequest set while the aircraft is
+// still climbing out from the miss (|AltitudeRate| >= 100 fpm).
+func TestProcessPendingPracticeRequests_DoesNotFireWhenStillClimbing(t *testing.T) {
+	airportLoc := math.Point2LL{0, 0}
+	setupTestRunway(t, "KJFK", av.Runway{Id: "13L", Heading: 130, Threshold: airportLoc, Elevation: 13})
+
+	vs := NewVisualScenario(t, airportLoc, "13L", math.Point2LL{0, 5.0 / 60}, 180)
+	ac := vs.AC
+	ac.PracticeApproachID = "I13L"
+	ac.MissedApproachesRemaining = 1
+	ac.PracticeApproachController = "1A"
+	ac.PendingPracticeRequest = true
+	// Still climbing: AltitudeRate above tolerance.
+	ac.Nav.FlightState.AltitudeRate = 1500
+
+	vs.Sim.processPendingPracticeRequests()
+
+	if !ac.PendingPracticeRequest {
+		t.Errorf("PendingPracticeRequest should remain set while still climbing")
+	}
+	for _, q := range vs.Sim.PendingContacts {
+		for _, pc := range q {
+			if pc.ADSBCallsign == ac.ADSBCallsign && pc.Type == PendingTransmissionPracticeApproachReq {
+				t.Errorf("no PendingTransmissionPracticeApproachReq should be queued while climbing")
+			}
+		}
+	}
+}
+
 // TestLandHandler_PracticeAircraftGoesAroundInsteadOfLanding verifies that
 // when a practice aircraft passes the runway-threshold "Land" waypoint and
 // MissedApproachesRemaining > 0, the Land-waypoint handler routes to

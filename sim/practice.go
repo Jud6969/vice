@@ -5,6 +5,8 @@
 package sim
 
 import (
+	"time"
+
 	av "github.com/mmp/vice/aviation"
 	"github.com/mmp/vice/nav"
 	"github.com/mmp/vice/rand"
@@ -134,6 +136,53 @@ func (s *Sim) practiceMissedApproach(ac *Aircraft) {
 	// will queue the actual PendingContact when the aircraft is wings-level
 	// on the missed-approach altitude.
 	ac.PendingPracticeRequest = true
+}
+
+// processPendingPracticeRequests scans aircraft with PendingPracticeRequest
+// set and queues the post-miss request transmission once the aircraft is
+// stabilized on the missed-approach altitude. Called once per sim tick.
+func (s *Sim) processPendingPracticeRequests() {
+	for _, ac := range s.Aircraft {
+		if !ac.PendingPracticeRequest {
+			continue
+		}
+		if !s.isLevelOnMissSegment(ac) {
+			continue
+		}
+
+		tcp := ac.PracticeApproachController
+		if tcp == "" {
+			tcp = TCP(ac.ControllerFrequency)
+		}
+		if tcp == "" {
+			continue // no one to talk to; try again next tick
+		}
+
+		readyDelay := s.Rand.DurationRange(2*time.Second, 5*time.Second)
+		s.addPendingContact(PendingContact{
+			ADSBCallsign:             ac.ADSBCallsign,
+			TCP:                      tcp,
+			ReadyTime:                s.State.SimTime.Add(readyDelay),
+			Type:                     PendingTransmissionPracticeApproachReq,
+			PracticeApproachID:       ac.PracticeApproachID,
+			PracticeApproachFullStop: ac.MissedApproachesRemaining == 0,
+		})
+		ac.PendingPracticeRequest = false
+	}
+}
+
+// isLevelOnMissSegment reports whether the aircraft has stopped climbing
+// out from the missed approach. We use AltitudeRate (already on
+// nav.FlightState, ft/min, positive = climb) as the level-off signal:
+// once |rate| < 100 fpm, the aircraft has reached its assigned altitude
+// and is in steady cruise on the miss heading.
+func (s *Sim) isLevelOnMissSegment(ac *Aircraft) bool {
+	const rateTol = 100.0 // feet per minute
+	rate := ac.Nav.FlightState.AltitudeRate
+	if rate < 0 {
+		rate = -rate
+	}
+	return rate < rateTol
 }
 
 // handBackToApproachController issues an in-process handoff from the

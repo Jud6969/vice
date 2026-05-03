@@ -1149,6 +1149,7 @@ func (s *Sim) updateState() {
 
 		s.processFutureFrequencyChanges()
 		s.processVirtualControllerContacts()
+		s.processPendingPracticeRequests()
 
 		s.processFutureOnCourse()
 		s.processFutureSquawkChanges()
