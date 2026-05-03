@@ -4,9 +4,24 @@
 
 package sim
 
+import "time"
+
 // activeTalker holds the controller token that is currently transmitting on
 // each TCW. A TCW absent from the map has no active talker; only one
 // controller may transmit per TCW at a time. The map is guarded by s.mu.
+
+const (
+	// pttHoldExtension is the upper bound the talker slot extends
+	// RadioHoldUntil while a controller is mid-PTT. Generous (60s) so
+	// pilot transmissions stay parked through any plausible PTT
+	// duration; replaced with pttCooldown the moment the talker
+	// releases or disconnects.
+	pttHoldExtension = 60 * time.Second
+
+	// pttCooldown is the post-PTT silence window applied when a
+	// controller releases or disconnects mid-PTT.
+	pttCooldown = 2 * time.Second
+)
 
 // StartPTT attempts to acquire the talker slot for tcw on behalf of the
 // given controller token. Returns true when the caller is now the active
@@ -24,6 +39,14 @@ func (s *Sim) StartPTT(tcw TCW, token string) bool {
 		return false
 	}
 	s.activeTalker[tcw] = token
+
+	d := s.EnsureTCWDisplay(tcw)
+	target := s.State.SimTime.Add(pttHoldExtension)
+	if target.After(d.RadioHoldUntil) {
+		d.RadioHoldUntil = target
+		d.Rev++
+	}
+
 	s.lg.Warnf("DBG_VOICE: StartPTT granted tcw=%q token=%s", tcw, token[:min(8, len(token))])
 	return true
 }
@@ -64,6 +87,11 @@ func (s *Sim) StopPTT(tcw TCW, token string) {
 		return
 	}
 	delete(s.activeTalker, tcw)
+
+	d := s.EnsureTCWDisplay(tcw)
+	d.RadioHoldUntil = s.State.SimTime.Add(pttCooldown)
+	d.Rev++
+
 	s.eventStream.Post(Event{
 		Type:        PeerVoiceEvent,
 		SourceTCW:   tcw,
@@ -82,6 +110,11 @@ func (s *Sim) ClearTalkerForToken(token string) {
 	for tcw, holder := range s.activeTalker {
 		if holder == token {
 			delete(s.activeTalker, tcw)
+
+			d := s.EnsureTCWDisplay(tcw)
+			d.RadioHoldUntil = s.State.SimTime.Add(pttCooldown)
+			d.Rev++
+
 			s.eventStream.Post(Event{
 				Type:        PeerVoiceEvent,
 				SourceTCW:   tcw,

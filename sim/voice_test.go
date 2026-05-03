@@ -6,6 +6,7 @@ package sim
 
 import (
 	"testing"
+	"time"
 )
 
 func newSimWithVoice(t *testing.T) *Sim {
@@ -171,5 +172,77 @@ func TestPrepareRadioTransmissionsForTCW_FiltersPeerVoice(t *testing.T) {
 	}
 	if out[1].Type != StatusMessageEvent {
 		t.Errorf("second kept event = %+v, want StatusMessage", out[1])
+	}
+}
+
+func TestStartPTT_ExtendsRadioHoldUntil(t *testing.T) {
+	s := newSimWithVoice(t)
+	s.State.SimTime = NewSimTime(time.Date(2026, 5, 2, 12, 0, 0, 0, time.UTC))
+
+	s.StartPTT("TCW-1", "tok-A")
+
+	d := s.EnsureTCWDisplay("TCW-1")
+	want := s.State.SimTime.Add(pttHoldExtension)
+	if !d.RadioHoldUntil.Equal(want) {
+		t.Errorf("RadioHoldUntil after StartPTT = %v, want %v", d.RadioHoldUntil, want)
+	}
+	if d.Rev == 0 {
+		t.Errorf("StartPTT did not bump Rev on advance; got %d", d.Rev)
+	}
+}
+
+func TestStartPTT_DoesNotShrinkRadioHoldUntil(t *testing.T) {
+	s := newSimWithVoice(t)
+	s.State.SimTime = NewSimTime(time.Date(2026, 5, 2, 12, 0, 0, 0, time.UTC))
+
+	d := s.EnsureTCWDisplay("TCW-1")
+	d.RadioHoldUntil = s.State.SimTime.Add(2 * time.Hour)
+	revBefore := d.Rev
+
+	s.StartPTT("TCW-1", "tok-A")
+
+	if !d.RadioHoldUntil.Equal(s.State.SimTime.Add(2 * time.Hour)) {
+		t.Errorf("StartPTT shrank RadioHoldUntil; got %v", d.RadioHoldUntil)
+	}
+	if d.Rev != revBefore {
+		t.Errorf("StartPTT bumped Rev despite no-op extend; before=%d after=%d", revBefore, d.Rev)
+	}
+}
+
+func TestStopPTT_SetsRadioHoldUntilToCooldown(t *testing.T) {
+	s := newSimWithVoice(t)
+	s.State.SimTime = NewSimTime(time.Date(2026, 5, 2, 12, 0, 0, 0, time.UTC))
+
+	s.StartPTT("TCW-1", "tok-A")
+	d := s.EnsureTCWDisplay("TCW-1")
+	revAfterStart := d.Rev
+
+	s.StopPTT("TCW-1", "tok-A")
+
+	want := s.State.SimTime.Add(pttCooldown)
+	if !d.RadioHoldUntil.Equal(want) {
+		t.Errorf("RadioHoldUntil after StopPTT = %v, want %v", d.RadioHoldUntil, want)
+	}
+	if d.Rev <= revAfterStart {
+		t.Errorf("StopPTT did not bump Rev; revAfterStart=%d revAfterStop=%d", revAfterStart, d.Rev)
+	}
+}
+
+func TestClearTalkerForToken_SetsRadioHoldUntilToCooldown(t *testing.T) {
+	s := newSimWithVoice(t)
+	s.State.SimTime = NewSimTime(time.Date(2026, 5, 2, 12, 0, 0, 0, time.UTC))
+
+	s.StartPTT("TCW-1", "tok-A")
+	d := s.EnsureTCWDisplay("TCW-1")
+	revAfterStart := d.Rev
+
+	s.ClearTalkerForToken("tok-A")
+
+	want := s.State.SimTime.Add(pttCooldown)
+	if !d.RadioHoldUntil.Equal(want) {
+		t.Errorf("RadioHoldUntil after ClearTalkerForToken = %v, want %v", d.RadioHoldUntil, want)
+	}
+	if d.Rev <= revAfterStart {
+		t.Errorf("ClearTalkerForToken did not bump Rev; revAfterStart=%d revAfterClear=%d", revAfterStart, d.Rev)
 	}
 }
