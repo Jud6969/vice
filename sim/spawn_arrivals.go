@@ -175,7 +175,7 @@ func (s *Sim) createArrivalNoLock(group string, arrivalAirport string) (*Aircraf
 	// IFR practice-approach setup: roll the dice, seed counter and approach.
 	if flow := s.State.InboundFlows[group]; flow != nil && flow.PracticeApproaches != nil {
 		cfg := flow.PracticeApproaches
-		if s.Rand.Float32() < cfg.Probability && ac.FlightPlan.Rules == av.FlightRulesIFR && !isAirlineCallsign(ac.ADSBCallsign) {
+		if s.Rand.Float32() < cfg.Probability && ac.FlightPlan.Rules == av.FlightRulesIFR && callsignEligibleForPractice(ac.ADSBCallsign, cfg.Callsigns) {
 			n := cfg.MinMissedApproaches
 			if spread := cfg.MaxMissedApproaches - cfg.MinMissedApproaches; spread > 0 {
 				n += s.Rand.Intn(spread + 1)

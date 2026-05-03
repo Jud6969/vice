@@ -98,9 +98,15 @@ type ReportingPoint struct {
 // is born with a random MissedApproachesRemaining in [Min, Max] and a
 // preferred approach picked from the scenario's active arrival runways.
 type PracticeApproachConfig struct {
-	Probability         float32 `json:"probability"`           // [0, 1]
-	MinMissedApproaches int     `json:"min_missed_approaches"` // inclusive lower bound
-	MaxMissedApproaches int     `json:"max_missed_approaches"` // inclusive upper bound
+	Probability         float32  `json:"probability"`           // [0, 1]
+	MinMissedApproaches int      `json:"min_missed_approaches"` // inclusive lower bound
+	MaxMissedApproaches int      `json:"max_missed_approaches"` // inclusive upper bound
+	// Callsigns, if non-empty, restricts practice spawning to aircraft
+	// whose 3-letter callsign prefix is in this list (e.g. ["ERU", "LFA",
+	// "BPX"] for flight-school traffic). Comparison is case-insensitive.
+	// When empty (default), any non-airline aircraft from the flow may
+	// spawn as practice.
+	Callsigns []string `json:"callsigns,omitempty"`
 }
 
 // Validate appends a load error to e for each invalid field.
@@ -115,6 +121,11 @@ func (c PracticeApproachConfig) Validate(e *util.ErrorLogger) {
 	if c.MinMissedApproaches > c.MaxMissedApproaches {
 		e.ErrorString("practice_approaches: min_missed_approaches (%d) > max_missed_approaches (%d)",
 			c.MinMissedApproaches, c.MaxMissedApproaches)
+	}
+	for _, cs := range c.Callsigns {
+		if cs == "" {
+			e.ErrorString("practice_approaches: callsigns entries must be non-empty")
+		}
 	}
 }
 

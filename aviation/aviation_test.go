@@ -24,6 +24,8 @@ func TestPracticeApproachConfig_Validate(t *testing.T) {
 		{"min > max", PracticeApproachConfig{Probability: 0.5, MinMissedApproaches: 5, MaxMissedApproaches: 3}, "min"},
 		{"min negative", PracticeApproachConfig{Probability: 0.5, MinMissedApproaches: -1, MaxMissedApproaches: 3}, "min"},
 		{"max negative", PracticeApproachConfig{Probability: 0.5, MinMissedApproaches: 0, MaxMissedApproaches: -1}, "min"},
+		{"valid with callsigns", PracticeApproachConfig{Probability: 0.5, MinMissedApproaches: 1, MaxMissedApproaches: 2, Callsigns: []string{"ERU", "LFA"}}, ""},
+		{"empty callsign entry", PracticeApproachConfig{Probability: 0.5, MinMissedApproaches: 1, MaxMissedApproaches: 2, Callsigns: []string{"ERU", ""}}, "callsigns"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

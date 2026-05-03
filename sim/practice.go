@@ -5,6 +5,7 @@
 package sim
 
 import (
+	"strings"
 	"time"
 
 	av "github.com/mmp/vice/aviation"
@@ -102,6 +103,30 @@ func isAirlineCallsign(callsign av.ADSBCallsign) bool {
 	}
 	_, ok := av.DB.Callsigns[prefix]
 	return ok
+}
+
+// callsignEligibleForPractice reports whether the aircraft's callsign
+// qualifies for practice-approach spawning under the given config.
+//
+// If allowlist is non-empty, only aircraft whose 3-letter callsign prefix
+// matches one of the entries (case-insensitive) are eligible - this lets
+// scenario authors pin practice traffic to specific flight-school codes
+// (e.g. ["ERU", "LFA", "BPX"]).
+//
+// If allowlist is empty (the default), any non-airline aircraft is
+// eligible - airliners are skipped because they don't fly practice
+// approaches in the real world.
+func callsignEligibleForPractice(callsign av.ADSBCallsign, allowlist []string) bool {
+	if len(allowlist) == 0 {
+		return !isAirlineCallsign(callsign)
+	}
+	prefix, _ := av.SplitCallsign(string(callsign))
+	for _, allowed := range allowlist {
+		if strings.EqualFold(prefix, allowed) {
+			return true
+		}
+	}
+	return false
 }
 
 // practiceMissedApproach is the practice-loop branch of goAround. The

@@ -37,6 +37,42 @@ func TestIsAirlineCallsign(t *testing.T) {
 	}
 }
 
+func TestCallsignEligibleForPractice_EmptyAllowlistFallsBackToAirlineCheck(t *testing.T) {
+	if av.DB == nil || len(av.DB.Callsigns) == 0 {
+		av.InitDB()
+	}
+	// Empty allowlist: airline => not eligible; N-prefix tail => eligible.
+	if callsignEligibleForPractice(av.ADSBCallsign("AAL123"), nil) {
+		t.Errorf("AAL123 should not be eligible (airline) under empty allowlist")
+	}
+	if !callsignEligibleForPractice(av.ADSBCallsign("N123AB"), nil) {
+		t.Errorf("N123AB should be eligible (GA tail) under empty allowlist")
+	}
+}
+
+func TestCallsignEligibleForPractice_AllowlistRestrictsToPrefixes(t *testing.T) {
+	allowlist := []string{"ERU", "LFA", "BPX"}
+	cases := []struct {
+		callsign string
+		want     bool
+	}{
+		{"ERU456", true},  // matches allowlist
+		{"LFA12", true},   // matches allowlist
+		{"BPX99", true},   // matches allowlist
+		{"eru456", true},  // case-insensitive
+		{"AAL123", false}, // airline, not in allowlist (allowlist supersedes airline check)
+		{"N123AB", false}, // GA tail, not in allowlist
+	}
+	for _, c := range cases {
+		t.Run(c.callsign, func(t *testing.T) {
+			if got := callsignEligibleForPractice(av.ADSBCallsign(c.callsign), allowlist); got != c.want {
+				t.Errorf("callsignEligibleForPractice(%q, %v) = %v, want %v",
+					c.callsign, allowlist, got, c.want)
+			}
+		})
+	}
+}
+
 // TestAircraft_PracticeFieldsRoundTrip verifies that the four IFR
 // practice-approach fields round-trip through msgpack serialization
 // (the project's real serialization mechanism — sim.Time only implements
