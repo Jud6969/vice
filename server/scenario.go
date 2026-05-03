@@ -1088,6 +1088,10 @@ func (sg *scenarioGroup) PostDeserialize(e *util.ErrorLogger, catalogs map[strin
 			e.ErrorString("no arrivals or overflights in inbound flow group")
 		}
 
+		if flow.PracticeApproaches != nil {
+			flow.PracticeApproaches.Validate(e)
+		}
+
 		for i := range flow.Arrivals {
 			flow.Arrivals[i].PostDeserialize(sg, sg.NmPerLongitude, sg.MagneticVariation,
 				sg.Airports, sg.FacilityConfig.ControlPositions, sg.FacilityConfig.FacilityAdaptation.CheckScratchpad, e)
