@@ -6,6 +6,8 @@ package sim
 
 import (
 	"testing"
+
+	av "github.com/mmp/vice/aviation"
 )
 
 // Two controllers (tokens) signed in to the same TCW. A presses PTT and
@@ -116,5 +118,63 @@ func TestVoiceRelay_DisconnectMidPTT(t *testing.T) {
 	// And the slot is free.
 	if !s.StartPTT("TCW-1", "tok-B") {
 		t.Fatal("after disconnect cleanup, slot should be free")
+	}
+}
+
+// Two clients on the same TCW: a pilot transmission's PlayAt is
+// observed identical on both subscriptions.
+func TestRadioBus_TwoClientsSeeSamePlayAt(t *testing.T) {
+	s := newSimWithRadio(t)
+	subA := s.eventStream.Subscribe()
+	defer subA.Unsubscribe()
+	subB := s.eventStream.Subscribe()
+	defer subB.Unsubscribe()
+
+	s.postRadioTransmission(Event{
+		Type:                  RadioTransmissionEvent,
+		DestinationTCW:        "TCW-1",
+		SpokenText:            "American 123, climb and maintain 8000",
+		RadioTransmissionType: av.RadioTransmissionReadback,
+	})
+
+	aEvents := subA.Get()
+	bEvents := subB.Get()
+	if len(aEvents) != 1 || len(bEvents) != 1 {
+		t.Fatalf("both subscribers should see 1 event; got A=%d B=%d", len(aEvents), len(bEvents))
+	}
+	if !aEvents[0].PlayAt.Equal(bEvents[0].PlayAt) {
+		t.Errorf("PlayAt diverged: A=%v B=%v", aEvents[0].PlayAt, bEvents[0].PlayAt)
+	}
+}
+
+// Controller A starting PTT on TCW-1 advances TCW-1's RadioHoldUntil
+// in a way that B's next state-snapshot will reflect.
+func TestRadioBus_PTTAdvancesSharedHold(t *testing.T) {
+	s := newSimWithRadio(t)
+
+	d := s.EnsureTCWDisplay("TCW-1")
+	before := d.RadioHoldUntil
+
+	s.StartPTT("TCW-1", "tok-A")
+
+	if !d.RadioHoldUntil.After(before) {
+		t.Errorf("RadioHoldUntil did not advance after StartPTT; before=%v after=%v", before, d.RadioHoldUntil)
+	}
+}
+
+// Pilot transmission on TCW-1 must NOT affect TCW-2's RadioHoldUntil.
+func TestRadioBus_DifferentTCWsAreIndependent(t *testing.T) {
+	s := newSimWithRadio(t)
+
+	s.postRadioTransmission(Event{
+		Type:                  RadioTransmissionEvent,
+		DestinationTCW:        "TCW-1",
+		SpokenText:            "tcw-1 traffic",
+		RadioTransmissionType: av.RadioTransmissionReadback,
+	})
+
+	d2 := s.EnsureTCWDisplay("TCW-2")
+	if !d2.RadioHoldUntil.IsZero() {
+		t.Errorf("TCW-2 should not be affected; got RadioHoldUntil=%v", d2.RadioHoldUntil)
 	}
 }
