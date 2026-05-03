@@ -69,7 +69,10 @@ type CommonState struct {
 	DepartureRunways []DepartureRunway
 	ArrivalRunways   []ArrivalRunway
 	InboundFlows     map[string]*av.InboundFlow
-	Emergencies      []Emergency
+	// PracticeApproaches is per-scenario IFR practice-approach config keyed
+	// by home airport ICAO. Empty/nil means no practice traffic for this scenario.
+	PracticeApproaches map[string]*av.PracticeApproachConfig
+	Emergencies        []Emergency
 
 	Center                    math.Point2LL
 	Range                     float32
@@ -250,10 +253,11 @@ func newCommonState(config NewSimConfiguration, startTime time.Time, model *wx.M
 
 		ConfigurationId: config.ConfigurationId,
 
-		DepartureRunways: config.DepartureRunways,
-		ArrivalRunways:   config.ArrivalRunways,
-		InboundFlows:     config.InboundFlows,
-		Emergencies:      config.Emergencies,
+		DepartureRunways:   config.DepartureRunways,
+		ArrivalRunways:     config.ArrivalRunways,
+		InboundFlows:       config.InboundFlows,
+		PracticeApproaches: config.PracticeApproaches,
+		Emergencies:        config.Emergencies,
 
 		Center:                    config.Center,
 		Range:                     config.Range,

@@ -238,6 +238,7 @@ func (sm *SimManager) makeSimConfiguration(req *NewSimRequest, lg *log.Logger) *
 		DefaultMaps:                 sc.DefaultMaps,
 		DefaultMapGroup:             sc.DefaultMapGroup,
 		InboundFlows:                sg.InboundFlows,
+		PracticeApproaches:          sc.PracticeApproaches,
 		Airspace:                    sg.Airspace,
 		ControllerAirspace:          sc.Airspace,
 		ControlPositions:            sg.FacilityConfig.ControlPositions,

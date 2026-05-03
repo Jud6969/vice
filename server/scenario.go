@@ -79,6 +79,12 @@ type scenario struct {
 	// with "overflights" a special case to denote overflights
 	InboundFlowDefaultRates map[string]map[string]int `json:"inbound_rates"`
 
+	// PracticeApproaches, if non-nil, configures IFR practice-approach
+	// traffic per home airport (keyed by airport ICAO). See
+	// av.PracticeApproachConfig. Optional; absence disables practice
+	// traffic for this scenario.
+	PracticeApproaches map[string]*av.PracticeApproachConfig `json:"practice_approaches,omitempty"`
+
 	Airspace map[sim.TCP][]string `json:"airspace"`
 
 	DepartureRunways []sim.DepartureRunway `json:"departure_runways,omitempty"`
@@ -567,6 +573,21 @@ func (s *scenario) PostDeserialize(sg *scenarioGroup, e *util.ErrorLogger, manif
 				}
 			}
 
+		}
+		e.Pop()
+	}
+
+	// Validate practice_approaches: each entry must reference a known
+	// airport in the scenario, and its config fields must be in range.
+	for airport, cfg := range s.PracticeApproaches {
+		e.Push("practice_approaches " + airport)
+		if cfg == nil {
+			e.ErrorString("entry must not be null")
+		} else {
+			if _, ok := sg.Airports[airport]; !ok {
+				e.ErrorString("airport %q not in scenario", airport)
+			}
+			cfg.Validate(e)
 		}
 		e.Pop()
 	}
@@ -1086,10 +1107,6 @@ func (sg *scenarioGroup) PostDeserialize(e *util.ErrorLogger, catalogs map[strin
 		e.Push("Inbound flow " + name)
 		if len(flow.Arrivals) == 0 && len(flow.Overflights) == 0 {
 			e.ErrorString("no arrivals or overflights in inbound flow group")
-		}
-
-		if flow.PracticeApproaches != nil {
-			flow.PracticeApproaches.Validate(e)
 		}
 
 		for i := range flow.Arrivals {
@@ -2393,6 +2410,7 @@ func CreateNewSimConfiguration(catalog *ScenarioCatalog, scenarioGroup *scenario
 		ControllerConfiguration: &scenario.ControllerConfiguration,
 		ConfigurationId:         scenario.ConfigurationString,
 		InboundFlows:            scenarioGroup.InboundFlows,
+		PracticeApproaches:      scenario.PracticeApproaches,
 		FacilityAdaptation:      deep.MustCopy(scenarioGroup.FacilityConfig.FacilityAdaptation),
 		ReportingPoints:         scenarioGroup.ReportingPoints,
 		MagneticVariation:       scenarioGroup.MagneticVariation,

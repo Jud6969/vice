@@ -146,6 +146,7 @@ type NewSimConfiguration struct {
 	DepartureRunways   []DepartureRunway
 	ArrivalRunways     []ArrivalRunway
 	InboundFlows       map[string]*av.InboundFlow
+	PracticeApproaches map[string]*av.PracticeApproachConfig
 	LaunchConfig       LaunchConfig
 	Fixes              map[string]math.Point2LL
 	VFRReportingPoints []av.VFRReportingPoint

@@ -132,10 +132,6 @@ func (c PracticeApproachConfig) Validate(e *util.ErrorLogger) {
 type InboundFlow struct {
 	Arrivals    []Arrival    `json:"arrivals"`
 	Overflights []Overflight `json:"overflights"`
-
-	// PracticeApproaches, if non-nil, opts this flow into producing
-	// IFR practice-approach traffic. See PracticeApproachConfig.
-	PracticeApproaches *PracticeApproachConfig `json:"practice_approaches,omitempty"`
 }
 
 // HasHumanHandoff returns true if any arrival or overflight in the flow
