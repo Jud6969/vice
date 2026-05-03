@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	av "github.com/mmp/vice/aviation"
+	"github.com/mmp/vice/rand"
 	"github.com/vmihailenco/msgpack/v5"
 )
 
@@ -43,5 +44,39 @@ func TestAircraft_PracticeFieldsRoundTrip(t *testing.T) {
 	}
 	if !got.PendingPracticeRequest {
 		t.Errorf("PendingPracticeRequest: want true, got false")
+	}
+}
+
+func TestPickPracticeApproach_PicksMatchingActiveRunway(t *testing.T) {
+	approaches := map[string]*av.Approach{
+		"I22L": {Id: "I22L", Runway: "22L"},
+		"I22R": {Id: "I22R", Runway: "22R"},
+		"R4":   {Id: "R4", Runway: "4"},
+	}
+	active := []string{"22L", "22R"}
+	r := rand.Make()
+
+	got := pickPracticeApproach(approaches, active, r)
+	if got != "I22L" && got != "I22R" {
+		t.Errorf("expected one of {I22L, I22R}, got %q", got)
+	}
+}
+
+func TestPickPracticeApproach_NoMatchReturnsEmpty(t *testing.T) {
+	approaches := map[string]*av.Approach{
+		"I22L": {Id: "I22L", Runway: "22L"},
+	}
+	active := []string{"31R"}
+	r := rand.Make()
+
+	if got := pickPracticeApproach(approaches, active, r); got != "" {
+		t.Errorf("expected empty, got %q", got)
+	}
+}
+
+func TestPickPracticeApproach_EmptyApproachesReturnsEmpty(t *testing.T) {
+	r := rand.Make()
+	if got := pickPracticeApproach(nil, []string{"22L"}, r); got != "" {
+		t.Errorf("expected empty, got %q", got)
 	}
 }
