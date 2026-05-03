@@ -43,3 +43,27 @@ func (s *Sim) activeArrivalRunwaysForAirport(airport string) []string {
 	}
 	return rwys
 }
+
+// buildPracticeApproachRequest produces the radio transmission for a
+// practice-approach pilot request. fullStop=true switches the phrasing
+// from "for the practice" (low approach) to "...this will be a full stop".
+//
+// The text is built from plain literal characters (no {snippet} placeholders
+// and no [option|option] brackets) so it renders identically through
+// RadioTransmission.Written and .Spoken without needing an *rand.Rand.
+// The callsign and ATC-style prefix are added later by the popReadyContact
+// pipeline (see sim/radio.go), matching the convention used by every other
+// MakeContactTransmission caller in the package.
+func buildPracticeApproachRequest(callsign av.ADSBCallsign, ap *av.Approach, fullStop bool) *av.RadioTransmission {
+	if ap == nil {
+		return nil
+	}
+	_ = callsign // reserved for future per-callsign phraseology variants
+	var text string
+	if fullStop {
+		text = "request the " + ap.FullName + ", this will be a full stop"
+	} else {
+		text = "request the " + ap.FullName + " for the practice"
+	}
+	return av.MakeContactTransmission(text)
+}

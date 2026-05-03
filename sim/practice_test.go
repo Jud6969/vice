@@ -2,6 +2,7 @@
 package sim
 
 import (
+	"strings"
 	"testing"
 
 	av "github.com/mmp/vice/aviation"
@@ -78,5 +79,30 @@ func TestPickPracticeApproach_EmptyApproachesReturnsEmpty(t *testing.T) {
 	r := rand.Make()
 	if got := pickPracticeApproach(nil, []string{"22L"}, r); got != "" {
 		t.Errorf("expected empty, got %q", got)
+	}
+}
+
+func TestBuildPracticeApproachRequest_LowApproach(t *testing.T) {
+	rt := buildPracticeApproachRequest("AAL123", &av.Approach{Id: "I22L", FullName: "ILS Runway 22 Left"}, false)
+	if rt == nil {
+		t.Fatalf("expected non-nil RadioTransmission")
+	}
+	written := rt.Written(nil)
+	if !strings.Contains(strings.ToLower(written), "ils runway 22 left") {
+		t.Errorf("expected approach name in transmission; got %q", written)
+	}
+	if !strings.Contains(strings.ToLower(written), "for the practice") {
+		t.Errorf("expected 'for the practice' phrase; got %q", written)
+	}
+	if strings.Contains(strings.ToLower(written), "full stop") {
+		t.Errorf("low-approach variant should not say 'full stop'; got %q", written)
+	}
+}
+
+func TestBuildPracticeApproachRequest_FullStop(t *testing.T) {
+	rt := buildPracticeApproachRequest("AAL123", &av.Approach{Id: "I22L", FullName: "ILS Runway 22 Left"}, true)
+	written := rt.Written(nil)
+	if !strings.Contains(strings.ToLower(written), "full stop") {
+		t.Errorf("full-stop variant should say 'full stop'; got %q", written)
 	}
 }

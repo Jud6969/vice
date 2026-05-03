@@ -55,6 +55,7 @@ const (
 	PendingTransmissionRequestVisual                                           // Spontaneous "field in sight, requesting visual"
 	PendingTransmissionRequestVectors                                          // Pilot requesting vectors (overshot localizer)
 	PendingTransmissionRequestAltitude                                         // Pilot requesting altitude after being vectored off STAR
+	PendingTransmissionPracticeApproachReq                                     // IFR practice-approach request
 )
 
 // FutureFrequencyChange represents a pilot switching to a new frequency.
@@ -76,6 +77,10 @@ type PendingContact struct {
 	HasQueuedEmergency     bool                    // For departures: trigger emergency after contact
 	PrebuiltTransmission   *av.RadioTransmission   // For emergency transmissions: pre-built message
 	FirstInFacility        bool                    // For arrivals: first contact in this TRACON facility
+
+	// IFR practice-approach extras (only meaningful for PendingTransmissionPracticeApproachReq).
+	PracticeApproachID       string // av.Approach.Id
+	PracticeApproachFullStop bool   // true for the final approach
 }
 
 // hasPendingCheckIn reports whether the aircraft has a pending arrival or
