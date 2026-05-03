@@ -72,6 +72,10 @@ func (s *Sim) postRadioTransmission(e Event) Time {
 // that already hold s.mu (e.g. SayAgain, SayNotCleared, PilotMixUp,
 // GenerateContactTransmission). Caller must hold s.mu.
 func (s *Sim) postRadioTransmissionLocked(e Event) Time {
+	if e.SpokenVoice == "" && s.VoiceAssigner != nil && e.ADSBCallsign != "" {
+		e.SpokenVoice = s.VoiceAssigner.GetVoice(e.ADSBCallsign, s.Rand)
+	}
+
 	d := s.EnsureTCWDisplay(e.DestinationTCW)
 	playAtFloor := s.State.SimTime.Add(playAtForwardBuffer)
 	playAt := playAtFloor

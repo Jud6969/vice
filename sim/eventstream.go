@@ -273,14 +273,20 @@ func (t EventType) String() string {
 }
 
 type Event struct {
-	Type                  EventType
-	ADSBCallsign          av.ADSBCallsign
-	ACID                  ACID
-	FromController        ControlPosition
-	ToController          ControlPosition // For radio transmissions, the controlling controller.
-	DestinationTCW        TCW             // The TCW that should receive this transmission's TTS
-	WrittenText           string
-	SpokenText            string
+	Type           EventType
+	ADSBCallsign   av.ADSBCallsign
+	ACID           ACID
+	FromController ControlPosition
+	ToController   ControlPosition // For radio transmissions, the controlling controller.
+	DestinationTCW TCW             // The TCW that should receive this transmission's TTS
+	WrittenText    string
+	SpokenText     string
+	// SpokenVoice names the TTS voice the requester (and observers) should
+	// use to render SpokenText. Set by postRadioTransmission via the sim's
+	// VoiceAssigner if the caller leaves it empty. Empty for non-radio
+	// events; consumers should fall back to a default voice if empty on a
+	// radio event (server-internal events that bypass postRadioTransmission).
+	SpokenVoice           string
 	RadioTransmissionType av.RadioTransmissionType // For radio transmissions only
 	// PlayAt is the sim-time when listening clients should start audio
 	// playback for a RadioTransmissionEvent. Server stamps this when the
@@ -298,11 +304,11 @@ type Event struct {
 	// result handler will already produce audio on the requester.
 	RequesterToken      string
 	LeaderLineDirection *math.CardinalOrdinalDirection // SetGlobalLeaderLineEvent, FDAMLeaderLineEvent
-	WaypointInfo          []math.Point2LL
-	STTTranscript         string
-	STTCommand            string
-	STTTimings            string
-	Route                 av.WaypointArray // For QU
+	WaypointInfo        []math.Point2LL
+	STTTranscript       string
+	STTCommand          string
+	STTTimings          string
+	Route               av.WaypointArray // For QU
 
 	// PeerVoiceEvent fields
 	SourceTCW   TCW     // TCW the chunk originated on

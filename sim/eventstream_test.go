@@ -138,3 +138,13 @@ func TestEvent_PlayAtRoundTrip(t *testing.T) {
 		t.Errorf("PlayAt not preserved; want %v got %v", target, e.PlayAt)
 	}
 }
+
+func TestEvent_SpokenVoiceRoundTrip(t *testing.T) {
+	e := Event{
+		Type:        RadioTransmissionEvent,
+		SpokenVoice: "am_adam",
+	}
+	if e.SpokenVoice != "am_adam" {
+		t.Errorf("SpokenVoice not preserved; got %q", e.SpokenVoice)
+	}
+}

@@ -244,6 +244,6 @@ func (p *PilotVoicePlayback) Update() {
 		if e.RequesterToken != "" && e.RequesterToken == myToken {
 			continue
 		}
-		syn(e.ADSBCallsign, e.RadioTransmissionType, e.SpokenText, "", e.PlayAt)
+		syn(e.ADSBCallsign, e.RadioTransmissionType, e.SpokenText, e.SpokenVoice, e.PlayAt)
 	}
 }
