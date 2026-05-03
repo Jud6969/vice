@@ -87,6 +87,23 @@ func (s *Sim) lookupApproach(ac *Aircraft, id string) *av.Approach {
 	return nil
 }
 
+// isAirlineCallsign reports whether the callsign's prefix matches a known
+// 3-letter ICAO airline code (e.g. "AAL123" -> "AAL" -> American Airlines).
+// "N"-prefix tail numbers and other non-airline registrations return false.
+// Used to keep IFR practice traffic to GA aircraft only - airliners don't
+// shoot practice approaches in the real world.
+func isAirlineCallsign(callsign av.ADSBCallsign) bool {
+	if av.DB == nil {
+		return false
+	}
+	prefix, _ := av.SplitCallsign(string(callsign))
+	if prefix == "N" {
+		return false // US tail number; mirror the special case in av.GetTelephony
+	}
+	_, ok := av.DB.Callsigns[prefix]
+	return ok
+}
+
 // practiceMissedApproach is the practice-loop branch of goAround. The
 // aircraft flies the published miss (or fallback heading/altitude),
 // gets handed back to the original approach controller, and rearms

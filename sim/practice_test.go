@@ -12,6 +12,31 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
+func TestIsAirlineCallsign(t *testing.T) {
+	if av.DB == nil || len(av.DB.Callsigns) == 0 {
+		av.InitDB()
+	}
+	cases := []struct {
+		callsign string
+		want     bool
+	}{
+		{"AAL123", true},
+		{"JBU456", true},
+		{"DAL2391", true},
+		{"N123AB", false},
+		{"N12345", false},
+		{"GULF1", false}, // not in Callsigns DB
+		{"", false},
+	}
+	for _, c := range cases {
+		t.Run(c.callsign, func(t *testing.T) {
+			if got := isAirlineCallsign(av.ADSBCallsign(c.callsign)); got != c.want {
+				t.Errorf("isAirlineCallsign(%q) = %v, want %v", c.callsign, got, c.want)
+			}
+		})
+	}
+}
+
 // TestAircraft_PracticeFieldsRoundTrip verifies that the four IFR
 // practice-approach fields round-trip through msgpack serialization
 // (the project's real serialization mechanism — sim.Time only implements
