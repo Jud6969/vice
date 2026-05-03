@@ -80,7 +80,8 @@ type Sim struct {
 
 	// activeTalker tracks which controller token holds the PTT slot for
 	// each TCW. Guarded by s.mu. See sim/voice.go.
-	activeTalker map[TCW]string
+	activeTalker        map[TCW]string
+	dbgVoiceChunkCount  int // temporary: counts RecordPTTChunk calls for sampled logging
 
 	ReportingPoints []av.ReportingPoint
 
@@ -643,7 +644,12 @@ func (s *Sim) PrepareRadioTransmissionsForTCWAndToken(tcw TCW, token string, eve
 	out := events[:0]
 	for _, e := range events {
 		if e.Type == PeerVoiceEvent {
-			if e.SourceTCW != tcw || e.SenderToken == token {
+			if e.SourceTCW != tcw {
+				s.lg.Warnf("DBG_VOICE: filter drop wrong-tcw listener_tcw=%q event_tcw=%q sender=%s", tcw, e.SourceTCW, e.SenderToken[:min(8, len(e.SenderToken))])
+				continue
+			}
+			if e.SenderToken == token {
+				s.lg.Warnf("DBG_VOICE: filter drop self-echo tcw=%q token=%s", tcw, token[:min(8, len(token))])
 				continue
 			}
 		}

@@ -20,9 +20,11 @@ func (s *Sim) StartPTT(tcw TCW, token string) bool {
 		s.activeTalker = make(map[TCW]string)
 	}
 	if existing, ok := s.activeTalker[tcw]; ok && existing != token {
+		s.lg.Warnf("DBG_VOICE: StartPTT denied tcw=%q token=%s existing=%s", tcw, token[:min(8, len(token))], existing[:min(8, len(existing))])
 		return false
 	}
 	s.activeTalker[tcw] = token
+	s.lg.Warnf("DBG_VOICE: StartPTT granted tcw=%q token=%s", tcw, token[:min(8, len(token))])
 	return true
 }
 
@@ -34,7 +36,13 @@ func (s *Sim) RecordPTTChunk(tcw TCW, token string, samples []int16) {
 	defer s.mu.Unlock(s.lg)
 
 	if s.activeTalker[tcw] != token {
+		active := s.activeTalker[tcw]
+		s.lg.Warnf("DBG_VOICE: RecordPTTChunk dropped (not active talker) tcw=%q token=%s active=%q", tcw, token[:min(8, len(token))], active)
 		return
+	}
+	s.dbgVoiceChunkCount++
+	if s.dbgVoiceChunkCount%25 == 1 {
+		s.lg.Warnf("DBG_VOICE: RecordPTTChunk fanout tcw=%q token=%s samples=%d count=%d", tcw, token[:min(8, len(token))], len(samples), s.dbgVoiceChunkCount)
 	}
 	s.eventStream.Post(Event{
 		Type:        PeerVoiceEvent,

@@ -156,6 +156,7 @@ func (p *PeerVoicePlayback) Update(plat PlaybackSink) {
 	if sub == nil {
 		return
 	}
+	var chunkCount, sampleCount int
 	for _, e := range sub.Get() {
 		if e.Type != sim.PeerVoiceEvent {
 			continue
@@ -164,5 +165,10 @@ func (p *PeerVoicePlayback) Update(plat PlaybackSink) {
 			continue
 		}
 		plat.AppendSpeechPCM(e.VoiceChunk)
+		chunkCount++
+		sampleCount += len(e.VoiceChunk)
+	}
+	if chunkCount > 0 && p.lg != nil {
+		p.lg.Warnf("DBG_VOICE: PeerVoicePlayback drained chunks=%d samples=%d", chunkCount, sampleCount)
 	}
 }
