@@ -198,9 +198,11 @@ func TestClearedApproach_NonPracticeAircraftLeavesControllerEmpty(t *testing.T) 
 // TestGoAround_PracticeAircraftTakesLoopBranch verifies that when goAround
 // is invoked on a practice aircraft (MissedApproachesRemaining > 0), it
 // routes to practiceMissedApproach: counter is decremented, WentAround
-// stays false, the approach clearance is reset so a new C<approach> can
-// be issued, and PendingPracticeRequest is armed for the post-miss
-// transmission.
+// stays false, the approach clearance is reset (Cleared=false,
+// InterceptState=NotIntercepting) but the Assigned/AssignedId pair is
+// re-established so a new C<approach> from the controller succeeds without
+// the user having to re-issue E<approach> first, and PendingPracticeRequest
+// is armed for the post-miss transmission.
 func TestGoAround_PracticeAircraftTakesLoopBranch(t *testing.T) {
 	airportLoc := math.Point2LL{0, 0}
 	setupTestRunway(t, "KJFK", av.Runway{Id: "13L", Heading: 130, Threshold: airportLoc, Elevation: 13})
@@ -215,6 +217,9 @@ func TestGoAround_PracticeAircraftTakesLoopBranch(t *testing.T) {
 	// sets AssignedId and Assigned; just flip the cleared/intercept fields.
 	ac.Nav.Approach.Cleared = true
 	ac.Nav.Approach.InterceptState = nav.OnApproachCourse
+	// Capture the pre-miss approach pointer; it should be restored by
+	// practiceMissedApproach so the next ClearedApproach succeeds.
+	preApproach := ac.Nav.Approach.Assigned
 
 	vs.Sim.goAround(ac)
 
@@ -227,11 +232,17 @@ func TestGoAround_PracticeAircraftTakesLoopBranch(t *testing.T) {
 	if ac.Nav.Approach.Cleared {
 		t.Errorf("Approach.Cleared should be reset to false after practice miss")
 	}
-	if ac.Nav.Approach.AssignedId != "" {
-		t.Errorf("Approach.AssignedId should be cleared; got %q", ac.Nav.Approach.AssignedId)
+	if ac.Nav.Approach.AssignedId != ac.PracticeApproachID {
+		t.Errorf("Approach.AssignedId should be restored to PracticeApproachID (%q); got %q",
+			ac.PracticeApproachID, ac.Nav.Approach.AssignedId)
 	}
-	if ac.Nav.Approach.Assigned != nil {
-		t.Errorf("Approach.Assigned should be nil")
+	if ac.Nav.Approach.Assigned != preApproach {
+		t.Errorf("Approach.Assigned should be restored to the pre-miss approach pointer; got %p (want %p)",
+			ac.Nav.Approach.Assigned, preApproach)
+	}
+	if ac.Nav.Approach.InterceptState != nav.NotIntercepting {
+		t.Errorf("Approach.InterceptState should be NotIntercepting after miss; got %v",
+			ac.Nav.Approach.InterceptState)
 	}
 	if ac.PracticeApproachID != "I13L" {
 		t.Errorf("PracticeApproachID should persist across loop; got %q", ac.PracticeApproachID)

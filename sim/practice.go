@@ -107,14 +107,16 @@ func (s *Sim) practiceMissedApproach(ac *Aircraft) {
 	}
 	ac.Nav.GoAroundWithProcedure(float32(proc.Altitude), wp)
 
-	// Reset approach clearance state so a new C<approach> can be issued.
-	// (GoAroundWithProcedure resets nav.Approach to its zero value, but be
-	// explicit about the contract here so future refactors stay correct.)
+	// Re-establish "expecting" the approach so the next C<approach> succeeds.
+	// nav.GoAroundWithProcedure has reset nav.Approach to zero; we restore the
+	// pointer + Id so nav.ClearedApproach finds an Assigned approach and the
+	// id-consistency check passes. Cleared stays false until the controller
+	// re-issues clearance.
+	ac.Nav.Approach.Assigned = approach
+	ac.Nav.Approach.AssignedId = ac.PracticeApproachID
 	ac.Nav.Approach.Cleared = false
 	ac.Nav.Approach.InterceptState = nav.NotIntercepting
-	ac.Nav.Approach.AssignedId = ""
-	ac.Nav.Approach.Assigned = nil
-	// PracticeApproachID stays - pilot still wants the same approach.
+	// PracticeApproachID stays - pilot still wants the same approach next time.
 
 	// Tower no longer owns this aircraft.
 	ac.GotContactTower = false

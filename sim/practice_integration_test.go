@@ -42,18 +42,21 @@ func TestPracticeApproach_TwoMissesThenLand(t *testing.T) {
 		t.Fatalf("expected initial-contact practice request with fullStop=false")
 	}
 
-	// Save the assigned-approach pointer so we can restore it after each miss
-	// (practiceMissedApproach + GoAroundWithProcedure both clear it).
-	assignedApproach := ac.Nav.Approach.Assigned
-	assignedID := ac.Nav.Approach.AssignedId
+	// In production, by the time the aircraft reaches the threshold its
+	// InterceptState is OnApproachCourse (set during the nav update loop as
+	// it flies the approach course). The test bypasses the nav loop, so we
+	// stamp it here once. practiceMissedApproach resets InterceptState back
+	// to NotIntercepting on each miss, so we re-stamp it before each
+	// ClearedApproach below. The Assigned/AssignedId pointers, by contrast,
+	// are now restored by practiceMissedApproach itself (production fix), so
+	// no per-iteration re-staging of those is needed.
+	ac.Nav.Approach.InterceptState = nav.OnApproachCourse
 
 	// Loop: simulate two missed approaches.
 	for i := 0; i < 2; i++ {
-		// Re-stage the approach assignment (the prior miss cleared it).
-		ac.Nav.Approach.AssignedId = assignedID
-		ac.Nav.Approach.Assigned = assignedApproach
-		// Each iteration: ClearedApproach sets PracticeApproachController to
-		// the issuing TCP and re-arms the cleared/intercept state.
+		// Re-stamp InterceptState to OnApproachCourse (the prior miss reset
+		// it to NotIntercepting). See comment above for why this is a test
+		// artifact, not a production requirement.
 		ac.Nav.Approach.InterceptState = nav.OnApproachCourse
 
 		if _, err := vs.Sim.ClearedApproach(vs.tcw, ac.ADSBCallsign, "I13L", false); err != nil {
@@ -92,8 +95,7 @@ func TestPracticeApproach_TwoMissesThenLand(t *testing.T) {
 	}
 
 	// Third pass: counter is 0, aircraft should land normally and be deleted.
-	ac.Nav.Approach.AssignedId = assignedID
-	ac.Nav.Approach.Assigned = assignedApproach
+	// Re-stamp InterceptState (test artifact - see loop comment above).
 	ac.Nav.Approach.InterceptState = nav.OnApproachCourse
 	if _, err := vs.Sim.ClearedApproach(vs.tcw, ac.ADSBCallsign, "I13L", false); err != nil {
 		t.Fatalf("final ClearedApproach: %v", err)
