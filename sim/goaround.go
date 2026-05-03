@@ -32,6 +32,11 @@ func (s *Sim) isRadarVisible(ac *Aircraft) bool {
 }
 
 func (s *Sim) goAround(ac *Aircraft) {
+	if ac.MissedApproachesRemaining > 0 {
+		s.practiceMissedApproach(ac)
+		return
+	}
+
 	// Capture approach info before anything clears it.
 	approach := ac.Nav.Approach.Assigned
 	if approach == nil {

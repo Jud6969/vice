@@ -6,6 +6,7 @@ package sim
 
 import (
 	av "github.com/mmp/vice/aviation"
+	"github.com/mmp/vice/nav"
 	"github.com/mmp/vice/rand"
 )
 
@@ -81,5 +82,69 @@ func (s *Sim) lookupApproach(ac *Aircraft, id string) *av.Approach {
 			return ap
 		}
 	}
+	return nil
+}
+
+// practiceMissedApproach is the practice-loop branch of goAround. The
+// aircraft flies the published miss (or fallback heading/altitude),
+// gets handed back to the original approach controller, and rearms
+// for another approach clearance.
+func (s *Sim) practiceMissedApproach(ac *Aircraft) {
+	ac.MissedApproachesRemaining--
+
+	// Reuse the existing go-around heading/altitude assignment. v1 does not
+	// model a published-miss waypoint segment - fall back to the same
+	// behavior the existing goAround() uses for non-practice aircraft.
+	proc := s.getGoAroundProcedureForAircraft(ac)
+	approach := ac.Nav.Approach.Assigned
+	wp := av.Waypoint{
+		Location:       approach.OppositeThreshold,
+		Flags:          av.WaypointFlagFlyOver | av.WaypointFlagHasAltRestriction,
+		Heading:        int16(proc.Heading),
+		AltRestriction: av.MakeAtAltitudeRestriction(float32(proc.Altitude)),
+	}
+	ac.Nav.GoAroundWithProcedure(float32(proc.Altitude), wp)
+
+	// Reset approach clearance state so a new C<approach> can be issued.
+	// (GoAroundWithProcedure resets nav.Approach to its zero value, but be
+	// explicit about the contract here so future refactors stay correct.)
+	ac.Nav.Approach.Cleared = false
+	ac.Nav.Approach.InterceptState = nav.NotIntercepting
+	ac.Nav.Approach.AssignedId = ""
+	ac.Nav.Approach.Assigned = nil
+	// PracticeApproachID stays - pilot still wants the same approach.
+
+	// Tower no longer owns this aircraft.
+	ac.GotContactTower = false
+	// SpacingGoAroundDeclined resets so the next final-approach pass re-rolls.
+	ac.SpacingGoAroundDeclined = false
+
+	// Hand back to the original approach controller. If the stash is empty
+	// (aircraft was never cleared - shouldn't happen in practice), fall back
+	// to the airspace's go-around controller (existing helper).
+	target := ac.PracticeApproachController
+	if target == "" {
+		target = s.getGoAroundController(ac)
+	}
+	if target != "" {
+		_ = s.handBackToApproachController(ac, target)
+	}
+
+	// Mark the post-miss transmission as owed; level-off detection in Task 10
+	// will queue the actual PendingContact when the aircraft is wings-level
+	// on the missed-approach altitude.
+	ac.PendingPracticeRequest = true
+}
+
+// handBackToApproachController issues an in-process handoff from the
+// aircraft's current controller to the named TCP. Uses the same field
+// the existing HandoffTrack RPC writes to (NASFlightPlan.HandoffController);
+// if the target controller has signed off, the handoff sits as a pending
+// inbound until someone takes it - same as any other stale handoff.
+func (s *Sim) handBackToApproachController(ac *Aircraft, toTCP TCP) error {
+	if ac.NASFlightPlan == nil {
+		return nil
+	}
+	ac.NASFlightPlan.HandoffController = toTCP
 	return nil
 }

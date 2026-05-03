@@ -7,6 +7,7 @@ import (
 
 	av "github.com/mmp/vice/aviation"
 	"github.com/mmp/vice/math"
+	"github.com/mmp/vice/nav"
 	"github.com/mmp/vice/rand"
 	"github.com/vmihailenco/msgpack/v5"
 )
@@ -191,5 +192,77 @@ func TestClearedApproach_NonPracticeAircraftLeavesControllerEmpty(t *testing.T) 
 	if ac.PracticeApproachController != "" {
 		t.Errorf("PracticeApproachController for non-practice aircraft: want empty, got %q",
 			ac.PracticeApproachController)
+	}
+}
+
+// TestGoAround_PracticeAircraftTakesLoopBranch verifies that when goAround
+// is invoked on a practice aircraft (MissedApproachesRemaining > 0), it
+// routes to practiceMissedApproach: counter is decremented, WentAround
+// stays false, the approach clearance is reset so a new C<approach> can
+// be issued, and PendingPracticeRequest is armed for the post-miss
+// transmission.
+func TestGoAround_PracticeAircraftTakesLoopBranch(t *testing.T) {
+	airportLoc := math.Point2LL{0, 0}
+	setupTestRunway(t, "KJFK", av.Runway{Id: "13L", Heading: 130, Threshold: airportLoc, Elevation: 13})
+
+	vs := NewVisualScenario(t, airportLoc, "13L", math.Point2LL{0, 5.0 / 60}, 180)
+	ac := vs.AC
+	ac.PracticeApproachID = "I13L"
+	ac.MissedApproachesRemaining = 2
+	ac.PracticeApproachController = "1A"
+	ac.ControllerFrequency = ControlPosition("TWR")
+	// Pretend the aircraft is on an approach. NewVisualScenario already
+	// sets AssignedId and Assigned; just flip the cleared/intercept fields.
+	ac.Nav.Approach.Cleared = true
+	ac.Nav.Approach.InterceptState = nav.OnApproachCourse
+
+	vs.Sim.goAround(ac)
+
+	if ac.MissedApproachesRemaining != 1 {
+		t.Errorf("MissedApproachesRemaining: want 1 (decremented), got %d", ac.MissedApproachesRemaining)
+	}
+	if ac.WentAround {
+		t.Errorf("WentAround should not be set for practice aircraft (departure flag)")
+	}
+	if ac.Nav.Approach.Cleared {
+		t.Errorf("Approach.Cleared should be reset to false after practice miss")
+	}
+	if ac.Nav.Approach.AssignedId != "" {
+		t.Errorf("Approach.AssignedId should be cleared; got %q", ac.Nav.Approach.AssignedId)
+	}
+	if ac.Nav.Approach.Assigned != nil {
+		t.Errorf("Approach.Assigned should be nil")
+	}
+	if ac.PracticeApproachID != "I13L" {
+		t.Errorf("PracticeApproachID should persist across loop; got %q", ac.PracticeApproachID)
+	}
+	if !ac.PendingPracticeRequest {
+		t.Errorf("PendingPracticeRequest should be set so the post-miss transmission fires")
+	}
+}
+
+// TestGoAround_PracticeAircraftWithCounterZeroFallsThrough verifies that
+// MissedApproachesRemaining == 0 does NOT enter the practice branch - the
+// existing goAround() path runs instead. We assert the practice branch was
+// NOT taken by checking the counter wasn't decremented to -1, which is the
+// most robust signal independent of the existing path's other side effects.
+func TestGoAround_PracticeAircraftWithCounterZeroFallsThrough(t *testing.T) {
+	airportLoc := math.Point2LL{0, 0}
+	setupTestRunway(t, "KJFK", av.Runway{Id: "13L", Heading: 130, Threshold: airportLoc, Elevation: 13})
+
+	vs := NewVisualScenario(t, airportLoc, "13L", math.Point2LL{0, 5.0 / 60}, 180)
+	ac := vs.AC
+	ac.PracticeApproachID = "I13L"
+	ac.MissedApproachesRemaining = 0
+	ac.Nav.Approach.Cleared = true
+
+	vs.Sim.goAround(ac)
+
+	if ac.MissedApproachesRemaining != 0 {
+		t.Errorf("counter should remain 0 (practice branch not taken); got %d",
+			ac.MissedApproachesRemaining)
+	}
+	if !ac.WentAround {
+		t.Errorf("WentAround should be true for non-practice goAround path")
 	}
 }
