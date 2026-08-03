@@ -97,29 +97,43 @@ func dbChopTrailing(f []dbChar) []dbChar {
 func dbDrawLines(lines []dbLine, td *renderer.TextDrawBuilder, pt [2]float32,
 	font *renderer.Font, sb *strings.Builder, brightness radar.Brightness,
 	dir math.CardinalOrdinalDirection, halfSeconds int64) {
-	scale := float32(dbLineOffsetScale) // 1.5 for default font
-	if len(lines) >= 5 {
-		if lines[3].ch[0].ch != rune('R') {
-			scale = dbLineOffsetScale
-		}
-	}
 	glyph := font.LookupGlyph(' ')
-	fontWidth := glyph.AdvanceX * scale
+	fontWidth := glyph.AdvanceX * dbLineOffsetScale
 
 	for i, line := range lines {
-		// All lines start at the same position
-		xOffset := float32(0)
-
-		// Special case: line 3 (index 3) starts 1 character to the left
-		if i == 2 || i == 3 {
-			xOffset -= fontWidth
-		}
-		lineSpacing := dbLineSpacing
 		sb.Reset()
-		dbDrawLine(line, td, math.Add2f(pt, [2]float32{xOffset, 0}), font, sb,
-			brightness, halfSeconds)
-		pt[1] -= float32(font.Size) * float32(lineSpacing)
+		if i == dbVCILine || i == dbCIDLine {
+			// These two rows carry a leading field that sits outside the
+			// datablock's main columns: the VCI indicator on one, the "R"
+			// ownership symbol on the other.  Draw that field off to the left
+			// with more room than the usual inter-character gap, then start the
+			// rest of the row at the block's left edge so its columns line up
+			// with the rows above and below.
+			lead, rest := dbSplitLine(line, dbLeadFieldChars)
+			dbDrawLine(lead, td, math.Add2f(pt, [2]float32{-fontWidth - dbLeadFieldGap*glyph.AdvanceX, 0}),
+				font, sb, brightness, halfSeconds)
+			sb.Reset()
+			dbDrawLine(rest, td, pt, font, sb, brightness, halfSeconds)
+		} else {
+			dbDrawLine(line, td, pt, font, sb, brightness, halfSeconds)
+		}
+		pt[1] -= float32(font.Size) * dbLineSpacing
 	}
+}
+
+// dbSplitLine divides a line into its leading n characters and the remainder.
+func dbSplitLine(l dbLine, n int) (dbLine, dbLine) {
+	var lead, rest dbLine
+	for i := range l.length {
+		if i < n {
+			lead.ch[lead.length] = l.ch[i]
+			lead.length++
+		} else {
+			rest.ch[rest.length] = l.ch[i]
+			rest.length++
+		}
+	}
+	return lead, rest
 }
 
 // dbDrawLine renders a single datablock line.
@@ -225,6 +239,88 @@ func (db fullDatablock) draw(td *renderer.TextDrawBuilder, pt [2]float32,
 	}
 	pt[1] += float32(font.Size)
 	dbDrawLines(lines, td, pt, font, sb, brightness, dir, halfSeconds)
+}
+
+// ownershipSymbolCol returns the column of the CID row's leading field holding
+// the "R" symbol that marks a flight plan owned by another controller, and
+// whether it is being drawn at all.  Its presence decides how far a leader line
+// approaching from the left can run before it reaches the datablock.
+func (db *fullDatablock) ownershipSymbolCol() (int, bool) {
+	for i, ch := range db.col1 {
+		if ch.ch == 'R' {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+// dbOwnershipOverhang returns how far, in pixels, a symbol drawn in column col
+// of the CID row's leading field hangs to the left of the datablock's other
+// rows.  dbDrawLines puts that field dbLineOffsetScale characters plus
+// dbLeadFieldGap to the left, so a symbol in column col sticks out by whatever
+// of that is left once its own columns are accounted for.
+func dbOwnershipOverhang(font *renderer.Font, col int) float32 {
+	w := font.LookupGlyph(' ').AdvanceX
+	return w*(dbLineOffsetScale-float32(col)) + w*dbLeadFieldGap
+}
+
+// leadOverhang returns how far, in pixels, the datablock reaches to the left of
+// its anchor: the "R" ownership symbol when one is drawn, nothing otherwise.
+// The VCI indicator hangs out just as far but sits on the row above the one the
+// leader line meets, so it never stands in the line's way.
+func (db *fullDatablock) leadOverhang(font *renderer.Font) float32 {
+	if col, drawn := db.ownershipSymbolCol(); drawn {
+		return dbOwnershipOverhang(font, col)
+	}
+	return 0
+}
+
+// mainWidth returns how far, in pixels, the ink of the datablock's widest row
+// reaches to the right of its anchor.
+func (db *fullDatablock) mainWidth(font *renderer.Font) float32 {
+	var lines [5]dbLine
+	fullDatablockLines(db, &lines)
+	cols := 0
+	for i := range lines {
+		n := lines[i].Len()
+		if i == dbVCILine || i == dbCIDLine {
+			// These rows' leading field is drawn to the left of the anchor.
+			n -= dbLeadFieldChars
+		}
+		cols = max(cols, n)
+	}
+	if cols == 0 {
+		return 0
+	}
+	// The last character contributes its ink rather than a whole advance: glyphs
+	// are narrower than their cells, and the leader line meets the ink.
+	return float32(cols-1)*font.LookupGlyph(' ').AdvanceX + font.LookupGlyph('0').Width()
+}
+
+// datablockXOffset returns the horizontal displacement from the leader line's
+// endpoint to the datablock anchor, leaving dbLeaderClearance between the line
+// and the datablock whichever side it arrives from.  CRC makes this gap by
+// placing the block clear of a full-length leader rather than by shortening the
+// line; only the "R" ownership symbol shortens one (see drawLeaderLines).
+func datablockXOffset(dir math.CardinalOrdinalDirection, db *fullDatablock, font *renderer.Font) float32 {
+	clearance := dbLeaderClearance * font.LookupGlyph(' ').AdvanceX
+	switch dir {
+	case math.West, math.NorthWest, math.SouthWest:
+		// The line arrives from the right, so hold the datablock far enough to
+		// the left that its widest row clears the endpoint.
+		return -(db.mainWidth(font) + clearance)
+	case math.North, math.South:
+		// A vertical leader meets the datablock in the same column that holds
+		// the VCI and "R" symbols rather than off to one side of it, so when the
+		// "R" is drawn the line runs under the middle of the symbol.  With
+		// nothing hanging there it runs alongside the block's columns instead.
+		if over := db.leadOverhang(font); over > 0 {
+			return over - font.LookupGlyph('0').Width()/2
+		}
+		return clearance
+	default:
+		return clearance
+	}
 }
 
 // dimChars scales the color of every populated character in the field.
@@ -564,7 +660,7 @@ func (ep *ERAMPane) drawDatablocks(tracks []sim.Track, dbs map[av.ADSBCallsign]d
 				sz = ps.LDBSize
 			}
 			font := ep.ERAMFont(sz)
-			end, dir := ep.datablockAnchor(ctx, *trk, dbType, transforms)
+			end, dir := ep.datablockAnchor(ctx, *trk, db, dbType, transforms)
 			brightness := ep.datablockBrightness(state)
 			db.draw(td, end, font, &sb, brightness, dir, halfSeconds)
 		}
@@ -581,7 +677,7 @@ func (ep *ERAMPane) drawDatablocks(tracks []sim.Track, dbs map[av.ADSBCallsign]d
 // datablockAnchor returns the window-space anchor point used by both the
 // datablock renderer and the hover-outline computation. It also returns the
 // (possibly adjusted) direction the datablock was placed in.
-func (ep *ERAMPane) datablockAnchor(ctx *panes.Context, trk sim.Track, dbType DatablockType,
+func (ep *ERAMPane) datablockAnchor(ctx *panes.Context, trk sim.Track, db datablock, dbType DatablockType,
 	transforms radar.ScopeTransformations) ([2]float32, math.CardinalOrdinalDirection) {
 	state := ep.TrackState[trk.ADSBCallsign]
 	start := transforms.WindowFromLatLongP(state.Track.Location)
@@ -595,56 +691,68 @@ func (ep *ERAMPane) datablockAnchor(ctx *panes.Context, trk sim.Track, dbType Da
 		}
 	}
 
-	offset := datablockOffset(*dir)
 	vector := ep.leaderLineVectorWithLength(*dir, lengthMode)
 
-	// For mode 0, adjust positioning based on direction
-	if lengthMode == 0 {
-		if *dir == math.East {
-			offset[0] += 25 // Move right
-			offset[1] -= 10 // Move down
-		}
+	// Both offsets from the leader line's endpoint to the datablock anchor are
+	// derived from the font and the datablock's own contents rather than from
+	// per-direction pixel constants, so the line meets the same place on the
+	// block at every datablock size and in every direction.  font.Size already
+	// includes the display scale (see renderer.CreateBitmapFontAtlas), so unlike
+	// the window-space parts they must not be scaled by DrawPixelScale again.
+	ps := ep.currentPrefs()
+	font := ep.ERAMFont(util.Select(dbType == FullDatablock, ps.FDBSize, ps.LDBSize))
+	dy := datablockLeaderConnectOffset(*dir, font)
+
+	var offset [2]float32
+	if fdb, ok := db.(*fullDatablock); ok {
+		offset[0] = datablockXOffset(*dir, fdb, font)
 	}
+
+	// Mode 0 draws no leader line at all, so there is nothing to meet; move the
+	// datablock clear of the track symbol instead.
+	if lengthMode == 0 && *dir == math.East {
+		offset[0] += 2 * font.LookupGlyph(' ').AdvanceX
+	}
+
 	if dbType == EnhancedLimitedDatablock || dbType == LimitedDatablock {
 		*dir = math.East // TODO: change to state eventually
 		vector = ep.leaderLineVectorNoLength(*dir)
 		offset[1] = -10
+		dy = 0
 	}
 	end := math.Add2f(start, math.Scale2f(vector, ctx.DrawPixelScale))
-	end[0] += float32(offset[0]) * ctx.DrawPixelScale
-	end[1] += float32(offset[1]) * ctx.DrawPixelScale
+	end[0] += offset[0]
+	end[1] += offset[1]*ctx.DrawPixelScale + dy
 	return end, *dir
 }
 
-func datablockOffset(dir math.CardinalOrdinalDirection) [2]float32 {
-	var offset [2]float32
-	switch dir {
-	case math.North:
-		offset[0] = 5
-		offset[1] = 40
-	case math.NorthEast:
-		offset[0] = 10
-		offset[1] = 40
-	case math.NorthWest:
-		offset[0] = -80
-		offset[1] = 25
-	case math.East:
-		offset[1] = 35
-	case math.West:
-		offset[0] = -80
-		offset[1] = 25
-	case math.SouthEast:
-		offset[1] = 15
-		offset[0] = 10
-	case math.South:
-		offset[0] = 4
-		offset[1] = 16
-	case math.SouthWest:
-		offset[0] = -80
-		offset[1] = 15
+// dbLeaderInkInset nudges the leader line down from the top of the CID row's
+// cell to the top of the digits drawn in it: the bitmap fonts' glyph ink is
+// around two pixels shorter than the cell it sits in, and CRC meets the ink.
+const dbLeaderInkInset = 0.2
+
+// datablockLeaderConnectOffset returns the vertical distance, in pixels, from
+// the leader line's endpoint up to the datablock anchor.  Where the line meets
+// the block depends on which way it runs: one arriving from the south comes down
+// onto the block and stops at the bottom of the callsign row, while every other
+// direction meets the top of the CID row, just under the VCI/altitude row
+// (matches CRC).
+//
+// dbDrawLines positions row i at anchorY + fontSize - i*fontSize*dbLineSpacing,
+// and TextDrawBuilder treats that point as the row's top edge, so row i's ink
+// begins (i*dbLineSpacing - 1 + dbLeaderInkInset) font sizes below the anchor.
+func datablockLeaderConnectOffset(dir math.CardinalOrdinalDirection, font *renderer.Font) float32 {
+	inkTop := func(line float32) float32 {
+		return (line*dbLineSpacing - 1 + dbLeaderInkInset) * float32(font.Size)
 	}
-	return offset
+	switch dir {
+	case math.South, math.SouthEast, math.SouthWest:
+		return inkTop(dbCallsignLine) + dbInkHeight*float32(font.Size)
+	default:
+		return inkTop(dbCIDLine)
+	}
 }
+
 
 // shortFieldERAMID returns the ERAM Field E sector identifier for a
 // given facility prefix and position. The format depends on the

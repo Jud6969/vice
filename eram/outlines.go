@@ -130,7 +130,7 @@ func (ep *ERAMPane) drawOutlineRectangle(ld *renderer.ColoredLinesDrawBuilder, e
 // LineExtent returns the outline for a full line of the specified width.
 func (l DatablockLayout) LineExtent(line, cols int) math.Extent2D {
 	top := l.lineTop(line)
-	x0 := l.Anchor[0] + l.lineShift(line)
+	x0 := l.Anchor[0] + l.lineShift(line, 0)
 	x1 := x0 + l.CharWidth*float32(cols)
 	y0 := top - l.LineHeight
 	return math.Extent2D{P0: [2]float32{x0, y0}, P1: [2]float32{x1, top}}
@@ -139,7 +139,7 @@ func (l DatablockLayout) LineExtent(line, cols int) math.Extent2D {
 // FieldExtent returns the outline for the specified field.
 func (l DatablockLayout) FieldExtent(spec DatablockFieldSpec) math.Extent2D {
 	top := l.lineTop(spec.Line)
-	x0 := l.Anchor[0] + l.lineShift(spec.Line) + l.CharWidth*float32(spec.Col)
+	x0 := l.Anchor[0] + l.lineShift(spec.Line, spec.Col) + l.CharWidth*float32(spec.Col)
 	x1 := x0 + l.CharWidth*float32(spec.Cols)
 	y0 := top - l.LineHeight
 	return math.Extent2D{P0: [2]float32{x0, y0}, P1: [2]float32{x1, top}}
@@ -149,11 +149,18 @@ func (l DatablockLayout) lineTop(line int) float32 {
 	return l.Anchor[1] + l.LineHeight - float32(line)*l.LineHeight*l.LineSpacing
 }
 
-func (l DatablockLayout) lineShift(line int) float32 {
-	if line == 2 || line == 3 {
-		return -l.CharWidth * dbLineOffsetScale
+// lineShift returns how far column col of the given line is drawn to the left
+// of the datablock's main columns, mirroring dbDrawLines: the VCI and CID rows
+// hold a leading field outside the block, offset by a further dbLeadFieldGap,
+// while their remaining columns line up with the rows above and below.
+func (l DatablockLayout) lineShift(line, col int) float32 {
+	if line != dbVCILine && line != dbCIDLine {
+		return 0
 	}
-	return 0
+	if col < dbLeadFieldChars {
+		return -l.CharWidth * (dbLineOffsetScale + dbLeadFieldGap)
+	}
+	return -l.CharWidth * dbLeadFieldChars
 }
 
 // DatablockOutlines provides field and line outlines for a datablock.
@@ -168,6 +175,29 @@ const (
 	dbLineOffsetScale = 2
 	dbOutlinePadding  = 2
 	dbOutlineYOffset  = -2
+
+	// Row indices within a full datablock: the callsign row, and the two rows
+	// that carry a leading field ahead of the block's main columns, along with
+	// the width of that field.
+	dbCallsignLine   = 1
+	dbVCILine        = 2
+	dbCIDLine        = 3
+	dbLeadFieldChars = 2
+
+	// dbLeadFieldGap is the extra space, in character widths, between the VCI /
+	// ownership symbol and the datablock's main columns.  CRC separates them by
+	// about three times the normal inter-character gap: measured against a
+	// 12-pixel character pitch, 6 pixels of clearance rather than 2.
+	dbLeadFieldGap = 1.0 / 3.0
+
+	// dbLeaderClearance is the gap, in character widths, between the end of a
+	// leader line and the datablock it points at.  Measured off CRC at a
+	// 12-pixel character pitch it is 6 pixels, the same in every direction.
+	dbLeaderClearance = 0.5
+
+	// dbInkHeight is how tall a row's glyphs are as a fraction of the font size:
+	// the bitmap fonts draw 11 pixels of ink in a 13-pixel cell.
+	dbInkHeight = 0.85
 )
 
 // dbFieldSpan returns the column span [start, start+n) of the visible
@@ -217,19 +247,21 @@ func (ep *ERAMPane) FullDatablockOutlines(ctx *panes.Context, trk sim.Track,
 	if ep.datablockType(ctx, trk) != FullDatablock {
 		return DatablockOutlines{}, false
 	}
-	anchor, ok := ep.fullDatablockAnchor(ctx, trk, transforms)
-	if !ok {
-		return DatablockOutlines{}, false
-	}
-
 	ps := ep.currentPrefs()
 	font := ep.ERAMFont(ps.FDBSize)
 	if font == nil {
 		return DatablockOutlines{}, false
 	}
 
+	// Built before the anchor is computed: where the datablock sits depends on
+	// how wide it is and whether it carries the "R" ownership symbol.
 	fdb := ep.buildFullDatablock(ctx, trk)
 	if fdb == nil {
+		return DatablockOutlines{}, false
+	}
+
+	anchor, ok := ep.fullDatablockAnchor(ctx, trk, fdb, transforms)
+	if !ok {
 		return DatablockOutlines{}, false
 	}
 
@@ -327,12 +359,12 @@ func (ep *ERAMPane) FullDatablockOutlines(ctx *panes.Context, trk sim.Track,
 	return outlines, true
 }
 
-func (ep *ERAMPane) fullDatablockAnchor(ctx *panes.Context, trk sim.Track,
+func (ep *ERAMPane) fullDatablockAnchor(ctx *panes.Context, trk sim.Track, db *fullDatablock,
 	transforms radar.ScopeTransformations) ([2]float32, bool) {
 	if ep.TrackState[trk.ADSBCallsign] == nil {
 		return [2]float32{}, false
 	}
-	end, _ := ep.datablockAnchor(ctx, trk, FullDatablock, transforms)
+	end, _ := ep.datablockAnchor(ctx, trk, db, FullDatablock, transforms)
 	return end, true
 }
 
