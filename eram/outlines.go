@@ -149,10 +149,6 @@ func (l DatablockLayout) lineTop(line int) float32 {
 	return l.Anchor[1] + l.LineHeight - float32(line)*l.LineHeight*l.LineSpacing
 }
 
-// lineShift returns how far column col of the given line is drawn to the left
-// of the datablock's main columns, mirroring dbDrawLines: the VCI and CID rows
-// hold a leading field outside the block, offset by a further dbLeadFieldGap,
-// while their remaining columns line up with the rows above and below.
 func (l DatablockLayout) lineShift(line, col int) float32 {
 	if line != dbVCILine && line != dbCIDLine {
 		return 0
@@ -176,28 +172,15 @@ const (
 	dbOutlinePadding  = 2
 	dbOutlineYOffset  = -2
 
-	// Row indices within a full datablock: the callsign row, and the two rows
-	// that carry a leading field ahead of the block's main columns, along with
-	// the width of that field.
 	dbCallsignLine   = 1
 	dbVCILine        = 2
 	dbCIDLine        = 3
 	dbLeadFieldChars = 2
 
-	// dbLeadFieldGap is the extra space, in character widths, between the VCI /
-	// ownership symbol and the datablock's main columns.  CRC separates them by
-	// about three times the normal inter-character gap: measured against a
-	// 12-pixel character pitch, 6 pixels of clearance rather than 2.
-	dbLeadFieldGap = 1.0 / 3.0
-
-	// dbLeaderClearance is the gap, in character widths, between the end of a
-	// leader line and the datablock it points at.  Measured off CRC at a
-	// 12-pixel character pitch it is 6 pixels, the same in every direction.
+	dbLeadFieldGap    = 1.0 / 3.0
 	dbLeaderClearance = 0.5
-
-	// dbInkHeight is how tall a row's glyphs are as a fraction of the font size:
-	// the bitmap fonts draw 11 pixels of ink in a 13-pixel cell.
-	dbInkHeight = 0.85
+	dbInkHeight       = 0.85
+	dbLeaderInkInset  = 0.2
 )
 
 // dbFieldSpan returns the column span [start, start+n) of the visible
@@ -253,8 +236,6 @@ func (ep *ERAMPane) FullDatablockOutlines(ctx *panes.Context, trk sim.Track,
 		return DatablockOutlines{}, false
 	}
 
-	// Built before the anchor is computed: where the datablock sits depends on
-	// how wide it is and whether it carries the "R" ownership symbol.
 	fdb := ep.buildFullDatablock(ctx, trk)
 	if fdb == nil {
 		return DatablockOutlines{}, false

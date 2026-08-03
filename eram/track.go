@@ -549,41 +549,23 @@ func (ep *ERAMPane) drawLeaderLines(ctx *panes.Context, tracks []sim.Track, dbs 
 		v := util.Select(dbType == FullDatablock, ep.leaderLineVectorWithLength(*dir, state.LeaderLineLength), ep.leaderLineVectorNoLength(*dir))
 		pv := math.Scale2f(v, ctx.DrawPixelScale)
 
-		// The gap between the line and the datablock comes from where the block
-		// is placed (datablockXOffset), so the line keeps its full length.  The
-		// one exception is the "R" ownership symbol: lines that end on the CID
-		// row from the left run into the symbol hanging off it, and CRC shortens
-		// the line rather than moving the block.  Southward leaders stop up at
-		// the callsign row and westward ones approach from the far side, so
-		// neither ever reaches it.
 		if fdb, ok := db.(*fullDatablock); ok && dbType == FullDatablock {
 			if over, l := fdb.leadOverhang(font), math.Length2f(pv); over > 0 {
 				var pull float32
 				switch *dir {
 				case math.East, math.NorthEast:
-					// The symbol hangs to the left, so it is the line's horizontal
-					// reach that has to stop short of it -- for a leader arriving
-					// at an angle that costs more length than one arriving level.
 					if pv[0] > 0 {
 						pull = over * l / pv[0]
 					}
 				case math.North:
-					// This one climbs under the symbol, so it stops below rather
-					// than carrying on up alongside the CID row.
 					pull = dbInkHeight*float32(font.Size) + dbLeaderClearance*font.LookupGlyph(' ').AdvanceX
 				}
-				// South needs nothing: it stops up at the callsign row, well above
-				// the symbol on the CID row.
 				if pull > 0 && l > pull {
 					pv = math.Scale2f(pv, (l-pull)/l)
 				}
 			}
 		}
 
-		// Track positions are snapped to pixel centers (WindowFromLatLongP), which
-		// leaves a two-pixel line straddling three rows of pixels at partial
-		// intensity.  Half a pixel puts it on a pixel boundary so it covers two
-		// rows cleanly, as CRC's does.
 		p0[1] += 0.5
 		p1 := math.Add2f(p0, pv)
 		if dbType == FullDatablock {
