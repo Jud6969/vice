@@ -801,6 +801,19 @@ func (nav *Nav) Summary(fp av.FlightPlan, model *wx.Model, simTime Time, lg *log
 		lines = append(lines, fmt.Sprintf("Climb rate %.0f ft/minute", 60*(nav.FlightState.Altitude-nav.FlightState.PrevAltitude)))
 	}
 
+	// The setting on the pilot's subscale and what their altimeter therefore
+	// reads; the altitudes above are true altitudes, so the two differ
+	// whenever the pilot's setting isn't the local one.
+	if set, ok := nav.altimeterSetting(); !ok {
+		lines = append(lines, "No altimeter setting")
+	} else {
+		line := fmt.Sprintf("Altimeter %.2f", set)
+		if nav.FlightState.OnStandardAltimeter {
+			line += " (standard)"
+		}
+		lines = append(lines, line+fmt.Sprintf(", indicating %.0f ft", nav.IndicatedAltitude()))
+	}
+
 	// Heading
 	if nav.Heading.Assigned != nil {
 		if *nav.Heading.Assigned == nav.FlightState.Heading {
