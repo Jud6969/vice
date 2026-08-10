@@ -183,6 +183,7 @@ var (
 		"actype":   &AircraftTypeSnippetFormatter{},
 		"airport":  &AirportSnippetFormatter{},
 		"alt":      &AltSnippetFormatter{},
+		"altim":    &AltimeterSnippetFormatter{},
 		"altrest":  &AltRestrictionSnippetFormatter{},
 		"appr":     &ApproachSnippetFormatter{},
 		"beacon":   &BeaconCodeSnippetFormatter{},
@@ -1470,6 +1471,27 @@ func (BeaconCodeSnippetFormatter) Spoken(r *rand.Rand, arg any) string {
 func (BeaconCodeSnippetFormatter) Validate(arg any) error {
 	if _, ok := arg.(Squawk); !ok {
 		return fmt.Errorf("expected Squawk arg, got %T", arg)
+	}
+	return nil
+}
+
+///////////////////////////////////////////////////////////////////////////
+// AltimeterSnippetFormatter
+
+type AltimeterSnippetFormatter struct{}
+
+func (AltimeterSnippetFormatter) Written(arg any) string {
+	return fmt.Sprintf("%.2f", arg.(float32))
+}
+
+func (AltimeterSnippetFormatter) Spoken(r *rand.Rand, arg any) string {
+	// Altimeter settings are always spoken as four individual digits.
+	return sayDigits(int(math.Round(arg.(float32)*100)), 4)
+}
+
+func (AltimeterSnippetFormatter) Validate(arg any) error {
+	if _, ok := arg.(float32); !ok {
+		return fmt.Errorf("expected float32 arg, got %T", arg)
 	}
 	return nil
 }

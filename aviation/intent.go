@@ -887,6 +887,18 @@ func (a ATISIntent) Render(rt *RadioTransmission, r *rand.Rand) {
 }
 
 ///////////////////////////////////////////////////////////////////////////
+// Altimeter Intent
+
+// AltimeterIntent represents the pilot's readback of an altimeter setting.
+type AltimeterIntent struct {
+	Setting float32
+}
+
+func (a AltimeterIntent) Render(rt *RadioTransmission, r *rand.Rand) {
+	rt.Add("[altimeter {altim}|{altim}]", a.Setting)
+}
+
+///////////////////////////////////////////////////////////////////////////
 // Traffic Advisory Intent
 
 // TrafficAdvisoryResponse represents the pilot's response to a traffic advisory
