@@ -41,10 +41,13 @@ func (nav *Nav) prepareAltitudeAssignment(alt float32, afterSpeed bool) (av.Comm
 		return av.MakeUnableIntent("unable. That altitude is above our ceiling."), false
 	}
 
+	// The assigned altitude is an indicated one, so compare it against what
+	// the pilot's altimeter reads rather than the aircraft's true altitude.
+	cur := nav.IndicatedAltitude()
 	var direction av.AltitudeDirection
-	if alt > nav.FlightState.Altitude {
+	if alt > cur {
 		direction = av.AltitudeClimb
-	} else if alt == nav.FlightState.Altitude {
+	} else if alt == cur {
 		direction = av.AltitudeMaintain
 	} else {
 		direction = av.AltitudeDescend
@@ -135,7 +138,7 @@ func (nav *Nav) AssignMach(mach float32, afterAltitude bool, temp av.Temperature
 	} else if !nav.machTransition() {
 		return av.MakeUnableIntent("unable. we haven't reached mach transition altitude")
 	} else if afterAltitude && nav.Altitude.Assigned != nil &&
-		*nav.Altitude.Assigned != nav.FlightState.Altitude {
+		*nav.Altitude.Assigned != nav.IndicatedAltitude() {
 		alt := *nav.Altitude.Assigned
 		sr := av.MakeMachRestriction(mach)
 		nav.Speed = NavSpeed{
@@ -150,7 +153,7 @@ func (nav *Nav) AssignMach(mach float32, afterAltitude bool, temp av.Temperature
 		// altitude until after the Mach speed change completes.
 		tas := av.MachToTAS(mach, temp)
 		targetIAS := av.TASToIAS(tas, nav.FlightState.Altitude)
-		if nav.Altitude.Assigned != nil && *nav.Altitude.Assigned != nav.FlightState.Altitude &&
+		if nav.Altitude.Assigned != nil && *nav.Altitude.Assigned != nav.IndicatedAltitude() &&
 			math.Abs(targetIAS-nav.FlightState.IAS) >= 20 {
 			alt := *nav.Altitude.Assigned
 			nav.Altitude = NavAltitude{
@@ -214,7 +217,7 @@ func (nav *Nav) AssignSpeed(sr *av.SpeedRestriction, afterAltitude bool) av.Comm
 		}
 		return av.SpeedIntent{Speed: speed, Type: av.SpeedUntilFinal, UntilFinalDirection: dir}
 	} else if afterAltitude && nav.Altitude.Assigned != nil &&
-		*nav.Altitude.Assigned != nav.FlightState.Altitude {
+		*nav.Altitude.Assigned != nav.IndicatedAltitude() {
 		alt := *nav.Altitude.Assigned
 		nav.Speed = NavSpeed{
 			AfterAltitude:         sr,
@@ -225,7 +228,7 @@ func (nav *Nav) AssignSpeed(sr *av.SpeedRestriction, afterAltitude bool) av.Comm
 		// If there's an active altitude change and the speed change is significant (>20kt), defer
 		// the altitude until after the speed change completes.
 		speedDelta := math.Abs(speed - nav.FlightState.IAS)
-		if nav.Altitude.Assigned != nil && *nav.Altitude.Assigned != nav.FlightState.Altitude &&
+		if nav.Altitude.Assigned != nil && *nav.Altitude.Assigned != nav.IndicatedAltitude() &&
 			speedDelta > 20 {
 			alt := *nav.Altitude.Assigned
 			nav.Altitude = NavAltitude{
@@ -347,7 +350,9 @@ func (nav *Nav) SayHeading() av.CommandIntent {
 }
 
 func (nav *Nav) SayAltitude() av.CommandIntent {
-	currentAltitude := nav.FlightState.Altitude
+	// Assigned altitudes are indicated altitudes, so reporting the indicated
+	// one keeps the comparison below in the same units.
+	currentAltitude := nav.IndicatedAltitude()
 	intent := av.ReportAltitudeIntent{Current: currentAltitude}
 	if nav.Altitude.Assigned != nil {
 		intent.Assigned = nav.Altitude.Assigned
@@ -360,6 +365,15 @@ func (nav *Nav) SayAltitude() av.CommandIntent {
 		}
 	}
 	return intent
+}
+
+// SetAltimeter dials in a setting issued by a controller. Above the
+// transition altitude the aircraft is flying on 29.92, so this only replaces
+// the setting queued for the descent back through the transition level; it
+// takes effect immediately below it.
+func (nav *Nav) SetAltimeter(setting float32) av.CommandIntent {
+	nav.AltimeterSetting = &setting
+	return av.AltimeterIntent{Setting: setting}
 }
 
 func (nav *Nav) ExpediteDescent() av.CommandIntent {
@@ -389,7 +403,7 @@ func (nav *Nav) GoodRateClimb() av.CommandIntent {
 func (nav *Nav) GoodRateThrough(throughAlt float32) av.CommandIntent {
 	// Infer direction from current state
 	dir := av.AltitudeDescend
-	if throughAlt > nav.FlightState.Altitude {
+	if throughAlt > nav.IndicatedAltitude() {
 		dir = av.AltitudeClimb
 	}
 	return nav.setRate(RateGood, &throughAlt, dir)
@@ -401,8 +415,12 @@ func (nav *Nav) setRate(rate RateQualifier, throughAlt *float32, direction av.Al
 		alt = *nav.Altitude.Assigned
 	}
 
-	wrongDir := (direction == av.AltitudeDescend && alt >= nav.FlightState.Altitude) ||
-		(direction == av.AltitudeClimb && alt <= nav.FlightState.Altitude)
+	// alt is an indicated altitude, so this has to be against the indicated
+	// one too; comparing it to the true altitude would have the aircraft
+	// refuse a legitimate rate command while its setting is off.
+	cur := nav.IndicatedAltitude()
+	wrongDir := (direction == av.AltitudeDescend && alt >= cur) ||
+		(direction == av.AltitudeClimb && alt <= cur)
 
 	if wrongDir {
 		if nav.Altitude.AfterSpeed != nil {
@@ -1231,10 +1249,11 @@ func (nav *Nav) AfterFixAltitude(fix string, alt float32) av.CommandIntent {
 	nfa.Depart.Altitude = &alt
 	nav.FixAssignments[fix] = nfa
 
+	cur := nav.IndicatedAltitude()
 	var direction av.AltitudeDirection
-	if alt > nav.FlightState.Altitude {
+	if alt > cur {
 		direction = av.AltitudeClimb
-	} else if alt < nav.FlightState.Altitude {
+	} else if alt < cur {
 		direction = av.AltitudeDescend
 	} else {
 		direction = av.AltitudeMaintain

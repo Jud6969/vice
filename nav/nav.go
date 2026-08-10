@@ -47,6 +47,13 @@ type Nav struct {
 	Airwork     *NavAirwork
 	Prespawn    bool
 
+	// AltimeterSetting is what the pilot has dialed into the subscale, in
+	// inches of mercury; nil if they have never been given one. It only
+	// changes when a controller issues a setting or tells them an ATIS is
+	// current, which is why it lives here with the other assignments rather
+	// than on FlightState — a rollback has to undo it.
+	AltimeterSetting *float32
+
 	FixAssignments map[string]NavFixAssignment
 
 	// DeferredNavHeading stores a heading/direct fix assignment from the
@@ -119,6 +126,7 @@ type NavSnapshot struct {
 	Waypoints          av.WaypointArray
 	DeferredNavHeading *DeferredNavHeading
 	FixAssignments     map[string]NavFixAssignment
+	AltimeterSetting   *float32
 }
 
 // TakeSnapshot captures the current controller-modifiable nav state for later rollback.
@@ -131,6 +139,7 @@ func (nav *Nav) TakeSnapshot() NavSnapshot {
 		Waypoints:          nav.Waypoints,
 		DeferredNavHeading: nav.DeferredNavHeading,
 		FixAssignments:     nav.FixAssignments,
+		AltimeterSetting:   nav.AltimeterSetting,
 	})
 }
 
@@ -144,6 +153,7 @@ func (nav *Nav) RestoreSnapshot(snap NavSnapshot) {
 	nav.Waypoints = snap.Waypoints
 	nav.DeferredNavHeading = snap.DeferredNavHeading
 	nav.FixAssignments = snap.FixAssignments
+	nav.AltimeterSetting = snap.AltimeterSetting
 }
 
 type FlightState struct {
@@ -164,6 +174,19 @@ type FlightState struct {
 	IAS, GS      float32 // speeds...
 	BankAngle    float32 // degrees
 	AltitudeRate float32 // + -> climb, - -> descent
+
+	// LocalAltimeter is the setting currently reported by the station the
+	// aircraft is referencing, in inches of mercury; nil until one is known.
+	// It matches Nav.AltimeterSetting in the ordinary case, and where it does
+	// the aircraft's indicated altitude is its true altitude.
+	LocalAltimeter *float32
+	// OnStandardAltimeter is set once the aircraft has climbed through the
+	// transition altitude and cleared until it descends back through the
+	// transition level, during which time it flies flight levels on 29.92.
+	// While it is set, Nav.AltimeterSetting is what the pilot has queued up
+	// to use on the way down, so issuing a new setting up there replaces the
+	// queued one rather than changing the altitude the aircraft is flying.
+	OnStandardAltimeter bool
 }
 
 func (fs *FlightState) Summary() string {
@@ -923,7 +946,7 @@ func (nav *Nav) procedureHasAltRestrictions(checkSID bool) bool {
 // addAltitudePhrasing appends realistic altitude reporting to the
 // transmission based on the aircraft's current flight state.
 func (nav *Nav) addAltitudePhrasing(rt *av.RadioTransmission, targetAlt float32) {
-	cur := nav.FlightState.Altitude
+	cur := nav.IndicatedAltitude()
 	diff := targetAlt - cur
 
 	if diff > 200 {
@@ -1068,7 +1091,7 @@ func (nav *Nav) firstCrossingRestriction() *contactCrossingRestriction {
 // addStarAltitude adds combined STAR + altitude phraseology.
 func (nav *Nav) addStarAltitude(rt *av.RadioTransmission, star string, crossing *contactCrossingRestriction) {
 	hasAltRestrictions := nav.procedureHasAltRestrictions(false)
-	cur := nav.FlightState.Altitude
+	cur := nav.IndicatedAltitude()
 	descending := nav.Altitude.Assigned == nil && hasAltRestrictions
 
 	if descending && crossing != nil && crossing.AltRestriction != nil {
@@ -1095,7 +1118,7 @@ func (nav *Nav) addStarAltitude(rt *av.RadioTransmission, star string, crossing 
 
 // addContactAltitude adds altitude phraseology for non-STAR contexts (vectored, departures, etc.).
 func (nav *Nav) addContactAltitude(rt *av.RadioTransmission, star string, crossing *contactCrossingRestriction) {
-	cur := nav.FlightState.Altitude
+	cur := nav.IndicatedAltitude()
 
 	if crossing != nil && crossing.AltRestriction != nil && star == "" {
 		// Fix crossing restriction without a STAR

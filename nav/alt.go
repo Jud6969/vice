@@ -292,6 +292,111 @@ func mbToPressureAltitude(mb float32) float32 {
 	}
 }
 
+const (
+	// StandardAltimeter is the setting all aircraft use at or above
+	// TransitionAltitude, where altitudes are flight levels rather than MSL.
+	StandardAltimeter  = 29.92
+	TransitionAltitude = 18000
+
+	// A one-inch error in the altimeter setting is 1000 feet of altitude.
+	feetPerInHg = 1000
+)
+
+// altimeterSetting returns the setting currently on the pilot's subscale: the
+// one they were given below the transition altitude, 29.92 above it. ok is
+// false if they have never been given one.
+func (nav *Nav) altimeterSetting() (setting float32, ok bool) {
+	if nav.FlightState.OnStandardAltimeter {
+		return StandardAltimeter, true
+	}
+	if nav.AltimeterSetting == nil {
+		return 0, false
+	}
+	return *nav.AltimeterSetting, true
+}
+
+// altimeterBias returns the difference in feet between the aircraft's true
+// altitude and the altitude its altimeter indicates. Assigned altitudes are
+// indicated altitudes, so this is what the aircraft's true altitude is
+// displaced by when the pilot's setting doesn't match the local one: setting
+// the altimeter too high makes it over-read, so the aircraft ends up low.
+func (nav *Nav) altimeterBias() float32 {
+	set, ok := nav.altimeterSetting()
+	if !ok || nav.FlightState.LocalAltimeter == nil {
+		return 0
+	}
+	return (*nav.FlightState.LocalAltimeter - set) * feetPerInHg
+}
+
+// InitAltimeter dials in the given setting as both the pilot's and their
+// field's and puts the aircraft on the appropriate side of the transition for
+// its altitude. A spawn altitude is an indicated altitude like any other, so
+// it is shifted to the true altitude the pilot's altimeter reads as that value.
+func (nav *Nav) InitAltimeter(setting float32) {
+	local := setting
+	nav.AltimeterSetting = &setting
+	nav.FlightState.LocalAltimeter = &local
+	nav.FlightState.OnStandardAltimeter = nav.FlightState.Altitude >= TransitionAltitude
+	nav.FlightState.Altitude += nav.altimeterBias()
+}
+
+// ModeCAltitude returns the pressure altitude the aircraft's transponder
+// reports, which equals its true altitude only where the local setting is 29.92.
+func (nav *Nav) ModeCAltitude() float32 {
+	if nav.FlightState.LocalAltimeter == nil {
+		return nav.FlightState.Altitude
+	}
+	return nav.FlightState.Altitude - (*nav.FlightState.LocalAltimeter-StandardAltimeter)*feetPerInHg
+}
+
+// IndicatedAltitude returns the altitude the pilot's altimeter reads, which
+// is what they use on the radio. It matches the aircraft's true altitude
+// while their setting matches the local one.
+func (nav *Nav) IndicatedAltitude() float32 {
+	return nav.FlightState.Altitude - nav.altimeterBias()
+}
+
+// transitionTrueAltitude returns the true altitude at which an altimeter on
+// the given setting reads the transition altitude. Both settings are taken as
+// arguments so it cannot read an altimeter that isn't known yet.
+func transitionTrueAltitude(local, setting float32) float32 {
+	return TransitionAltitude + (local-setting)*feetPerInHg
+}
+
+// updateAltimeterTransition switches the pilot between the setting they were
+// given and 29.92. Climbing, that happens as the altimeter passes the
+// transition altitude; descending, as it passes the transition level (FL180).
+// Those are the same indicated altitude but two different true altitudes
+// whenever the local setting isn't 29.92 — the transition layer between them —
+// so the switch has to be latched rather than recomputed from the current
+// altitude, which would flip back and forth in the layer.
+func (nav *Nav) updateAltimeterTransition() {
+	fs := &nav.FlightState
+	if nav.AltimeterSetting == nil || fs.LocalAltimeter == nil {
+		return
+	}
+	local := *fs.LocalAltimeter
+
+	// Altitudes at and above the transition altitude are flight levels, so
+	// reaching it is enough to put the pilot on 29.92: an aircraft assigned
+	// 18,000 levels off exactly there and is at FL180, not 18,000' MSL.
+	// Coming down is not the mirror image — they stay on 29.92 until they
+	// descend *through* the transition level, which is a different true
+	// altitude whenever the local setting isn't 29.92. That gap is the
+	// transition layer, and the switch has to be latched across it rather
+	// than recomputed from the current altitude, which would flip back and
+	// forth inside it. Both tests are crossings for the same reason: an
+	// aircraft that has just come off 29.92 on the way down is still above
+	// the transition altitude for a while, and must not go straight back on.
+	if !fs.OnStandardAltimeter {
+		if alt := transitionTrueAltitude(local, *nav.AltimeterSetting); fs.PrevAltitude < alt && fs.Altitude >= alt {
+			fs.OnStandardAltimeter = true
+		}
+	} else if alt := transitionTrueAltitude(local, StandardAltimeter); fs.PrevAltitude >= alt && fs.Altitude < alt {
+		fs.OnStandardAltimeter = false
+	}
+}
+
 // TargetAltitude returns the target altitude, the rate to use (ft/min),
 // and whether the descent is geometric (following a computed glidepath to a fix).
 func (nav *Nav) TargetAltitude() (float32, float32, bool) {

@@ -146,7 +146,11 @@ func (nav *Nav) UpdateWithWeather(callsign string, wxs wx.Sample, arrivalMETAR *
 		nav.FlightState.IAS, nav.FlightState.GS,
 		nav.FlightState.BankAngle, nav.FlightState.AltitudeRate)
 
+	// Altitudes are assigned and flown as indicated altitudes, so fly to the
+	// true altitude that the pilot's altimeter reads as the target one.
+	nav.updateAltimeterTransition()
 	targetAltitude, altitudeRate, geometricDescent := nav.TargetAltitude()
+	targetAltitude += nav.altimeterBias()
 	deltaKts, slowingTo250 := nav.updateAirspeed(callsign, targetAltitude, geometricDescent, fp, wxs, arrivalMETAR, simTime, bravo)
 	nav.updateAltitude(callsign, targetAltitude, altitudeRate, geometricDescent, deltaKts, slowingTo250, wxs, simTime)
 	nav.updateHeading(callsign, wxs, simTime)
