@@ -271,6 +271,23 @@ func registerAllCommands() {
 		WithPriority(10),
 	)
 
+	// "Verify altitude" is the Mode C challenge (7110.65 5-2-15); the pilot's
+	// answer is the same altitude report either way, so it runs "say altitude".
+	registerSTTCommand(
+		"verify|confirm [your] altitude",
+		func() string { return "SA" },
+		WithName("verify_altitude"),
+		WithPriority(10),
+	)
+
+	// === ALTIMETER SETTING ===
+	registerSTTCommand(
+		"[the] altimeter [is] {altimeter}",
+		func(setting int) string { return fmt.Sprintf("AS%04d", setting) },
+		WithName("altimeter_setting"),
+		WithPriority(15),
+	)
+
 	// === HEADING COMMANDS ===
 	registerSTTCommand(
 		"[turn] [to] left heading {heading}",

@@ -14,8 +14,8 @@
   "audio_duration_ms": 7752,
   "processor": "GPU: Apple M4 Pro, 14 CPU / 20 GPU cores, 48GB",
   "whisper_model": "ggml-medium.en-jlvatc-q5_0.bin",
-  "callsign": "",
-  "command": "",
+  "callsign": "N509EZ",
+  "command": "AS2973",
   "stt_aircraft": {
     "Air Azores 81": {
       "Callsign": "RZO81",

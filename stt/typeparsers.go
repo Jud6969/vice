@@ -341,6 +341,25 @@ func (p *squawkParser) parse(tokens []Token, pos int, ac Aircraft) (any, int, st
 	return nil, 0, "SQUAWK"
 }
 
+// altimeterParser extracts a four-digit altimeter setting.
+type altimeterParser struct{}
+
+func (p *altimeterParser) goType() reflect.Type {
+	return reflect.TypeFor[int]()
+}
+
+func (p *altimeterParser) parse(tokens []Token, pos int, ac Aircraft) (any, int, string) {
+	if pos >= len(tokens) {
+		return nil, 0, "ALTIMETER"
+	}
+
+	if setting, consumed := extractAltimeter(tokens[pos:]); consumed > 0 {
+		return setting, consumed, ""
+	}
+
+	return nil, 0, "ALTIMETER"
+}
+
 // degreesParser extracts turn degrees (1-45) with direction.
 type degreesParser struct{}
 
@@ -634,6 +653,7 @@ var positionVetoKeywords = map[string]bool{
 	"standby": true, "left": true, "right": true, "center": true,
 	"runway": true, "ils": true, "rnav": true, "localizer": true,
 	"visual": true, "approach": true, "departure": true,
+	"altimeter": true,
 }
 
 // facilityWordParser extracts a single word token that could be part of a
@@ -952,6 +972,8 @@ func getTypeParser(typeID string) typeParser {
 		return &visualApproachParser{allowLAHSO: true}
 	case "squawk":
 		return &squawkParser{}
+	case "altimeter":
+		return &altimeterParser{}
 	case "degrees":
 		return &degreesParser{}
 	case "sid":

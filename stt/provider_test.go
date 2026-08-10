@@ -656,7 +656,7 @@ func TestATISInformation(t *testing.T) {
 					ApproachFixes: map[string]map[string]string{"I30": {"Mynee": "MYNEE"}},
 				},
 			},
-			expected: "NKS5926 ATIS/M EI30",
+			expected: "NKS5926 ATIS/M AS3006 EI30",
 		},
 	}
 

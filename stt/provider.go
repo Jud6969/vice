@@ -4,6 +4,7 @@ import (
 	"maps"
 	"math"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -195,22 +196,11 @@ func (p *Transcriber) decodeInternal(
 		return "", nil
 	}
 
-	// Altimeter readings are stripped positionally: the 4-digit reading
-	// after "altimeter" absorbs arbitrary garble ("right" for "niner"),
-	// which template matching cannot express.
-	hadBeforeAltimeter := countNonFiller(commandTokens) > 0
-	commandTokens = stripAltimeterSuffix(commandTokens)
-
-	// A transmission that was nothing but an altimeter report ("November
-	// Four Lima, Kennedy altimeter two niner two eight") is informational
-	// and requires no response.
-	if hadBeforeAltimeter && countNonFiller(commandTokens) == 0 {
-		logLocalStt("altimeter-report-only transmission, returning empty")
-		elapsed := time.Since(start)
-		logLocalStt(`=== DecodeTranscript END: "" (altimeter report, time=%s) ===`, elapsed)
-		p.logInfo(`local STT: %q -> "" (altimeter report, time=%s)`, transcript, elapsed)
-		return "", nil
-	}
+	// Altimeter readings are handled positionally: the 4-digit reading after
+	// "altimeter" absorbs arbitrary garble ("right" for "niner"), which
+	// template matching cannot express, so the span is rewritten into a
+	// canonical form for the altimeter_setting template to match.
+	commandTokens = normalizeAltimeterReading(commandTokens)
 
 	// Layer 4: Command parsing. Informational phrases — position IDs,
 	// "radar contact", acknowledgments, sign-offs — match kind-tagged
@@ -1047,9 +1037,12 @@ func correctionKeywordCategory(word string) string {
 	}
 }
 
-// stripAltimeterSuffix removes altimeter settings from the token stream
-// wherever they appear. Controllers often include "(airport) altimeter
-// (4 digits)" as informational; it is not an actionable command.
+// normalizeAltimeterReading rewrites "(airport) altimeter (4 digits)" spans
+// into a bare "altimeter" plus one 4-digit number token, which is what the
+// altimeter_setting template matches. Doing it here rather than in the
+// template is what lets a reading survive the garble described below; when
+// the digits can't be recovered the span is dropped instead, leaving the
+// reading informational as it was before the altimeter command existed.
 //
 // An altimeter reading is 4 digits. We walk forward from "altimeter" until
 // 4 digits have been consumed: a TokenNumber contributes its digit count
@@ -1059,7 +1052,7 @@ func correctionKeywordCategory(word string) string {
 // "three zero point one four" are eaten cleanly. The span is stripped only
 // when at least 2 number tokens were seen — otherwise we assume "altimeter"
 // was a false positive and leave the stream alone.
-func stripAltimeterSuffix(tokens []Token) []Token {
+func normalizeAltimeterReading(tokens []Token) []Token {
 	result := make([]Token, 0, len(tokens))
 	i := 0
 	for i < len(tokens) {
@@ -1072,6 +1065,7 @@ func stripAltimeterSuffix(tokens []Token) []Token {
 		digits := 0
 		numDigits := 0
 		numCount := 0
+		var reading strings.Builder
 		for end < len(tokens) && digits < 4 {
 			if digits == 2 && strings.ToLower(tokens[end].Text) == "point" {
 				end++
@@ -1081,6 +1075,7 @@ func stripAltimeterSuffix(tokens []Token) []Token {
 				numCount++
 				digits += len(tokens[end].Text)
 				numDigits += len(tokens[end].Text)
+				reading.WriteString(tokens[end].Text)
 			} else {
 				digits++
 			}
@@ -1098,7 +1093,17 @@ func stripAltimeterSuffix(tokens []Token) []Token {
 			!IsCommandKeyword(strings.ToLower(result[len(result)-1].Text)) {
 			result = result[:len(result)-1]
 		}
-		logLocalStt("stripped altimeter reading: %d tokens", end-i)
+		// Only a reading whose digits all came from number tokens can be
+		// turned back into a setting; anything the garble absorbed is lost,
+		// so those stay informational and are dropped as they always were.
+		if v, err := strconv.Atoi(reading.String()); err == nil && numDigits == 4 &&
+			v >= 2700 && v <= 3200 {
+			logLocalStt("normalized altimeter reading: %d tokens -> %d", end-i, v)
+			result = append(result, Token{Text: "altimeter", Type: TokenWord, Value: -1},
+				Token{Text: reading.String(), Type: TokenNumber, Value: v})
+		} else {
+			logLocalStt("stripped unreadable altimeter reading: %d tokens", end-i)
+		}
 		i = end
 	}
 	return result

@@ -14,8 +14,8 @@
   "audio_duration_ms": 6856,
   "processor": "GPU: NVIDIA GeForce RTX 4060 (7956MB)",
   "whisper_model": "ggml-medium.en-jlvatc-q5_0.bin",
-  "callsign": "",
-  "command": "",
+  "callsign": "N4L",
+  "command": "AS2928",
   "stt_aircraft": {
     "American 70": {
       "Callsign": "AAL70",

@@ -317,6 +317,45 @@ func extractSquawk(tokens []Token) (string, int) {
 	return "", 0
 }
 
+// extractAltimeter builds a four-digit altimeter setting from spoken digits.
+// Controllers say them one at a time -- "two niner niner two" -- but STT
+// often groups them into pairs ("twenty nine ninety two") or transcribes the
+// whole thing as one number, so all three forms are accepted. Returns the
+// setting in hundredths of an inch (2992) and the tokens consumed.
+func extractAltimeter(tokens []Token) (int, int) {
+	var digits strings.Builder
+	consumed := 0
+
+loop:
+	for consumed < len(tokens) && digits.Len() < 4 {
+		t := tokens[consumed]
+		switch {
+		case IsDigit(t.Text):
+			digits.WriteString(t.Text)
+		case t.Type != TokenNumber:
+			break loop
+		case digits.Len() == 0 && t.Value >= 2700 && t.Value <= 3200:
+			fmt.Fprintf(&digits, "%04d", t.Value)
+		case digits.Len() == 0 && t.Value >= 27 && t.Value <= 32:
+			fmt.Fprintf(&digits, "%02d", t.Value)
+		case digits.Len() == 2 && t.Value >= 0 && t.Value <= 99:
+			fmt.Fprintf(&digits, "%02d", t.Value)
+		default:
+			break loop
+		}
+		consumed++
+	}
+
+	if digits.Len() != 4 {
+		return 0, 0
+	}
+	v, err := strconv.Atoi(digits.String())
+	if err != nil || v < 2700 || v > 3200 {
+		return 0, 0
+	}
+	return v, consumed
+}
+
 // extractDegrees extracts a degree turn value and direction.
 // Uses word order to disambiguate: "turn 20 left" is a degrees turn,
 // but "turn left 20" is interpreted as heading (direction before number).
