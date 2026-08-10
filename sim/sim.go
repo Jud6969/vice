@@ -1125,6 +1125,14 @@ func (s *Sim) updateState() {
 				continue
 			}
 
+			// What the pilot has dialed in only changes when a controller
+			// gives them a new setting, but their station's own moves under
+			// them as its METAR is updated.
+			if metar, ok := s.State.METAR[ac.AltimeterStation]; ok {
+				local := metar.Altimeter_inHg()
+				ac.Nav.FlightState.LocalAltimeter = &local
+			}
+
 			arrivalMETAR := s.State.METAR[ac.FlightPlan.ArrivalAirport]
 			updateResult := ac.Update(s.wxModel, s.State.SimTime, &arrivalMETAR, s.bravoAirspace, nil /* s.lg*/)
 			passedWaypoint := updateResult.PassedWaypoint

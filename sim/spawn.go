@@ -588,6 +588,21 @@ func (s *Sim) addAircraftNoLock(ac Aircraft) {
 
 	ac.Nav.Prespawn = s.prespawn && ac.FlightPlan.Rules == av.FlightRulesVFR
 
+	// Pilots arrive with a setting already dialed in: departures had it on
+	// the ground and arrivals were given one before they got here. It stays
+	// put from here on unless a controller issues a new one.
+	//
+	// Which station's setting that is depends on where they came from --
+	// center hands off arrivals on the destination TRACON's setting, while
+	// TRACON-to-TRACON traffic just has whatever was current where it came
+	// from -- so the nearest reporting station to the spawn point is an
+	// approximation, and the place to revisit if aircraft turn up flying on
+	// an implausible setting.
+	if metar, _ := s.nearestMETAR(ac.Position()); metar.ICAO != "" {
+		ac.AltimeterStation = metar.ICAO
+		ac.Nav.InitAltimeter(metar.Altimeter_inHg())
+	}
+
 	ac.Nav.Check(s.lg)
 
 	// Log initial route for navigation debugging

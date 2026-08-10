@@ -156,6 +156,17 @@ func (s *Sim) SayMach(tcw TCW, callsign av.ADSBCallsign) (av.CommandIntent, erro
 		})
 }
 
+// SetAltimeter handles a controller issuing an altimeter setting.
+func (s *Sim) SetAltimeter(tcw TCW, callsign av.ADSBCallsign, setting float32) (av.CommandIntent, error) {
+	s.mu.Lock(s.lg)
+	defer s.mu.Unlock(s.lg)
+
+	return s.dispatchControlledAircraftCommand(tcw, callsign,
+		func(tcw TCW, ac *Aircraft) av.CommandIntent {
+			return ac.SetAltimeter(setting)
+		})
+}
+
 func (s *Sim) SayAltitude(tcw TCW, callsign av.ADSBCallsign) (av.CommandIntent, error) {
 	s.mu.Lock(s.lg)
 	defer s.mu.Unlock(s.lg)
@@ -406,7 +417,11 @@ func (s *Sim) ContactTower(tcw TCW, callsign av.ADSBCallsign, freq av.Frequency)
 // ATISCommand handles the controller telling a pilot the current ATIS letter.
 // If the aircraft already reported the correct ATIS, no readback is needed.
 // Otherwise the pilot responds with "we'll pick up (letter)".
-func (s *Sim) ATISCommand(tcw TCW, callsign av.ADSBCallsign, letter string) (av.CommandIntent, error) {
+//
+// The ATIS carries the field's altimeter, so picking it up also re-tunes the
+// pilot's setting — unless the controller issued one alongside it, in which
+// case that value stands whichever order the two were spoken in.
+func (s *Sim) ATISCommand(tcw TCW, callsign av.ADSBCallsign, letter string, explicitAltimeter bool) (av.CommandIntent, error) {
 	s.mu.Lock(s.lg)
 	defer s.mu.Unlock(s.lg)
 
@@ -416,6 +431,15 @@ func (s *Sim) ATISCommand(tcw TCW, callsign av.ADSBCallsign, letter string) (av.
 				return nil
 			}
 			ac.ReportedATIS = letter
+
+			if metar, ok := s.fieldMETAR(ac); ok {
+				// They are on that field's information now either way; only
+				// the value it carries yields to one the controller issued.
+				ac.AltimeterStation = metar.ICAO
+				if !explicitAltimeter {
+					ac.Nav.SetAltimeter(metar.Altimeter_inHg())
+				}
+			}
 			return av.ATISIntent{Letter: letter}
 		})
 }
@@ -571,6 +595,17 @@ func (s *Sim) trafficIsVisible(ac, traffic *Aircraft) bool {
 		slog.Float64("roll", float64(roll)),
 		slog.String("result", util.Select(seen, "seen", "not_seen")))
 	return seen
+}
+
+// fieldMETAR returns the METAR for the field whose ATIS the aircraft would be
+// listening to: the one it departed, or otherwise the one it is headed for.
+func (s *Sim) fieldMETAR(ac *Aircraft) (wx.METAR, bool) {
+	icao := ac.FlightPlan.ArrivalAirport
+	if ac.IsDeparture() {
+		icao = ac.FlightPlan.DepartureAirport
+	}
+	metar, ok := s.State.METAR[icao]
+	return metar, ok && metar.ICAO != ""
 }
 
 // nearestMETAR returns the METAR and airport elevation for the reporting

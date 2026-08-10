@@ -144,6 +144,11 @@ type Aircraft struct {
 	// field is in sight. Set to zero after the check (requested or given up) to prevent retries.
 	VisualApproachRequestDistance float32
 
+	// AltimeterStation is the ICAO of the reporting station whose setting the
+	// pilot is flying on; it is fixed at spawn and is what the aircraft's
+	// setting goes stale against as that station's METAR is updated.
+	AltimeterStation string
+
 	TouchAndGosRemaining int // >0 means pattern aircraft; decremented each lap
 
 	// HoldingSince is when a VFR arrival started orbiting to wait for a slot
@@ -159,12 +164,24 @@ func (ac *Aircraft) GetRadarTrack(now Time) av.RadarTrack {
 		Mode:                ac.Mode,
 		Ident:               ac.Mode != av.TransponderModeStandby && now.After(ac.IdentStartTime) && now.Before(ac.IdentEndTime),
 		TrueAltitude:        ac.Altitude(),
-		TransponderAltitude: util.Select(ac.Mode == av.TransponderModeAltitude, ac.Altitude(), 0),
+		TransponderAltitude: util.Select(ac.Mode == av.TransponderModeAltitude, ac.reportedAltitude(), 0),
 		Location:            ac.Position(),
 		Heading:             ac.Heading(),
 		Groundspeed:         ac.GS(),
 		TypeOfFlight:        ac.TypeOfFlight,
 	}
+}
+
+// reportedAltitude returns the altitude the automation displays for the
+// aircraft. Mode C reports pressure altitude, which is corrected to MSL with
+// the local altimeter setting below the transition altitude; at and above it
+// the correction is dropped and flight levels are displayed as reported,
+// undoing exactly the switch to 29.92 the pilot made on the way up.
+func (ac *Aircraft) reportedAltitude() float32 {
+	if alt := ac.Altitude(); alt < nav.TransitionAltitude {
+		return alt
+	}
+	return ac.Nav.ModeCAltitude()
 }
 
 func (ac *Aircraft) clearOfferedToMaintainSeparation() {
@@ -410,6 +427,10 @@ func (ac *Aircraft) SayMach(temp av.Temperature) av.CommandIntent {
 
 func (ac *Aircraft) SayHeading() av.CommandIntent {
 	return ac.Nav.SayHeading()
+}
+
+func (ac *Aircraft) SetAltimeter(setting float32) av.CommandIntent {
+	return ac.Nav.SetAltimeter(setting)
 }
 
 func (ac *Aircraft) SayAltitude() av.CommandIntent {
