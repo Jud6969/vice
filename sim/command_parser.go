@@ -417,11 +417,11 @@ func parseHold(command string) (string, *av.Hold, bool) {
 }
 
 // isAltimeterCommand reports whether the command is an altimeter setting,
-// e.g. AS2992. It has to be spelled "AS" since A#### is an altitude
-// assignment; requiring exactly four digits leaves ASALT/C120 and the like to
+// e.g. ALT2992. It can't be spelled "A" since A#### is an altitude
+// assignment; requiring exactly four digits leaves ALTEE/C120 and the like to
 // the "at fix" commands.
 func isAltimeterCommand(command string) bool {
-	setting, ok := strings.CutPrefix(command, "AS")
+	setting, ok := strings.CutPrefix(command, "ALT")
 	return ok && len(setting) == 4 && util.IsAllNumbers(setting)
 }
 
@@ -478,7 +478,7 @@ func (s *Sim) runOneControlCommand(tcw TCW, callsign av.ADSBCallsign, command st
 
 			return s.AirportAdvisory(tcw, callsign, oclock, miles)
 		} else if isAltimeterCommand(command) {
-			v, err := strconv.Atoi(command[2:])
+			v, err := strconv.Atoi(command[3:])
 			if err != nil || v < 2700 || v > 3200 {
 				return nil, ErrInvalidCommandSyntax
 			}

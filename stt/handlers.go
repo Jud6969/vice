@@ -283,7 +283,7 @@ func registerAllCommands() {
 	// === ALTIMETER SETTING ===
 	registerSTTCommand(
 		"[the] altimeter [is] {altimeter}",
-		func(setting int) string { return fmt.Sprintf("AS%04d", setting) },
+		func(setting int) string { return fmt.Sprintf("ALT%04d", setting) },
 		WithName("altimeter_setting"),
 		WithPriority(15),
 	)

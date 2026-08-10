@@ -15,7 +15,7 @@
   "processor": "GPU: NVIDIA GeForce GTX 1660 (6180MB)",
   "whisper_model": "ggml-medium.en-jlvatc-q5_0.bin",
   "callsign": "JBU327",
-  "command": "AS2987 EI2L ATIS/Q",
+  "command": "ALT2987 EI2L ATIS/Q",
   "stt_aircraft": {
     "ExecJet 55 21": {
       "Callsign": "EJA5521",

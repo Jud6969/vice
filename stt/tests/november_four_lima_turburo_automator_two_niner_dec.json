@@ -15,7 +15,7 @@
   "processor": "GPU: NVIDIA GeForce RTX 4060 (7956MB)",
   "whisper_model": "ggml-medium.en-jlvatc-q5_0.bin",
   "callsign": "N4L",
-  "command": "AS2992",
+  "command": "ALT2992",
   "stt_aircraft": {
     "American four zero seven heavy": {
       "Callsign": "AAL407",

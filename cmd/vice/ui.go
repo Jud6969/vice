@@ -547,7 +547,7 @@ var secondaryAcCommands = [][3]string{
 	{"*A*", `"Altitude your discretion, maintain VFR" (VFR)`, "*A*"},
 	{"*A_alt*", `"Maintain _alt_`, "*A120*"},
 	{"*ATIS/_ltr*", `"Advise you have information _ltr_." If the pilot already reported the correct ATIS, no readback.`, "*ATIS/B*"},
-	{"*AS_setting*", `"Altimeter _setting_." Four digits; above the transition altitude it is queued for the descent.`, "*AS2992*"},
+	{"*ALT_setting*", `"Altimeter _setting_." Four digits; above the transition altitude it is queued for the descent.`, "*ALT2992*"},
 	{"*RST*", `"Radar services terminated, squawk VFR, frequency change approved" (VFR)`, "*RST*"},
 	{"*GA*", `"Go ahead" (VFR) - respond to abbreviated VFR request`, "*GA*"},
 	{"*P*", `Pauses/unpauses the sim`, "*P*"},
